@@ -15,6 +15,9 @@ class Settings:
     user_agent: str = DEFAULT_USER_AGENT
     timeout_seconds: float = 12.0
     max_results: int = 25
+    ollama_base_url: str = "http://127.0.0.1:11434"
+    ollama_model: str = "qwen3:4b"
+    ollama_timeout_seconds: float = 180.0
 
 
 def load_settings() -> Settings:
@@ -22,6 +25,12 @@ def load_settings() -> Settings:
         user_agent=os.getenv("LINKEDIN_CAREER_MCP_USER_AGENT", DEFAULT_USER_AGENT),
         timeout_seconds=_float_env("LINKEDIN_CAREER_MCP_TIMEOUT_SECONDS", 12.0),
         max_results=_int_env("LINKEDIN_CAREER_MCP_MAX_RESULTS", 25),
+        ollama_base_url=os.getenv(
+            "LINKEDIN_CAREER_MCP_OLLAMA_BASE_URL",
+            "http://127.0.0.1:11434",
+        ),
+        ollama_model=os.getenv("LINKEDIN_CAREER_MCP_OLLAMA_MODEL", "qwen3:4b"),
+        ollama_timeout_seconds=_float_env("LINKEDIN_CAREER_MCP_OLLAMA_TIMEOUT_SECONDS", 180.0),
     )
 
 

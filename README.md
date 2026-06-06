@@ -37,8 +37,9 @@ cd linkedin-career-mcp
 make install
 ```
 
-`make install` creates `.venv`, installs the package with development requirements, and links
-the Codex skill at `~/.codex/skills/linkedin-career-mcp`.
+`make install` creates `.venv`, installs the package with development requirements, installs
+Ollama with `curl -fsSL https://ollama.com/install.sh | sh`, pulls `qwen3:4b`, and links the
+Codex skill at `~/.codex/skills/linkedin-career-mcp`.
 
 ## Run
 
@@ -90,6 +91,29 @@ Optional:
 
 Fetch a public LinkedIn job detail page by `job_id` or `job_url`.
 
+### `find_matching_linkedin_jobs`
+
+Run a local Ollama-assisted workflow that reads files from `profile/`, generates multiple
+LinkedIn search queries with `qwen3:4b`, forces remote and hybrid workplace filters, filters
+blacklisted companies, fetches matching job details, and writes a tailored resume PDF for each
+job.
+
+Default local inputs and outputs:
+
+- `profile/`: put `MP-RESUME-AGENTIC.pdf`, current job descriptions, and other profile files here.
+  Supported file types are `.pdf`, `.docx`, `.txt`, `.md`, `.rst`, `.json`, and `.csv`.
+- `.blacklist`: company-name glob patterns, matched case-insensitively. For example, `Raytheon*`
+  excludes companies whose names start with `Raytheon`.
+- `output/resumes/[company]/[job_id]_[job_title]/mp_resume_[job_title].pdf`: customized resumes.
+- `output/tracking/read_applications/linkedin_applications.xlsx`: tracking workbook with LinkedIn
+  and resume links, plus user-editable `applied_to` and `date_applied` columns.
+
+You can run the same workflow from the command line:
+
+```bash
+make match-jobs
+```
+
 ## Configuration
 
 All settings are optional:
@@ -97,6 +121,10 @@ All settings are optional:
 - `LINKEDIN_CAREER_MCP_USER_AGENT`: HTTP user agent for public requests.
 - `LINKEDIN_CAREER_MCP_TIMEOUT_SECONDS`: request timeout. Default: `12`.
 - `LINKEDIN_CAREER_MCP_MAX_RESULTS`: maximum results returned per search. Default: `25`.
+- `LINKEDIN_CAREER_MCP_OLLAMA_BASE_URL`: Ollama API URL. Default: `http://127.0.0.1:11434`.
+- `LINKEDIN_CAREER_MCP_OLLAMA_MODEL`: local model used for matching and resume tailoring.
+  Default: `qwen3:4b`.
+- `LINKEDIN_CAREER_MCP_OLLAMA_TIMEOUT_SECONDS`: local generation timeout. Default: `180`.
 
 ## Development
 

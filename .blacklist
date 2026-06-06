@@ -1,0 +1,3 @@
+# Company blacklist patterns. Blank lines and comments are ignored.
+# Patterns are matched case-insensitively against company names.
+Raytheon*
