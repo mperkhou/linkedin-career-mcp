@@ -14,7 +14,7 @@ from linkedin_career_mcp.workflows.matching import (
     _resume_prompt,
     _scjdir_prompt,
 )
-from tests.fixture_loaders import load_linkedin_job_fixture
+from fixture_loaders import load_linkedin_job_fixture
 
 SAMPLE_RESUME = f"""
 Max Perkhounkov
