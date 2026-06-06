@@ -6,6 +6,11 @@ from openpyxl import load_workbook
 from pypdf import PdfReader
 
 from linkedin_career_mcp.models import JobDetails, JobPosting, JobSearchQuery, JobSearchResult
+from linkedin_career_mcp.webapp import (
+    DEFAULT_DATABASE,
+    fetch_existing_resume_job_ids,
+    upsert_application_artifact,
+)
 from linkedin_career_mcp.workflows.matching import (
     DEFAULT_SUPPLEMENTAL_SEARCH_KEYWORDS,
     CompanyBlacklist,
@@ -113,6 +118,45 @@ class FakeJobService:
         )
 
 
+class ExistingThenNewJobService:
+    def __init__(self) -> None:
+        self.queries: list[JobSearchQuery] = []
+        self.detail_requests: list[str] = []
+
+    async def search(self, query: JobSearchQuery) -> JobSearchResult:
+        self.queries.append(query)
+        if len(self.queries) == 1:
+            jobs = [
+                JobPosting(
+                    job_id="111",
+                    title="Existing Engineer",
+                    company="Existing Co",
+                    job_url="https://www.linkedin.com/jobs/view/111",
+                )
+            ]
+        else:
+            jobs = [
+                JobPosting(
+                    job_id="333",
+                    title="Fresh Platform Engineer",
+                    company="Fresh Co",
+                    job_url="https://www.linkedin.com/jobs/view/333",
+                )
+            ]
+        return JobSearchResult(query=query, count=len(jobs), jobs=jobs, provider="fake")
+
+    async def get_details(self, job_id_or_url: str) -> JobDetails:
+        self.detail_requests.append(job_id_or_url)
+        job_id = job_id_or_url.rstrip("/").rsplit("/", 1)[-1]
+        return JobDetails(
+            job_id=job_id,
+            title="Fresh Platform Engineer",
+            company="Fresh Co",
+            job_url=f"https://www.linkedin.com/jobs/view/{job_id}",
+            description="Fresh role that should count toward max_jobs.",
+        )
+
+
 def test_company_blacklist_matches_globs_case_insensitively(tmp_path: Path):
     blacklist_path = tmp_path / ".blacklist"
     blacklist_path.write_text("# comment\nRaytheon*\n", encoding="utf-8")
@@ -197,3 +241,49 @@ async def test_matching_workflow_writes_resume_and_tracking(tmp_path: Path):
     assert sheet.cell(row=2, column=4).hyperlink.target == "https://www.linkedin.com/jobs/view/111"
     assert sheet.cell(row=2, column=6).value == "No"
     assert sheet.cell(row=2, column=7).value is None
+
+
+async def test_matching_workflow_skips_existing_database_jobs_without_counting_them(
+    tmp_path: Path,
+):
+    profile_dir = tmp_path / "profile"
+    profile_dir.mkdir()
+    (profile_dir / "MP-RESUME-AGENTIC.txt").write_text(
+        "Resume: built MCP servers and local LLM workflows.",
+        encoding="utf-8",
+    )
+    blacklist_path = tmp_path / ".blacklist"
+    blacklist_path.write_text("", encoding="utf-8")
+    output_dir = tmp_path / "output"
+    existing_resume = output_dir / "resumes/Existing_Co/111_existing_engineer/resume.pdf"
+    existing_resume.parent.mkdir(parents=True)
+    existing_resume.write_bytes(b"%PDF-1.4 existing")
+    database_path = output_dir / DEFAULT_DATABASE
+    upsert_application_artifact(
+        database_path=database_path,
+        job_id="111",
+        company="Existing Co",
+        job_title="Existing Engineer",
+        linkedin_url="https://www.linkedin.com/jobs/view/111",
+        resume_path=existing_resume,
+    )
+    service = ExistingThenNewJobService()
+    workflow = MatchingJobsWorkflow(service=service, ollama=FakeOllama())
+
+    result = await workflow.run(
+        profile_dir=profile_dir,
+        blacklist_path=blacklist_path,
+        output_dir=output_dir,
+        source_resume_name="MP-RESUME-AGENTIC.txt",
+        limit_per_query=5,
+        max_queries=2,
+        max_jobs=1,
+    )
+
+    assert len(service.queries) == 2
+    assert "111" in service.queries[0].exclude_job_ids
+    assert service.detail_requests == ["https://www.linkedin.com/jobs/view/333"]
+    assert result.jobs_found == 1
+    assert result.artifacts[0].job_id == "333"
+    assert "Existing Co - Existing Engineer" in result.skipped_existing
+    assert fetch_existing_resume_job_ids(database_path) == {"111", "333"}

@@ -39,6 +39,10 @@ class JobSearchQuery(BaseModel):
     distance: int | None = Field(default=None, ge=0, le=100)
     limit: int = Field(default=10, ge=1, le=100)
     page: int = Field(default=0, ge=0)
+    exclude_job_ids: set[str] = Field(
+        default_factory=set,
+        description="LinkedIn job IDs to filter out of returned search results.",
+    )
 
 
 class JobPosting(BaseModel):

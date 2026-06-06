@@ -45,6 +45,10 @@ def register_job_tools(mcp: FastMCP, service: JobSearchService) -> None:
         ] = None,
         limit: Annotated[int, Field(ge=1, le=100, description="Number of jobs to return.")] = 10,
         page: Annotated[int, Field(ge=0, description="Zero-based page number.")] = 0,
+        exclude_job_ids: Annotated[
+            list[str] | None,
+            Field(description="LinkedIn job IDs to filter out of returned search results."),
+        ] = None,
     ) -> dict[str, object]:
         """Search public LinkedIn job openings."""
 
@@ -59,6 +63,7 @@ def register_job_tools(mcp: FastMCP, service: JobSearchService) -> None:
             distance=distance,
             limit=limit,
             page=page,
+            exclude_job_ids=set(exclude_job_ids or []),
         )
         try:
             result = await service.search(query)

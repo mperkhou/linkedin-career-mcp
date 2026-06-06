@@ -8,7 +8,7 @@ SKILL_LINK := $(CODEX_SKILLS_DIR)/$(SKILL_NAME)
 OLLAMA_MODEL ?= qwen3:4b
 OLLAMA_INSTALL_URL ?= https://ollama.com/install.sh
 
-.PHONY: install install-python install-ollama ollama-model venv skill-link match-jobs test lint clean
+.PHONY: install install-python install-ollama ollama-model venv skill-link match-jobs launch-website test lint clean
 
 install: install-python install-ollama ollama-model skill-link
 
@@ -49,6 +49,9 @@ ollama-model:
 
 match-jobs: venv
 	$(VENV)/bin/linkedin-career-match-jobs
+
+launch-website: venv
+	$(VENV)/bin/linkedin-career-webapp
 
 test: venv
 	$(VENV_PYTHON) -m pytest
