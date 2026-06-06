@@ -13,7 +13,7 @@ from linkedin_career_mcp.providers.linkedin_public import (
 SEARCH_HTML = """
 <li>
   <div class="base-card" data-entity-urn="urn:li:jobPosting:12345">
-    <a class="base-card__full-link" href="https://www.linkedin.com/jobs/view/12345?trk=public_jobs">
+    <a class="base-card__full-link" href="https://www.linkedin.com/jobs/view/senior-python-engineer-at-acme-12345?trk=public_jobs">
       <span class="sr-only">View job</span>
     </a>
     <h3 class="base-search-card__title"> Senior Python Engineer </h3>
@@ -76,7 +76,9 @@ async def test_search_jobs_parses_public_job_cards(sample_query):
     assert jobs[0].title == "Senior Python Engineer"
     assert jobs[0].company == "Acme Corp"
     assert jobs[0].location == "Chicago, IL"
-    assert str(jobs[0].job_url) == "https://www.linkedin.com/jobs/view/12345"
+    assert str(jobs[0].job_url) == (
+        "https://www.linkedin.com/jobs/view/senior-python-engineer-at-acme-12345"
+    )
 
 
 @pytest.mark.asyncio
@@ -111,6 +113,10 @@ async def test_get_job_details_rejects_unparseable_ids():
     [
         ("12345", "12345"),
         ("https://www.linkedin.com/jobs/view/12345/", "12345"),
+        (
+            "https://www.linkedin.com/jobs/view/software-engineer-new-grad-at-notion-4406118990",
+            "4406118990",
+        ),
         ("urn:li:jobPosting:67890", "67890"),
         ("https://www.linkedin.com/jobs/search/?currentJobId=24680", "24680"),
     ],

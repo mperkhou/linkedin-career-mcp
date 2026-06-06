@@ -124,7 +124,7 @@ def _search_params(query: JobSearchQuery) -> dict[str, str | int]:
 
 def _parse_search_results(html: str) -> list[JobPosting]:
     soup = BeautifulSoup(html, "html.parser")
-    cards = soup.select("li")
+    cards = soup.select("[data-entity-urn*='jobPosting']") or soup.select("li")
     jobs: list[JobPosting] = []
 
     for card in cards:
@@ -210,7 +210,7 @@ def extract_job_id(value: str) -> str | None:
             return query[key][0]
 
     patterns = (
-        r"/jobs/view/(\d+)",
+        r"/jobs/view/(?:[^/?#]*-)?(\d+)",
         r"jobPosting:(\d+)",
         r"[?&]jk=(\d+)",
     )
