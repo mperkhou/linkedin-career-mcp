@@ -12,3 +12,6 @@ htmlcov/
 .coverage
 profile/
 output/
+run_*.py
+test_fixture_workflow.py
+workflow_output.log

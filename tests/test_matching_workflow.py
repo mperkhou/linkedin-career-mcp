@@ -3,13 +3,50 @@ from __future__ import annotations
 from pathlib import Path
 
 from openpyxl import load_workbook
+from pypdf import PdfReader
 
 from linkedin_career_mcp.models import JobDetails, JobPosting, JobSearchQuery, JobSearchResult
-from linkedin_career_mcp.workflows.matching import CompanyBlacklist, MatchingJobsWorkflow
+from linkedin_career_mcp.workflows.matching import (
+    DEFAULT_SUPPLEMENTAL_SEARCH_KEYWORDS,
+    CompanyBlacklist,
+    MatchingJobsWorkflow,
+    _expand_remote_and_hybrid_queries,
+    _supplement_search_queries,
+)
 
 
 class FakeOllama:
     async def generate_json(self, prompt: str) -> dict[str, object]:
+        if "core_technical_skills" in prompt:
+            return {
+                "core_technical_skills": [
+                    {
+                        "category": "Languages & Frameworks",
+                        "skills": ["Python", "JavaScript", "Node.js", "React.js"],
+                    },
+                    {
+                        "category": "Distributed Systems & Cloud",
+                        "skills": ["AWS", "Azure", "OpenSearch"],
+                    },
+                    {
+                        "category": "Platform & API Engineering",
+                        "skills": ["RESTful APIs", "Systems Architecture", "Microservices"],
+                    },
+                    {
+                        "category": "Automation & IaC",
+                        "skills": ["Terraform", "Ansible", "Jenkins"],
+                    },
+                    {
+                        "category": "Data & Observability",
+                        "skills": ["Data Pipelines", "Error Budgets"],
+                    },
+                    {
+                        "category": "Security & Compliance",
+                        "skills": ["Secure Coding Practices", "RBAC"],
+                    },
+                ],
+                "prior_experience": [],
+            }
         return {
             "queries": [
                 {
@@ -24,7 +61,11 @@ class FakeOllama:
         }
 
     async def generate_text(self, prompt: str) -> str:
-        return "MORGAN PERKHOU\n\nEXPERIENCE\nBuilt agentic AI systems and MCP tools."
+        return (
+            "Oracle | Remote / International Datacenters\n"
+            "Senior Technical Lead - Cloud Automation Engineer | Feb 2022 - Present\n"
+            "- Platform Component Ownership: Built agentic AI systems and MCP tools."
+        )
 
 
 class FakeJobService:
@@ -83,6 +124,33 @@ def test_company_blacklist_matches_globs_case_insensitively(tmp_path: Path):
     assert not blacklist.matches("Acme AI")
 
 
+def test_search_queries_are_supplemented_with_trending_keyword_fallbacks():
+    model_query = JobSearchQuery(
+        keywords="Senior Platform Engineer AWS Azure Terraform",
+        location="United States",
+        date_posted="past_month",
+        job_type="full_time",
+        workplace_type="remote",
+        experience_level="mid_senior",
+        sort_by="recent",
+        limit=5,
+    )
+
+    supplemented = _supplement_search_queries(
+        [model_query],
+        location="United States",
+        date_posted="past_month",
+        limit_per_query=5,
+    )
+    expanded = _expand_remote_and_hybrid_queries(supplemented, max_queries=8)
+
+    keywords = [query.keywords for query in expanded]
+    assert keywords[:2] == [model_query.keywords, model_query.keywords]
+    assert DEFAULT_SUPPLEMENTAL_SEARCH_KEYWORDS[0] in keywords
+    assert any("AI" in keyword or "LLM" in keyword or "agentic" in keyword for keyword in keywords)
+    assert {query.workplace_type for query in expanded[:2]} == {"remote", "hybrid"}
+
+
 async def test_matching_workflow_writes_resume_and_tracking(tmp_path: Path):
     profile_dir = tmp_path / "profile"
     profile_dir.mkdir()
@@ -114,6 +182,11 @@ async def test_matching_workflow_writes_resume_and_tracking(tmp_path: Path):
     resume_path = Path(result.artifacts[0].resume_path)
     assert resume_path.exists()
     assert resume_path.name == "mp_resume_agentic_ai_engineer.pdf"
+    resume_text = "\n".join(page.extract_text() or "" for page in PdfReader(resume_path).pages)
+    assert "Max Perkhounkov" in resume_text
+    assert "custom tailored for every job position" in resume_text
+    assert "Education & Certifications" in resume_text
+    assert "Oracle Cloud Infrastructure AI Foundations Associate" in resume_text
 
     workbook_path = output_dir / "tracking/read_applications/linkedin_applications.xlsx"
     assert workbook_path.exists()

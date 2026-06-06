@@ -16,3 +16,7 @@ class WorkflowError(LinkedInCareerMcpError):
 
 class OllamaError(WorkflowError):
     """Raised when local Ollama generation fails."""
+
+
+class LlmError(WorkflowError):
+    """Raised when an external API LLM generation fails."""
