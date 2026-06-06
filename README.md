@@ -9,6 +9,9 @@ This project was informed by the MIT-licensed [`administrativetrick/linkedin-mcp
 - Search public LinkedIn job listings by keywords and location.
 - Filter by date posted, job type, workplace type, experience level, distance, sort order, and pagination.
 - Fetch public job details by LinkedIn job ID or job URL.
+- Use local Ollama with `qwen3:4b` to generate profile-aware LinkedIn search parameters.
+- Use local Ollama with `qwen3:4b` to tailor a resume PDF for each matching job.
+- Track generated resume artifacts and LinkedIn links in a local spreadsheet.
 - Run as an MCP stdio server from any compatible client.
 
 ## Architecture
@@ -17,9 +20,17 @@ This project was informed by the MIT-licensed [`administrativetrick/linkedin-mcp
 MCP client
   -> linkedin_career_mcp.server
   -> linkedin_career_mcp.tools
-  -> linkedin_career_mcp.services
-  -> linkedin_career_mcp.providers
-  -> LinkedIn public jobs pages
+  -> direct search path:
+       linkedin_career_mcp.services
+       -> linkedin_career_mcp.providers
+       -> LinkedIn public jobs pages
+  -> matching workflow path:
+       profile/* + .blacklist
+       -> Ollama qwen3:4b search planner
+       -> linkedin_career_mcp.services
+       -> LinkedIn public jobs pages
+       -> Ollama qwen3:4b resume tailor
+       -> output/resumes/* + output/tracking/*
 ```
 
 The package is intentionally split by responsibility:
@@ -28,7 +39,8 @@ The package is intentionally split by responsibility:
 - `providers/`: external data adapters. The current provider uses LinkedIn public job pages.
 - `services.py`: orchestration and guardrails shared by MCP tools and future CLIs.
 - `tools/`: MCP-facing tool registration.
-- `workflows/`: placeholders for future multi-step workflows such as application tracking or assisted submissions.
+- `ollama.py`: local Ollama API client used for Qwen3 generation.
+- `workflows/`: multi-step workflows such as profile-aware job matching and resume tailoring.
 
 ## Install
 
@@ -98,12 +110,27 @@ LinkedIn search queries with `qwen3:4b`, forces remote and hybrid workplace filt
 blacklisted companies, fetches matching job details, and writes a tailored resume PDF for each
 job.
 
-Default local inputs and outputs:
+The workflow has two Qwen3 passes:
+
+1. Search planning: profile files are extracted to text and sent to local Ollama with `qwen3:4b`.
+   Qwen3 returns JSON search-query objects containing LinkedIn parameters such as `keywords`,
+   `location`, `date_posted`, `job_type`, `experience_level`, `sort_by`, `limit`, and `page`.
+   The workflow validates those parameters, then expands each query into remote and hybrid
+   `workplace_type` variants before calling the existing LinkedIn search service.
+2. Resume tailoring: for each non-blacklisted matching job, the workflow fetches the public job
+   details from LinkedIn and sends the job description plus the same `profile/` context back to
+   local Ollama with `qwen3:4b`. Qwen3 returns final resume text tailored to that job. The workflow
+   renders that text to a PDF and records the artifact in the tracking workbook.
+
+Default local inputs:
 
 - `profile/`: put `MP-RESUME-AGENTIC.pdf`, current job descriptions, and other profile files here.
   Supported file types are `.pdf`, `.docx`, `.txt`, `.md`, `.rst`, `.json`, and `.csv`.
 - `.blacklist`: company-name glob patterns, matched case-insensitively. For example, `Raytheon*`
   excludes companies whose names start with `Raytheon`.
+
+Default local outputs:
+
 - `output/resumes/[company]/[job_id]_[job_title]/mp_resume_[job_title].pdf`: customized resumes.
 - `output/tracking/read_applications/linkedin_applications.xlsx`: tracking workbook with LinkedIn
   and resume links, plus user-editable `applied_to` and `date_applied` columns.
