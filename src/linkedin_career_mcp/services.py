@@ -12,6 +12,8 @@ class JobSearchService:
     async def search(self, query: JobSearchQuery) -> JobSearchResult:
         capped_query = query.model_copy(update={"limit": min(query.limit, self._max_results)})
         jobs = await self._provider.search_jobs(capped_query)
+        if capped_query.exclude_job_ids:
+            jobs = [job for job in jobs if job.job_id not in capped_query.exclude_job_ids]
         jobs = jobs[: capped_query.limit]
         return JobSearchResult(
             query=capped_query,

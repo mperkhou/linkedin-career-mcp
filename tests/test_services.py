@@ -24,3 +24,18 @@ async def test_search_caps_query_limit():
     assert result.query.limit == 3
     assert result.count == 3
     assert len(result.jobs) == 3
+
+
+async def test_search_filters_excluded_job_ids_before_counting_results():
+    service = JobSearchService(provider=FakeProvider(), max_results=10)
+    result = await service.search(
+        JobSearchQuery(
+            keywords="python",
+            location="remote",
+            limit=5,
+            exclude_job_ids={"0", "2"},
+        )
+    )
+
+    assert [job.job_id for job in result.jobs] == ["1", "3", "4", "5", "6"]
+    assert result.count == 5

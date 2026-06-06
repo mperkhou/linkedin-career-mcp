@@ -1,46 +1,120 @@
 # LinkedIn Career MCP
 
-Python-centric MCP server for querying public LinkedIn job openings today, with an architecture that can grow into resume matching, tracking, and carefully gated application workflows later.
+An agentic job-search and resume-tailoring system built around public LinkedIn job
+listings, Model Context Protocol tools, profile-aware LLM workflows, local artifact
+generation, and a private SQLite-backed application tracker.
 
-This project was informed by the MIT-licensed [`administrativetrick/linkedin-mcp`](https://github.com/administrativetrick/linkedin-mcp) TypeScript server, but this implementation is Python-first and does not require LinkedIn credentials for the current public jobs tools.
+This repo is intentionally more than a scraper. It is a small career operations
+platform: it searches public LinkedIn openings, plans profile-specific queries, filters
+companies and duplicate jobs, fetches job descriptions, generates tailored resume PDFs,
+stores artifacts locally, and presents the application queue in a fast local web UI.
 
-## What Works Now
+The resume note points here because the project demonstrates the same engineering habits
+I try to bring to production systems: clear boundaries, typed domain models, provider
+isolation, testable workflows, practical automation, and human-in-the-loop guardrails.
 
-- Search public LinkedIn job listings by keywords and location.
-- Filter by date posted, job type, workplace type, experience level, distance, sort order, and pagination.
-- Fetch public job details by LinkedIn job ID or job URL.
-- Use local Ollama with `qwen3:4b` to generate profile-aware LinkedIn search parameters.
-- Use local Ollama with `qwen3:4b` to tailor a resume PDF for each matching job.
-- Track generated resume artifacts and LinkedIn links in a local spreadsheet.
-- Run as an MCP stdio server from any compatible client.
+## Highlights
 
-## Architecture
+- **Public LinkedIn job search via MCP**: search and detail tools for public job pages,
+  with filters for date, workplace type, job type, seniority, distance, pagination, and
+  sort order.
+- **Profile-aware search planning**: reads local profile files and asks an LLM to propose
+  targeted LinkedIn queries.
+- **Tailored resume generation**: renders job-specific PDF resumes from a structured local
+  template, preserving static candidate facts while tailoring the current-role section,
+  skills, and light keyword alignment.
+- **Duplicate-aware workflow**: uses SQLite job IDs to skip openings that already have
+  generated resumes, and does not count skipped jobs toward the requested run size.
+- **Local application tracker**: Flask + SQLite web UI for search/filter, status updates,
+  applied dates, notes, PDF links, sync from generated output, and bulk deletion.
+- **Local-first storage**: generated PDFs live under `output/resumes/`; tracking lives in
+  both `output/tracking/applications.sqlite3` and the compatibility workbook at
+  `output/tracking/read_applications/linkedin_applications.xlsx`.
+- **Provider-oriented architecture**: LinkedIn public scraping is isolated behind a
+  provider boundary, with service and workflow layers kept testable.
+- **No LinkedIn credentials required**: the current implementation uses public LinkedIn
+  guest pages only. It does not log in, access private member data, or submit applications.
+
+## Current Workflow
 
 ```text
-MCP client
-  -> linkedin_career_mcp.server
-  -> linkedin_career_mcp.tools
-  -> direct search path:
-       linkedin_career_mcp.services
-       -> linkedin_career_mcp.providers
-       -> LinkedIn public jobs pages
-  -> matching workflow path:
-       profile/* + .blacklist
-       -> Ollama qwen3:4b search planner
-       -> linkedin_career_mcp.services
-       -> LinkedIn public jobs pages
-       -> Ollama qwen3:4b resume tailor
-       -> output/resumes/* + output/tracking/*
+profile/* + .blacklist
+  -> LLM search planner
+  -> MCP/service search layer
+  -> LinkedIn public job pages
+  -> duplicate/company filters
+  -> public job detail fetch
+  -> LLM resume tailoring
+  -> ReportLab PDF renderer
+  -> output/resumes/*
+  -> output/tracking/applications.sqlite3
+  -> local Flask application tracker
 ```
 
-The package is intentionally split by responsibility:
+The workflow is designed to spend requests where they matter. Existing LinkedIn job IDs
+are loaded from SQLite before each matching run. If a returned posting already exists, the
+workflow skips detail lookup and resume generation for that job, then keeps searching for
+additional fresh openings.
 
-- `models.py`: stable domain models shared by tools, providers, and future workflows.
-- `providers/`: external data adapters. The current provider uses LinkedIn public job pages.
-- `services.py`: orchestration and guardrails shared by MCP tools and future CLIs.
-- `tools/`: MCP-facing tool registration.
-- `ollama.py`: local Ollama API client used for Qwen3 generation.
-- `workflows/`: multi-step workflows such as profile-aware job matching and resume tailoring.
+LinkedIn's public guest endpoint does not expose a supported "exclude these job IDs"
+search parameter, so exclusion is applied inside this project after a public search page
+is returned. That still prevents duplicate detail requests and duplicate resume work.
+
+## Local Web UI
+
+Run the tracker locally:
+
+```bash
+make launch-website
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8765
+```
+
+The web UI is intentionally dense and work-focused:
+
+- summary counters for total, applied, and pending applications
+- search by company, title, or LinkedIn job ID
+- status filter for pending/applied rows
+- direct links to LinkedIn, DB-backed PDFs, and filesystem-backed output PDFs
+- per-row updates for `applied_to`, `date_applied`, and notes
+- "Sync from output" to import workbook/PDF artifacts into SQLite
+- checkbox selection plus bulk delete
+
+PDFs are available in two useful forms:
+
+- `/resumes/<job_id>` serves the PDF BLOB stored in SQLite.
+- `/output/resumes/...pdf` serves the generated file from the local output tree.
+
+Example:
+
+```text
+http://127.0.0.1:8765/output/resumes/The_Voleon_Group/4407411418_senior_software_engineer_platform_team/mp_resume_senior_software_engineer_platform_team.pdf
+```
+
+## Outputs
+
+Default generated artifacts:
+
+```text
+output/
+  resumes/
+    [company]/
+      [job_id]_[job_title]/
+        mp_resume_[job_title].pdf
+  tracking/
+    applications.sqlite3
+    read_applications/
+      linkedin_applications.xlsx
+```
+
+The SQLite table uses the LinkedIn job ID as the primary key, so the same opening cannot
+appear more than once in the tracker. Bulk deletion removes rows from SQLite and from the
+tracking workbook so a later sync does not immediately resurrect deleted entries. Generated
+PDF files are left on disk unless you remove them manually.
 
 ## Install
 
@@ -49,17 +123,70 @@ cd linkedin-career-mcp
 make install
 ```
 
-`make install` creates `.venv`, installs the package with development requirements, installs
-Ollama with `curl -fsSL https://ollama.com/install.sh | sh`, pulls `qwen3:4b`, and links the
-Codex skill at `~/.codex/skills/linkedin-career-mcp`.
+`make install` creates `.venv`, installs the package with development requirements,
+installs Ollama if needed, pulls the configured Ollama model, and links the Codex skill at
+`~/.codex/skills/linkedin-career-mcp`.
 
-## Run
+If you only want the Python environment:
+
+```bash
+make install-python
+```
+
+## LLM Configuration
+
+The matching workflow supports two LLM paths:
+
+- **OpenAI-compatible chat completions API**: default provider. The checked-in default is
+  OpenRouter with `deepseek/deepseek-chat`.
+- **Local Ollama**: fallback/local option, defaulting to `qwen3:4b`.
+
+For the default API path:
+
+```bash
+export LINKEDIN_CAREER_MCP_LLM_API_KEY="..."
+make match-jobs
+```
+
+For local Ollama:
+
+```bash
+export LINKEDIN_CAREER_MCP_LLM_PROVIDER=ollama
+make match-jobs
+```
+
+## Command-Line Usage
+
+Run the MCP stdio server:
 
 ```bash
 .venv/bin/linkedin-career-mcp
 ```
 
-The command starts an MCP stdio server, so it is meant to be launched by an MCP client.
+Run the matching workflow:
+
+```bash
+make match-jobs
+```
+
+Equivalent executable:
+
+```bash
+.venv/bin/linkedin-career-match-jobs \
+  --profile-dir profile \
+  --blacklist-path .blacklist \
+  --output-dir output \
+  --date-posted past_week \
+  --limit-per-query 10 \
+  --max-queries 6 \
+  --max-jobs 10
+```
+
+Run the local tracker:
+
+```bash
+make launch-website
+```
 
 ## MCP Client Config
 
@@ -75,9 +202,7 @@ Use the absolute path for your local checkout:
 }
 ```
 
-If you install globally or with `uvx`, adjust `command` accordingly.
-
-## Tools
+## MCP Tools
 
 ### `search_linkedin_jobs`
 
@@ -86,7 +211,7 @@ Search public LinkedIn listings.
 Required:
 
 - `keywords`: job title or search terms.
-- `location`: city, state, country, or `remote`.
+- `location`: city, state, country, or broad target such as `United States`.
 
 Optional:
 
@@ -95,63 +220,84 @@ Optional:
 - `workplace_type`: `on_site`, `remote`, `hybrid`
 - `experience_level`: `internship`, `entry_level`, `associate`, `mid_senior`, `director`, `executive`
 - `sort_by`: `relevance`, `recent`
-- `distance`: miles from the provided location.
-- `limit`: result count, capped by server settings.
-- `page`: zero-based page number.
+- `distance`: miles from the requested location
+- `limit`: result count, capped by server settings
+- `page`: zero-based page number
+- `exclude_job_ids`: LinkedIn job IDs to filter out of returned results
 
 ### `get_linkedin_job_details`
 
-Fetch a public LinkedIn job detail page by `job_id` or `job_url`.
+Fetch a public LinkedIn job detail page by LinkedIn job ID or public job URL.
 
 ### `find_matching_linkedin_jobs`
 
-Run a local Ollama-assisted workflow that reads files from `profile/`, generates multiple
-LinkedIn search queries with `qwen3:4b`, forces remote and hybrid workplace filters, filters
-blacklisted companies, fetches matching job details, and writes a tailored resume PDF for each
-job.
+Run the end-to-end profile-aware matching workflow:
 
-The workflow has two Qwen3 passes:
+1. Read supported files from `profile/`.
+2. Generate LinkedIn search queries from the profile context.
+3. Expand promising searches across remote and hybrid workplace filters.
+4. Filter blacklisted companies.
+5. Skip LinkedIn job IDs that already exist in SQLite with resume artifacts.
+6. Fetch public details for fresh jobs.
+7. Generate and render tailored resume PDFs.
+8. Append workbook rows and upsert SQLite tracker records.
 
-1. Search planning: profile files are extracted to text and sent to local Ollama with `qwen3:4b`.
-   Qwen3 returns JSON search-query objects containing LinkedIn parameters such as `keywords`,
-   `location`, `date_posted`, `job_type`, `experience_level`, `sort_by`, `limit`, and `page`.
-   The workflow validates those parameters, then expands each query into remote and hybrid
-   `workplace_type` variants before calling the existing LinkedIn search service.
-2. Resume tailoring: for each non-blacklisted matching job, the workflow fetches the public job
-   details from LinkedIn and sends the job description plus the same `profile/` context back to
-   local Ollama with `qwen3:4b`. Qwen3 returns final resume text tailored to that job. The workflow
-   renders that text to a PDF and records the artifact in the tracking workbook.
+## Project Structure
 
-Default local inputs:
-
-- `profile/`: put `MP-RESUME-AGENTIC.pdf`, current job descriptions, and other profile files here.
-  Supported file types are `.pdf`, `.docx`, `.txt`, `.md`, `.rst`, `.json`, and `.csv`.
-- `.blacklist`: company-name glob patterns, matched case-insensitively. For example, `Raytheon*`
-  excludes companies whose names start with `Raytheon`.
-
-Default local outputs:
-
-- `output/resumes/[company]/[job_id]_[job_title]/mp_resume_[job_title].pdf`: customized resumes.
-- `output/tracking/read_applications/linkedin_applications.xlsx`: tracking workbook with LinkedIn
-  and resume links, plus user-editable `applied_to` and `date_applied` columns.
-
-You can run the same workflow from the command line:
-
-```bash
-make match-jobs
+```text
+src/linkedin_career_mcp/
+  api_client.py              OpenAI-compatible LLM client
+  config.py                  environment-driven settings
+  models.py                  typed domain models
+  ollama.py                  local Ollama client
+  providers/
+    linkedin_public.py       public LinkedIn guest-page adapter
+  services.py                caps, filtering, and provider orchestration
+  tools/                     MCP tool registration
+  webapp.py                  Flask + SQLite application tracker
+  workflows/
+    matching.py              profile-aware search and resume workflow
 ```
+
+## Inputs
+
+Place private profile material in `profile/`. The directory is intentionally ignored by Git.
+
+Supported profile file types:
+
+- `.pdf`
+- `.docx`
+- `.txt`
+- `.md`
+- `.rst`
+- `.json`
+- `.csv`
+
+Use `.blacklist` for company-name glob patterns:
+
+```text
+Raytheon*
+Some Company
+```
+
+Patterns are matched case-insensitively against company names.
 
 ## Configuration
 
-All settings are optional:
+All settings are environment variables:
 
-- `LINKEDIN_CAREER_MCP_USER_AGENT`: HTTP user agent for public requests.
-- `LINKEDIN_CAREER_MCP_TIMEOUT_SECONDS`: request timeout. Default: `12`.
+- `LINKEDIN_CAREER_MCP_USER_AGENT`: HTTP user agent for public LinkedIn requests.
+- `LINKEDIN_CAREER_MCP_TIMEOUT_SECONDS`: public request timeout. Default: `12`.
 - `LINKEDIN_CAREER_MCP_MAX_RESULTS`: maximum results returned per search. Default: `25`.
+- `LINKEDIN_CAREER_MCP_LLM_PROVIDER`: `api` or `ollama`. Default: `api`.
+- `LINKEDIN_CAREER_MCP_LLM_API_BASE_URL`: OpenAI-compatible API base URL.
+  Default: `https://openrouter.ai/api/v1`.
+- `LINKEDIN_CAREER_MCP_LLM_API_MODEL`: API model. Default: `deepseek/deepseek-chat`.
+- `LINKEDIN_CAREER_MCP_LLM_API_KEY`: API key for the default API provider.
+- `LINKEDIN_CAREER_MCP_LLM_API_TIMEOUT_SECONDS`: API generation timeout. Default: `120`.
 - `LINKEDIN_CAREER_MCP_OLLAMA_BASE_URL`: Ollama API URL. Default: `http://127.0.0.1:11434`.
-- `LINKEDIN_CAREER_MCP_OLLAMA_MODEL`: local model used for matching and resume tailoring.
-  Default: `qwen3:4b`.
-- `LINKEDIN_CAREER_MCP_OLLAMA_TIMEOUT_SECONDS`: local generation timeout. Default: `180`.
+- `LINKEDIN_CAREER_MCP_OLLAMA_MODEL`: Ollama model. Default: `qwen3:4b`.
+- `LINKEDIN_CAREER_MCP_OLLAMA_TIMEOUT_SECONDS`: Ollama generation timeout. Default: `180`.
 
 ## Development
 
@@ -160,6 +306,23 @@ make lint
 make test
 ```
 
-## Notes And Limits
+The test suite covers provider parsing, service filtering, LLM client behavior, workflow
+generation, duplicate skipping, PDF rendering regressions, and the web tracker import/delete
+paths.
 
-This server uses public LinkedIn pages. It does not log in, use private member data, or submit applications. Public-page parsing can break when LinkedIn changes markup. Future application automation should be designed with explicit user confirmation, audit logs, and per-site terms review before anything is submitted.
+## Design Boundaries
+
+This project uses public LinkedIn pages. It does not authenticate to LinkedIn, access
+private member data, or submit applications. Public-page parsing may need maintenance if
+LinkedIn changes markup or rate-limits guest traffic.
+
+Any future submission workflow should stay explicitly human-approved: reviewable draft,
+clear destination, visible payload, audit record, and no automated external submit action
+without confirmation.
+
+## Attribution
+
+This project was informed by the MIT-licensed
+[`administrativetrick/linkedin-mcp`](https://github.com/administrativetrick/linkedin-mcp)
+TypeScript server, but this implementation is Python-first, local-first, and expanded into
+resume generation plus application tracking.

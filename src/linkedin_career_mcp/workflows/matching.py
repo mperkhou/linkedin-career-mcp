@@ -26,6 +26,14 @@ from linkedin_career_mcp.models import DatePosted, JobDetails, JobSearchQuery
 from linkedin_career_mcp.ollama import OllamaClient
 from linkedin_career_mcp.providers import LinkedInPublicJobsProvider
 from linkedin_career_mcp.services import JobSearchService
+from linkedin_career_mcp.webapp import (
+    DEFAULT_DATABASE as APPLICATION_DATABASE,
+)
+from linkedin_career_mcp.webapp import (
+    fetch_existing_resume_job_ids,
+    import_output_artifacts,
+    upsert_application_artifact,
+)
 
 DEFAULT_PROFILE_DIR = Path("profile")
 DEFAULT_BLACKLIST_PATH = Path(".blacklist")
@@ -268,6 +276,7 @@ class MatchingJobsWorkflowResult(BaseModel):
     recommendations_created: int = 0
     tracking_spreadsheet: str
     skipped_blacklisted: list[str] = Field(default_factory=list)
+    skipped_existing: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
     artifacts: list[TailoredResumeArtifact] = Field(default_factory=list)
 
@@ -371,8 +380,14 @@ class MatchingJobsWorkflow:
 
         candidates: list[JobDetails] = []
         skipped_blacklisted: list[str] = []
+        skipped_existing: list[str] = []
         errors: list[str] = []
         seen_job_ids: set[str] = set()
+        tracking_path = output_dir / TRACKING_WORKBOOK
+        application_database_path = output_dir / APPLICATION_DATABASE
+        if tracking_path.exists():
+            import_output_artifacts(output_dir=output_dir, database_path=application_database_path)
+        existing_resume_job_ids = fetch_existing_resume_job_ids(application_database_path)
         search_memory = _SearchMemory()
         all_search_queries: list[JobSearchQuery] = []
         min_searches_before_stop = min(max(max_queries, 1), MIN_SEARCHES_BEFORE_STOP)
@@ -398,8 +413,10 @@ class MatchingJobsWorkflow:
                     continue
                 new_query_found = True
                 all_search_queries.append(query)
+                excluded_job_ids = existing_resume_job_ids | seen_job_ids
+                search_query = query.model_copy(update={"exclude_job_ids": excluded_job_ids})
                 try:
-                    result = await self._service.search(query)
+                    result = await self._service.search(search_query)
                 except LinkedInCareerMcpError as exc:
                     errors.append(f"{query.keywords}: {exc}")
                     search_memory.register_result(query, 0)
@@ -411,6 +428,9 @@ class MatchingJobsWorkflow:
                     if posting.job_id in seen_job_ids:
                         continue
                     seen_job_ids.add(posting.job_id)
+                    if posting.job_id in existing_resume_job_ids:
+                        skipped_existing.append(_job_label(posting.company, posting.title))
+                        continue
                     if blacklist.matches(posting.company):
                         skipped_blacklisted.append(_job_label(posting.company, posting.title))
                         continue
@@ -435,7 +455,6 @@ class MatchingJobsWorkflow:
                 break
 
         artifacts: list[TailoredResumeArtifact] = []
-        tracking_path = output_dir / TRACKING_WORKBOOK
         for job in candidates:
             try:
                 resume_text = await self._generate_resume_text(
@@ -466,6 +485,15 @@ class MatchingJobsWorkflow:
                         job=job,
                     )
                 append_tracking_row(tracking_path=tracking_path, job=job, resume_path=resume_path)
+                upsert_application_artifact(
+                    database_path=application_database_path,
+                    job_id=job.job_id,
+                    company=job.company or "",
+                    job_title=job.title,
+                    linkedin_url=str(job.job_url) if job.job_url else "",
+                    resume_path=resume_path,
+                )
+                existing_resume_job_ids.add(job.job_id)
             except LinkedInCareerMcpError as exc:
                 errors.append(f"{job.job_id}: {exc}")
                 continue
@@ -493,6 +521,7 @@ class MatchingJobsWorkflow:
             ),
             tracking_spreadsheet=str(tracking_path),
             skipped_blacklisted=skipped_blacklisted,
+            skipped_existing=skipped_existing,
             errors=errors,
             artifacts=artifacts,
         )

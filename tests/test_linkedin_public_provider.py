@@ -50,7 +50,8 @@ DETAIL_HTML = """
 
 
 def test_search_params_map_public_linkedin_filters(sample_query):
-    params = _search_params(sample_query)
+    query = sample_query.model_copy(update={"exclude_job_ids": {"12345"}})
+    params = _search_params(query)
 
     assert params["keywords"] == "software engineer"
     assert params["location"] == "Chicago, IL"
@@ -58,6 +59,7 @@ def test_search_params_map_public_linkedin_filters(sample_query):
     assert params["f_WT"] == "2"
     assert params["sortBy"] == "DD"
     assert params["start"] == 0
+    assert "exclude_job_ids" not in params
 
 
 @pytest.mark.asyncio
