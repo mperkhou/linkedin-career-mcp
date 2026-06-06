@@ -34,15 +34,16 @@ The package is intentionally split by responsibility:
 
 ```bash
 cd linkedin-career-mcp
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -e ".[dev]"
+make install
 ```
+
+`make install` creates `.venv`, installs the package with development requirements, and links
+the Codex skill at `~/.codex/skills/linkedin-career-mcp`.
 
 ## Run
 
 ```bash
-linkedin-career-mcp
+.venv/bin/linkedin-career-mcp
 ```
 
 The command starts an MCP stdio server, so it is meant to be launched by an MCP client.
@@ -100,9 +101,8 @@ All settings are optional:
 ## Development
 
 ```bash
-python -m pip install -e ".[dev]"
-ruff check .
-pytest
+make lint
+make test
 ```
 
 ## Notes And Limits
