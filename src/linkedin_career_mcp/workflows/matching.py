@@ -207,7 +207,7 @@ class MatchingJobsWorkflow:
     ) -> list[JobSearchQuery]:
         plan = await self._ollama.generate_json(
             _search_query_prompt(
-                profile_context=profile_context,
+                profile_context=_limit_context(profile_context, max_chars=8_000),
                 location=location,
                 date_posted=date_posted,
                 limit_per_query=limit_per_query,
@@ -215,6 +215,8 @@ class MatchingJobsWorkflow:
             )
         )
         raw_queries = plan.get("queries")
+        if raw_queries is None and "keywords" in plan:
+            raw_queries = [plan]
         if not isinstance(raw_queries, list) or not raw_queries:
             raise WorkflowError("Ollama did not return any LinkedIn search queries.")
 
@@ -279,6 +281,12 @@ def format_profile_context(documents: list[ProfileDocument], *, max_chars: int =
         sections.append(f"--- {document.path.name} ---\n{text}")
         remaining -= len(text)
     return "\n\n".join(sections)
+
+
+def _limit_context(text: str, *, max_chars: int) -> str:
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars].rsplit("\n", 1)[0]
 
 
 def write_resume_pdf(*, resume_text: str, output_dir: Path, job: JobDetails) -> Path:

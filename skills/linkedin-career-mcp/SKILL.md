@@ -24,7 +24,7 @@ Use the absolute path to the repository checkout:
 {
   "mcpServers": {
     "linkedin-career": {
-      "command": "/Users/mperkhou/Documents/Codex/linkedin-career-mcp/.venv/bin/linkedin-career-mcp"
+      "command": "/Users/mperkhou/dev/codex/linkedin-career-mcp/.venv/bin/linkedin-career-mcp"
     }
   }
 }
