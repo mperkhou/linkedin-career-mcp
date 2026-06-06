@@ -4,7 +4,8 @@ import argparse
 import asyncio
 import json
 import re
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from html import escape
 from pathlib import Path
 from typing import Any, Literal
@@ -12,11 +13,14 @@ from typing import Any, Literal
 from openpyxl import Workbook, load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 from pydantic import BaseModel, ConfigDict, Field
+from reportlab.lib import colors
 from reportlab.lib.pagesizes import LETTER
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import inch
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
-from linkedin_career_mcp.config import load_settings
+from linkedin_career_mcp.api_client import ApiLlmClient
+from linkedin_career_mcp.config import Settings, load_settings
 from linkedin_career_mcp.errors import LinkedInCareerMcpError, WorkflowError
 from linkedin_career_mcp.models import DatePosted, JobDetails, JobSearchQuery
 from linkedin_career_mcp.ollama import OllamaClient
@@ -31,6 +35,103 @@ DEFAULT_CURRENT_JOB_DESCRIPTION = "Senior_Platform_Software_Engineer(IC3).pdf"
 TRACKING_WORKBOOK = Path("tracking/read_applications/linkedin_applications.xlsx")
 SUPPORTED_TEXT_SUFFIXES = {".csv", ".json", ".md", ".rst", ".text", ".txt"}
 SUPPORTED_PROFILE_SUFFIXES = SUPPORTED_TEXT_SUFFIXES | {".docx", ".pdf"}
+RESUME_HEADER_NAME = "Max Perkhounkov"
+RESUME_HEADER_CONTACT = (
+    "Iowa City, IA | 641-781-0477 | mperkhounkov1@gmail.com | linkedin.com/mperkhou"
+)
+STATIC_PROFESSIONAL_SUMMARY = (
+    "Analytical and metrics-driven Senior Platform Software Engineer with over 10 years of "
+    "multi-disciplinary experience architecting scalable distributed systems, developer tooling, "
+    "and cloud automation frameworks. Proven track record leading enterprise-level integrations, "
+    "optimizing platform resilience, and implementing secure API and observability pipelines "
+    "across 40,000+ devices. Combines a strong background in advanced mathematics and "
+    "algorithmic problem-solving with hands-on expertise in CI/CD, Infrastructure as Code (IaC), "
+    "and modern multi-tenant cloud architectures."
+)
+AI_GENERATION_NOTE = (
+    "Note: This resume is custom tailored for every job position using my automated agentic "
+    "workflow found at: "
+    "[mperkhou/linkedin-career-mcp](https://github.com/mperkhou/linkedin-career-mcp)"
+)
+RESUME_SECTION_HEADINGS = {
+    "Professional Summary",
+    "Core Technical Skills",
+    "Professional Experience",
+    "Education & Certifications",
+}
+DEFAULT_CORE_TECHNICAL_SKILLS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "Languages & Frameworks",
+        (
+            "Python",
+            "Ruby",
+            "JavaScript",
+            "Node.js",
+            "React.js",
+            "Go",
+            "Bash",
+            "PowerShell",
+            "Ruby on Rails",
+            "Django",
+        ),
+    ),
+    (
+        "Distributed Systems & Cloud",
+        (
+            "AWS",
+            "Azure",
+            "Oracle Cloud Infrastructure (OCI)",
+            "ElasticSearch",
+            "OpenSearch",
+        ),
+    ),
+    (
+        "Platform & API Engineering",
+        (
+            "RESTful APIs",
+            "Systems Architecture",
+            "Microservices",
+            "JSON/XML",
+            "API Integration",
+        ),
+    ),
+    (
+        "Automation & IaC",
+        (
+            "Chef (Cookbooks/Policies)",
+            "Ansible",
+            "Terraform",
+            "Jenkins",
+            "CloudLab CI/CD Pipelines",
+        ),
+    ),
+    (
+        "Data & Observability",
+        (
+            "Filebeat",
+            "Logstash",
+            "PostgreSQL",
+            "MongoDB",
+            "SQL",
+            "Data Pipelines",
+            "Error Budgets",
+        ),
+    ),
+    (
+        "Security & Compliance",
+        (
+            "Secure Coding Practices",
+            "Vulnerability Mitigation",
+            "Role-Based Access Control (RBAC)",
+        ),
+    ),
+)
+DEFAULT_SUPPLEMENTAL_SEARCH_KEYWORDS = (
+    "Senior Platform Engineer AI",
+    "Cloud Automation Engineer LLMs",
+    "Infrastructure Software Engineer agentic AI",
+    "DevOps Engineer distributed systems",
+)
 TRACKING_HEADERS = [
     "job_id",
     "company",
@@ -61,6 +162,81 @@ Developer Tooling Innovation: Spearheaded team-level adoption of AI-assisted eng
 (Cline, Codex, Code Assist), developing reliable internal workflows that reduced test-driven
 development (TDD) busywork by 80%.
 """.strip()
+DEFAULT_PRIOR_EXPERIENCE_ENTRIES: tuple[dict[str, object], ...] = (
+    {
+        "organization": "University of Iowa Hospitals and Clinics",
+        "location": "Iowa City, IA",
+        "title": "Engineering Support Specialist",
+        "dates": "Jan 2020 - May 2021",
+        "bullets": (
+            "Full-Cycle Software Engineering: Adhered to strict software development lifecycles "
+            "to build custom Python and AutoIT automation scripts, streamlining system upgrades "
+            "across hundreds of mission-critical platform nodes.",
+            "Web Application Development: Collaborated on the structural design and "
+            "implementation of a DICOM anonymization server utilizing a modern React.js frontend "
+            "interface.",
+            "Deep Debugging & Patching: Conducted performance troubleshooting, defect handling, "
+            "and remote patch deployments on highly regulated medical platform surfaces.",
+        ),
+    },
+    {
+        "organization": "Steindler Orthopedic Clinic",
+        "location": "Iowa City, IA",
+        "title": "IT Administrator / Systems Engineer",
+        "dates": "Mar 2019 - Nov 2019",
+        "bullets": (
+            "Cloud Migrations & Architecture: Led the engineering lifecycle to modernize 7+ year "
+            "old core infrastructure systems, executing legacy virtualization overhauls via "
+            "ESX/VMware and migrating services to Azure Cloud.",
+            "API & Workflow Integration: Built custom PHP plugins and integrated secure Azure "
+            "SharePoint document-control workflows to boost internal process cross-functional "
+            "alignment.",
+            "Observability Dashboards: Launched an enterprise ticketing and incident-tracking "
+            "system, designing centralized health monitoring dashboards and automated analytical "
+            "reporting tools.",
+        ),
+    },
+    {
+        "organization": "Stamats Communications",
+        "location": "Cedar Rapids, IA",
+        "title": "Systems Administrator (Contract)",
+        "dates": "Apr 2018 - Oct 2018",
+        "bullets": (
+            "Infrastructure Optimization: Partnered with cross-functional leadership to architect "
+            "and execute a multi-million dollar infrastructure upgrade, maximizing capacity and "
+            "network availability.",
+            "Cloud Ecosystem Deployment: Spearheaded on-premise Exchange migrations to Azure "
+            "cloud environments while ensuring strict alignment with enterprise information "
+            "security standards.",
+        ),
+    },
+    {
+        "organization": "VIDA Diagnostics",
+        "location": "Coralville, IA",
+        "title": "Systems Engineer",
+        "dates": "Mar 2014 - Mar 2018",
+        "bullets": (
+            "Algorithmic Data Engineering: Wrote highly scalable Python data-transfer scripts "
+            "optimizing the ingestion and transit of massive CT imagery cache structures between "
+            "Linux environments and SAN/NAS storage arrays.",
+            "Framework Refactoring: Rebuilt corporate web platforms entirely from WordPress to a "
+            "robust, secure Django framework to improve backend structural integrity.",
+        ),
+    },
+)
+DEFAULT_EDUCATION_CERTIFICATIONS = (
+    "Bachelor of Science in Physics & Mathematics | University of Iowa, IA",
+    "Focus: Graduate-level mathematics, applied statistics, and computer science principles.",
+    "Leadership: Teaching Assistant (Physics Department), President of the University Chess Club.",
+    "Oracle Cloud Infrastructure (OCI) Engineer | Certification (August, 2024)",
+    "Oracle Cloud Infrastructure AI Foundations Associate | Certification (May, 2026)",
+    "AlienVault Certified Security Engineer (AVCSE) | Certification",
+    (
+        "Advanced Continuing Education (Udemy): Docker & Kubernetes Ecosystems, Microservices "
+        "Engineering (Node.js & React), PostgreSQL Database Bootcamp, Object-Oriented "
+        "Programming (OOP) & Agile Methodologies."
+    ),
+)
 
 
 @dataclass(frozen=True)
@@ -118,6 +294,52 @@ class CompanyBlacklist:
         return any(_glob_matches(company_value, pattern.casefold()) for pattern in self._patterns)
 
 
+@dataclass
+class _SearchMemory:
+    """Tracks which keyword groups returned jobs and which did not, so the LLM can
+    refine successive iterations."""
+
+    rewarded_keywords: list[str] = field(default_factory=list)
+    penalized_keywords: list[str] = field(default_factory=list)
+    attempted_query_keys: set[str] = field(default_factory=set)
+    total_searches: int = 0
+
+    def query_key(self, query: JobSearchQuery) -> str:
+        wt = query.workplace_type or "any"
+        return f"{query.keywords.casefold()}::{query.location.casefold()}::{wt}"
+
+    def register_result(self, query: JobSearchQuery, count: int) -> None:
+        self.total_searches += 1
+        self.attempted_query_keys.add(self.query_key(query))
+        if count > 0:
+            self.rewarded_keywords.append(query.keywords)
+        else:
+            self.penalized_keywords.append(query.keywords)
+
+    @property
+    def reward_sample(self) -> str:
+        if not self.rewarded_keywords:
+            return "No keywords have produced results yet."
+        return "\n".join(
+            f"- {kw}" for kw in self.rewarded_keywords[-10:]
+        )
+
+    @property
+    def penalty_sample(self) -> str:
+        if not self.penalized_keywords:
+            return "None so far."
+        return "\n".join(
+            f"- {kw}" for kw in self.penalized_keywords[-10:]
+        )
+
+    def has_query(self, query: JobSearchQuery) -> bool:
+        return self.query_key(query) in self.attempted_query_keys
+
+
+MAX_ITERATIVE_SEARCHES = 1000
+MIN_SEARCHES_BEFORE_STOP = 4
+
+
 class MatchingJobsWorkflow:
     def __init__(self, *, service: JobSearchService, ollama: Any) -> None:
         self._service = service
@@ -144,47 +366,71 @@ class MatchingJobsWorkflow:
             profile_documents,
             current_job_description_name,
         )
-        search_queries = await self._generate_search_queries(
-            profile_context=profile_context,
-            location=location,
-            date_posted=date_posted,
-            limit_per_query=limit_per_query,
-            max_queries=max_queries,
-        )
         blacklist = CompanyBlacklist.from_file(blacklist_path)
 
         candidates: list[JobDetails] = []
         skipped_blacklisted: list[str] = []
         errors: list[str] = []
         seen_job_ids: set[str] = set()
+        search_memory = _SearchMemory()
+        all_search_queries: list[JobSearchQuery] = []
+        min_searches_before_stop = min(max(max_queries, 1), MIN_SEARCHES_BEFORE_STOP)
 
-        for query in search_queries:
-            try:
-                result = await self._service.search(query)
-            except LinkedInCareerMcpError as exc:
-                errors.append(f"{query.keywords}: {exc}")
-                continue
-            for posting in result.jobs:
-                if posting.job_id in seen_job_ids:
-                    continue
-                seen_job_ids.add(posting.job_id)
-                if blacklist.matches(posting.company):
-                    skipped_blacklisted.append(_job_label(posting.company, posting.title))
-                    continue
-                try:
-                    details = await self._service.get_details(
-                        str(posting.job_url or posting.job_id),
-                    )
-                except LinkedInCareerMcpError as exc:
-                    errors.append(f"{posting.job_id}: {exc}")
-                    details = JobDetails(**posting.model_dump())
-                if blacklist.matches(details.company):
-                    skipped_blacklisted.append(_job_label(details.company, details.title))
-                    continue
-                candidates.append(details)
-                if len(candidates) >= max_jobs:
+        while (
+            len(candidates) < max_jobs
+            or search_memory.total_searches < min_searches_before_stop
+        ) and search_memory.total_searches < MAX_ITERATIVE_SEARCHES:
+            search_queries = await self._generate_search_queries(
+                profile_context=profile_context,
+                location=location,
+                date_posted=date_posted,
+                limit_per_query=limit_per_query,
+                max_queries=max_queries,
+                search_memory=search_memory,
+            )
+
+            new_query_found = False
+            for query in search_queries:
+                if search_memory.total_searches >= MAX_ITERATIVE_SEARCHES:
                     break
-            if len(candidates) >= max_jobs:
+                if search_memory.has_query(query):
+                    continue
+                new_query_found = True
+                all_search_queries.append(query)
+                try:
+                    result = await self._service.search(query)
+                except LinkedInCareerMcpError as exc:
+                    errors.append(f"{query.keywords}: {exc}")
+                    search_memory.register_result(query, 0)
+                    continue
+                search_memory.register_result(query, len(result.jobs))
+                for posting in result.jobs:
+                    if len(candidates) >= max_jobs:
+                        break
+                    if posting.job_id in seen_job_ids:
+                        continue
+                    seen_job_ids.add(posting.job_id)
+                    if blacklist.matches(posting.company):
+                        skipped_blacklisted.append(_job_label(posting.company, posting.title))
+                        continue
+                    try:
+                        details = await self._service.get_details(
+                            str(posting.job_url or posting.job_id),
+                        )
+                    except LinkedInCareerMcpError as exc:
+                        errors.append(f"{posting.job_id}: {exc}")
+                        details = JobDetails(**posting.model_dump())
+                    if blacklist.matches(details.company):
+                        skipped_blacklisted.append(_job_label(details.company, details.title))
+                        continue
+                    candidates.append(details)
+                if (
+                    len(candidates) >= max_jobs
+                    and search_memory.total_searches >= min_searches_before_stop
+                ):
+                    break
+
+            if not new_query_found or search_memory.total_searches == 0:
                 break
 
         artifacts: list[TailoredResumeArtifact] = []
@@ -238,7 +484,7 @@ class MatchingJobsWorkflow:
 
         return MatchingJobsWorkflowResult(
             profile_files=[str(document.path) for document in profile_documents],
-            search_queries=search_queries,
+            search_queries=all_search_queries,
             jobs_found=len(candidates),
             resumes_created=sum(1 for artifact in artifacts if artifact.artifact_kind == "resume"),
             recommendations_created=sum(
@@ -258,6 +504,7 @@ class MatchingJobsWorkflow:
         date_posted: DatePosted,
         limit_per_query: int,
         max_queries: int,
+        search_memory: _SearchMemory | None = None,
     ) -> list[JobSearchQuery]:
         plan = await self._ollama.generate_json(
             _search_query_prompt(
@@ -266,27 +513,43 @@ class MatchingJobsWorkflow:
                 date_posted=date_posted,
                 limit_per_query=limit_per_query,
                 max_queries=max_queries,
+                search_memory=search_memory,
             )
         )
         raw_queries = plan.get("queries")
         if raw_queries is None and "keywords" in plan:
             raw_queries = [plan]
-        if not isinstance(raw_queries, list) or not raw_queries:
-            raise WorkflowError("Ollama did not return any LinkedIn search queries.")
+        if not isinstance(raw_queries, list):
+            raw_queries = []
 
-        base_queries = [
-            _coerce_search_query(
-                value,
-                location=location,
-                date_posted=date_posted,
-                limit_per_query=limit_per_query,
-            )
-            for value in raw_queries
-            if isinstance(value, dict)
-        ]
-        if not base_queries:
-            raise WorkflowError("Ollama search queries were not usable.")
-        return _expand_remote_and_hybrid_queries(base_queries, max_queries=max_queries)
+        base_queries: list[JobSearchQuery] = []
+        for value in raw_queries:
+            if not isinstance(value, dict):
+                continue
+            try:
+                base_queries.append(
+                    _coerce_search_query(
+                        value,
+                        location=location,
+                        date_posted=date_posted,
+                        limit_per_query=limit_per_query,
+                    )
+                )
+            except WorkflowError:
+                continue
+
+        supplemented_queries = _supplement_search_queries(
+            base_queries,
+            location=location,
+            date_posted=date_posted,
+            limit_per_query=limit_per_query,
+        )
+        if not supplemented_queries:
+            raise WorkflowError("The LLM did not return usable LinkedIn search queries.")
+        return _expand_remote_and_hybrid_queries(
+            supplemented_queries,
+            max_queries=max_queries,
+        )
 
     async def _generate_resume_text(
         self,
@@ -305,18 +568,19 @@ class MatchingJobsWorkflow:
             )
         )
         if not tailored_scjdir:
-            raise WorkflowError(f"Ollama returned an empty SCJDiR rewrite for job {job.job_id}.")
-        text = await self._ollama.generate_text(
-            _resume_prompt(
+            raise WorkflowError(f"The LLM returned an empty SCJDiR rewrite for job {job.job_id}.")
+        sections_plan = await self._ollama.generate_json(
+            _resume_sections_prompt(
                 source_resume=source_resume,
                 current_job_description=current_job_description,
                 tailored_scjdir=tailored_scjdir,
                 job=job,
             )
         )
-        if not text:
-            raise WorkflowError(f"Ollama returned an empty resume for job {job.job_id}.")
-        return text
+        return _render_resume_template(
+            tailored_scjdir=tailored_scjdir,
+            sections_plan=sections_plan,
+        )
 
     async def _generate_recommendations_text(
         self,
@@ -335,7 +599,7 @@ class MatchingJobsWorkflow:
             )
         )
         if not text:
-            raise WorkflowError(f"Ollama returned empty recommendations for job {job.job_id}.")
+            raise WorkflowError(f"The LLM returned empty recommendations for job {job.job_id}.")
         return text
 
 
@@ -408,22 +672,75 @@ def _write_text_pdf(*, text: str, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
     styles = getSampleStyleSheet()
-    body = styles["BodyText"]
-    body.fontName = "Helvetica"
-    body.fontSize = 10
-    body.leading = 13
-    heading = styles["Heading2"]
-    heading.fontName = "Helvetica-Bold"
+    body = ParagraphStyle(
+        "ResumeBody",
+        parent=styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=9,
+        leading=11,
+        spaceAfter=3,
+    )
+    bullet = ParagraphStyle(
+        "ResumeBullet",
+        parent=body,
+        leftIndent=0.18 * inch,
+        firstLineIndent=-0.12 * inch,
+        bulletIndent=0,
+    )
+    heading = ParagraphStyle(
+        "ResumeHeading",
+        parent=styles["Heading2"],
+        fontName="Helvetica-Bold",
+        fontSize=10,
+        leading=12,
+        spaceBefore=7,
+        spaceAfter=3,
+        textColor=colors.HexColor("#1F2937"),
+    )
+    name_style = ParagraphStyle(
+        "ResumeName",
+        parent=styles["Title"],
+        fontName="Helvetica-Bold",
+        fontSize=15,
+        leading=17,
+        alignment=1,
+        spaceAfter=2,
+    )
+    contact_style = ParagraphStyle(
+        "ResumeContact",
+        parent=body,
+        fontSize=8,
+        leading=10,
+        alignment=1,
+        textColor=colors.HexColor("#374151"),
+        spaceAfter=5,
+    )
+    note_style = ParagraphStyle(
+        "ResumeNote",
+        parent=body,
+        fontName="Helvetica-Oblique",
+        fontSize=8,
+        leading=10,
+        textColor=colors.HexColor("#374151"),
+    )
 
     story: list[Any] = []
-    for raw_line in _clean_resume_text(text).splitlines():
+    for line_number, raw_line in enumerate(_clean_resume_text(text).splitlines()):
         line = raw_line.strip()
         if not line:
-            story.append(Spacer(1, 8))
-        elif _looks_like_heading(line):
-            story.append(Paragraph(escape(line), heading))
+            story.append(Spacer(1, 4))
+        elif line_number == 0:
+            story.append(Paragraph(_paragraph_markup(line), name_style))
+        elif line_number == 1:
+            story.append(Paragraph(_paragraph_markup(line), contact_style))
+        elif line in RESUME_SECTION_HEADINGS or _looks_like_heading(line):
+            story.append(Paragraph(_paragraph_markup(line), heading))
+        elif line.startswith("Note:"):
+            story.append(Paragraph(_paragraph_markup(line), note_style))
+        elif line.startswith("- "):
+            story.append(Paragraph(_paragraph_markup(line[2:]), bullet, bulletText="\u2022"))
         else:
-            story.append(Paragraph(escape(line), body))
+            story.append(Paragraph(_paragraph_markup(line), body))
 
     if not story:
         story.append(Paragraph("Resume content was empty.", body))
@@ -431,10 +748,10 @@ def _write_text_pdf(*, text: str, path: Path) -> None:
     document = SimpleDocTemplate(
         str(path),
         pagesize=LETTER,
-        rightMargin=42,
-        leftMargin=42,
-        topMargin=42,
-        bottomMargin=42,
+        rightMargin=36,
+        leftMargin=36,
+        topMargin=32,
+        bottomMargin=32,
     )
     document.build(story)
 
@@ -536,7 +853,7 @@ def _coerce_search_query(
         "page": max(int(value.get("page") or 0), 0),
     }
     if not data["keywords"]:
-        raise WorkflowError("Ollama returned a search query without keywords.")
+        raise WorkflowError("The LLM returned a search query without keywords.")
     try:
         return JobSearchQuery(**data)
     except ValueError:
@@ -547,6 +864,40 @@ def _coerce_search_query(
         data["sort_by"] = "recent"
         data["distance"] = None
         return JobSearchQuery(**data)
+
+
+def _supplement_search_queries(
+    queries: list[JobSearchQuery],
+    *,
+    location: str,
+    date_posted: DatePosted,
+    limit_per_query: int,
+) -> list[JobSearchQuery]:
+    max_limit = min(max(limit_per_query, 1), 100)
+    supplements = [
+        JobSearchQuery(
+            keywords=keywords,
+            location=location,
+            date_posted=date_posted,
+            job_type="full_time",
+            workplace_type="remote",
+            experience_level="mid_senior",
+            sort_by="recent",
+            limit=max_limit,
+            page=0,
+        )
+        for keywords in DEFAULT_SUPPLEMENTAL_SEARCH_KEYWORDS
+    ]
+
+    ordered: list[JobSearchQuery] = []
+    seen_keywords: set[str] = set()
+    for query in [*queries[:1], *supplements, *queries[1:]]:
+        key = query.keywords.casefold().strip()
+        if not key or key in seen_keywords:
+            continue
+        seen_keywords.add(key)
+        ordered.append(query)
+    return ordered
 
 
 def _expand_remote_and_hybrid_queries(
@@ -580,16 +931,36 @@ def _search_query_prompt(
     date_posted: DatePosted,
     limit_per_query: int,
     max_queries: int,
+    search_memory: _SearchMemory | None = None,
 ) -> str:
+    feedback_section = ""
+    if search_memory and search_memory.total_searches > 0:
+        feedback_section = f"""
+Search feedback from previous iterations (up to 10 per category):
+
+Keyword strings that returned jobs (reward these — they work):
+{search_memory.reward_sample}
+
+Keyword strings that returned zero jobs (avoid these patterns):
+{search_memory.penalty_sample}
+
+Use this feedback to generate fresh, non-duplicate keyword combinations.
+Prefer short, general keyword strings (2-4 words) over long, specific ones.
+Include role titles like "Platform Engineer", "DevOps Engineer", "Software Engineer",
+combined with domain terms like "infrastructure", "automation", "cloud", "distributed systems",
+"AI", "agentic AI", and "LLMs" when supported by the profile.
+"""
+
     return f"""
 You generate LinkedIn public job search parameters from a candidate profile.
 Return only valid JSON. Do not include commentary.
-
+{feedback_section}
 Rules:
 - Generate up to {max_queries} keyword-focused query objects.
 - Use combinations of role titles, seniority, domain keywords, and core skills.
 - The workflow will force remote and hybrid LinkedIn workplace filters.
 - Prefer concise keyword strings that LinkedIn search can use directly.
+- Include AI, agentic AI, and LLM keyword variants when they overlap with the candidate profile.
 - Do not invent facts about the candidate.
 
 Each query object must use this schema:
@@ -664,7 +1035,7 @@ Description:
 """.strip()
 
 
-def _resume_prompt(
+def _resume_sections_prompt(
     *,
     source_resume: ProfileDocument | None,
     current_job_description: ProfileDocument | None,
@@ -677,26 +1048,54 @@ def _resume_prompt(
     )
     cjd_hint = _limit_context(
         current_job_description.text if current_job_description else "No CJD was available.",
-        max_chars=4_000,
+        max_chars=6_000,
     )
+    default_skills = "\n".join(
+        f"- {category}: {', '.join(skills)}"
+        for category, skills in DEFAULT_CORE_TECHNICAL_SKILLS
+    )
+    default_prior_experience = _render_prior_experience_text(DEFAULT_PRIOR_EXPERIENCE_ENTRIES)
     return f"""
-You are producing the final tailored resume text for one job opening.
-Return only the finished resume text. Do not return advice, recommendations, commentary,
-markdown fences, JSON, or implementation instructions.
+You produce structured resume section edits for one job opening.
+Return only valid JSON. Do not return markdown fences, commentary, advice, or a full resume.
+
+The application will render the final resume from a local template. You only control:
+1. core_technical_skills
+2. prior_experience
+
+Do not include the header, professional summary, AI generation note, Oracle current role, or
+education/certifications in the JSON response. Those sections are static or generated separately.
 
 Hard requirements:
-- Start from the source resume below. Preserve its factual content and overall structure.
-- Replace the current Oracle role section with the tailored SCJDiR below.
-- Make only minor wording or keyword-emphasis changes outside the Oracle section.
-- Use the CJD only to support factual rephrasing of the current Oracle role.
-- Use the JOD only to choose emphasis and terminology.
+- Preserve the six Core Technical Skills categories exactly.
+- Add or remove individual skills only when supported by the source resume, CJD, or tailored SCJDiR.
+- Prefer skills that overlap with the JOD, including AI, agentic AI, and LLM terms only
+  when factual.
+- Preserve all prior employers, locations, titles, dates, and the original bullet count per job.
+- For prior experience, make only minor keyword swaps or wording changes that remain factual.
 - Do not invent employers, dates, credentials, projects, tools, metrics, or responsibilities.
-- Do not add a "recommendations", "suggestions", "notes", or "changes made" section.
-- The output must read as a resume from the candidate's point of view.
-- Include the candidate's name/contact header if it appears in the source resume.
 
-Tailored SCJDiR to insert:
+Return this exact JSON shape:
+{{
+  "core_technical_skills": [
+    {{"category": "Languages & Frameworks", "skills": ["Python", "Django"]}}
+  ],
+  "prior_experience": [
+    {{
+      "organization": "University of Iowa Hospitals and Clinics",
+      "bullets": ["Full-Cycle Software Engineering: ..."]
+    }}
+  ]
+}}
+
+Tailored Oracle current-role SCJDiR, already generated separately:
 {tailored_scjdir}
+
+Base Core Technical Skills:
+{default_skills}
+
+Base prior experience section:
+{default_prior_experience}
 
 Source resume:
 {source_resume_text}
@@ -755,6 +1154,185 @@ Unusable draft text:
 """.strip()
 
 
+def _render_resume_template(
+    *,
+    tailored_scjdir: str,
+    sections_plan: Mapping[str, Any],
+) -> str:
+    core_skills = _coerce_core_skill_sections(sections_plan.get("core_technical_skills"))
+    prior_experience = _coerce_prior_experience_entries(sections_plan.get("prior_experience"))
+    scjdir_lines = _resume_block_lines(tailored_scjdir)
+    if not scjdir_lines or _looks_like_recommendations("\n".join(scjdir_lines)):
+        scjdir_lines = _resume_block_lines(DEFAULT_SCJDIR)
+
+    lines: list[str] = [
+        RESUME_HEADER_NAME,
+        RESUME_HEADER_CONTACT,
+        "",
+        "Professional Summary",
+        STATIC_PROFESSIONAL_SUMMARY,
+        "",
+        AI_GENERATION_NOTE,
+        "",
+        "Core Technical Skills",
+    ]
+    lines.extend(_render_core_skills_lines(core_skills))
+    lines.extend(["", "Professional Experience"])
+    lines.extend(scjdir_lines)
+    lines.append("")
+    lines.extend(_render_prior_experience_lines(prior_experience))
+    lines.extend(["", "Education & Certifications"])
+    lines.extend(f"- {line}" for line in DEFAULT_EDUCATION_CERTIFICATIONS)
+    return "\n".join(lines).strip()
+
+
+def _coerce_core_skill_sections(raw_value: Any) -> list[tuple[str, list[str]]]:
+    default_sections = [
+        (category, list(skills)) for category, skills in DEFAULT_CORE_TECHNICAL_SKILLS
+    ]
+    if not isinstance(raw_value, list):
+        return default_sections
+
+    by_category: dict[str, list[str]] = {}
+    for item in raw_value:
+        category = ""
+        skills_value: Any = None
+        if isinstance(item, Mapping):
+            category = str(item.get("category") or item.get("name") or "").strip()
+            skills_value = item.get("skills") or item.get("items")
+        elif isinstance(item, str) and ":" in item:
+            category, skills_value = item.split(":", 1)
+        skills = _coerce_skill_items(skills_value)
+        if category and skills:
+            by_category[_normalize_label(category)] = skills
+
+    sections: list[tuple[str, list[str]]] = []
+    for category, default_skills in default_sections:
+        skills = by_category.get(_normalize_label(category), default_skills)
+        sections.append((category, _dedupe_preserve_order(skills)[:12] or default_skills))
+    return sections
+
+
+def _coerce_skill_items(value: Any) -> list[str]:
+    if isinstance(value, str):
+        raw_items = re.split(r",|;|\n", value)
+    elif isinstance(value, list):
+        raw_items = [str(item) for item in value]
+    else:
+        return []
+    return [
+        _clean_inline_text(item).removeprefix("- ").strip()
+        for item in raw_items
+        if _clean_inline_text(item).removeprefix("- ").strip()
+    ]
+
+
+def _coerce_prior_experience_entries(raw_value: Any) -> list[dict[str, object]]:
+    default_entries = [
+        {
+            "organization": entry["organization"],
+            "location": entry["location"],
+            "title": entry["title"],
+            "dates": entry["dates"],
+            "bullets": list(entry["bullets"]),
+        }
+        for entry in DEFAULT_PRIOR_EXPERIENCE_ENTRIES
+    ]
+    if not isinstance(raw_value, list):
+        return default_entries
+
+    raw_by_org: dict[str, Mapping[str, Any]] = {}
+    for item in raw_value:
+        if not isinstance(item, Mapping):
+            continue
+        organization = str(item.get("organization") or item.get("company") or "").strip()
+        if organization:
+            raw_by_org[_normalize_label(organization)] = item
+
+    entries: list[dict[str, object]] = []
+    for default_entry in default_entries:
+        raw_entry = raw_by_org.get(_normalize_label(str(default_entry["organization"])))
+        if raw_entry is None:
+            entries.append(default_entry)
+            continue
+
+        default_bullets = list(default_entry["bullets"])
+        model_bullets = _coerce_bullet_items(raw_entry.get("bullets"))
+        bullet_count = len(default_bullets)
+        if not model_bullets:
+            bullets = default_bullets
+        else:
+            bullets = [
+                model_bullets[index] if index < len(model_bullets) else default_bullets[index]
+                for index in range(bullet_count)
+            ]
+        entries.append({**default_entry, "bullets": bullets})
+    return entries
+
+
+def _coerce_bullet_items(value: Any) -> list[str]:
+    if isinstance(value, str):
+        raw_items = [line for line in value.splitlines() if line.strip()]
+    elif isinstance(value, list):
+        raw_items = [str(item) for item in value]
+    else:
+        return []
+    return [
+        _clean_inline_text(item).removeprefix("- ").strip()
+        for item in raw_items
+        if _clean_inline_text(item).removeprefix("- ").strip()
+    ]
+
+
+def _render_core_skills_lines(sections: list[tuple[str, list[str]]]) -> list[str]:
+    return [f"- {category}: {', '.join(skills)}" for category, skills in sections]
+
+
+def _render_prior_experience_lines(entries: list[dict[str, object]]) -> list[str]:
+    lines: list[str] = []
+    for index, entry in enumerate(entries):
+        if index:
+            lines.append("")
+        lines.append(f"{entry['organization']} | {entry['location']}")
+        lines.append(f"{entry['title']} | {entry['dates']}")
+        lines.extend(f"- {bullet}" for bullet in entry["bullets"])
+    return lines
+
+
+def _render_prior_experience_text(entries: tuple[dict[str, object], ...]) -> str:
+    return "\n".join(_render_prior_experience_lines(list(entries)))
+
+
+def _resume_block_lines(text: str) -> list[str]:
+    lines = []
+    for raw_line in _clean_resume_text(text).splitlines():
+        line = _clean_inline_text(raw_line)
+        if not line or line in RESUME_SECTION_HEADINGS:
+            continue
+        lines.append(line)
+    return lines
+
+
+def _clean_inline_text(text: str) -> str:
+    return re.sub(r"\s+", " ", text.replace("\u2022", "-")).strip()
+
+
+def _normalize_label(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", text.casefold())
+
+
+def _dedupe_preserve_order(values: list[str]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        key = value.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(value)
+    return result
+
+
 def _glob_matches(value: str, pattern: str) -> bool:
     regex = "^" + re.escape(pattern).replace(r"\*", ".*").replace(r"\?", ".") + "$"
     return re.match(regex, value) is not None
@@ -775,6 +1353,19 @@ def _path_part(value: str, *, lower: bool = False) -> str:
 def _clean_resume_text(text: str) -> str:
     text = re.sub(r"```(?:\w+)?", "", text)
     return text.replace("```", "").strip()
+
+
+def _paragraph_markup(line: str) -> str:
+    parts: list[str] = []
+    cursor = 0
+    for match in re.finditer(r"\[([^\]]+)\]\((https?://[^)]+)\)", line):
+        parts.append(escape(line[cursor : match.start()]))
+        label = escape(match.group(1))
+        url = escape(match.group(2), quote=True)
+        parts.append(f'<a href="{url}" color="blue">{label}</a>')
+        cursor = match.end()
+    parts.append(escape(line[cursor:]))
+    return "".join(parts)
 
 
 def _looks_like_recommendations(text: str) -> bool:
@@ -823,6 +1414,37 @@ def _size_tracking_columns(sheet: Worksheet) -> None:
         sheet.column_dimensions[chr(64 + index)].width = width
 
 
+def _build_llm_client(settings: Settings) -> ApiLlmClient | OllamaClient:
+    """Build the LLM client based on the configured provider.
+
+    Defaults to the external API (OpenRouter / DeepSeek). Local Ollama is
+    only used when explicitly requested with LINKEDIN_CAREER_MCP_LLM_PROVIDER=ollama.
+    """
+    provider = settings.llm_provider.casefold().strip()
+    if provider == "ollama":
+        return OllamaClient(
+            base_url=settings.ollama_base_url,
+            model=settings.ollama_model,
+            timeout_seconds=settings.ollama_timeout_seconds,
+        )
+    if provider != "api":
+        raise WorkflowError(
+            "Unsupported LLM provider. Set LINKEDIN_CAREER_MCP_LLM_PROVIDER to 'api' "
+            "or 'ollama'."
+        )
+    if not settings.llm_api_key:
+        raise WorkflowError(
+            "LINKEDIN_CAREER_MCP_LLM_API_KEY is required when "
+            "LINKEDIN_CAREER_MCP_LLM_PROVIDER=api."
+        )
+    return ApiLlmClient(
+        base_url=settings.llm_api_base_url,
+        model=settings.llm_api_model,
+        api_key=settings.llm_api_key,
+        timeout_seconds=settings.llm_api_timeout_seconds,
+    )
+
+
 async def run_from_cli(args: argparse.Namespace) -> MatchingJobsWorkflowResult:
     settings = load_settings()
     provider = LinkedInPublicJobsProvider(
@@ -830,12 +1452,8 @@ async def run_from_cli(args: argparse.Namespace) -> MatchingJobsWorkflowResult:
         timeout_seconds=settings.timeout_seconds,
     )
     service = JobSearchService(provider=provider, max_results=settings.max_results)
-    ollama = OllamaClient(
-        base_url=settings.ollama_base_url,
-        model=settings.ollama_model,
-        timeout_seconds=settings.ollama_timeout_seconds,
-    )
-    workflow = MatchingJobsWorkflow(service=service, ollama=ollama)
+    llm = _build_llm_client(settings)
+    workflow = MatchingJobsWorkflow(service=service, ollama=llm)
     try:
         return await workflow.run(
             profile_dir=Path(args.profile_dir),
@@ -851,7 +1469,7 @@ async def run_from_cli(args: argparse.Namespace) -> MatchingJobsWorkflowResult:
         )
     finally:
         await provider.aclose()
-        await ollama.aclose()
+        await llm.aclose()
 
 
 def build_arg_parser() -> argparse.ArgumentParser:

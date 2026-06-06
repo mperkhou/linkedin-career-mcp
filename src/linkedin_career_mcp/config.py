@@ -15,9 +15,18 @@ class Settings:
     user_agent: str = DEFAULT_USER_AGENT
     timeout_seconds: float = 12.0
     max_results: int = 25
+
+    # Local Ollama settings (fallback / secondary)
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen3:4b"
     ollama_timeout_seconds: float = 180.0
+
+    # External API LLM settings (primary, default)
+    llm_api_base_url: str = "https://openrouter.ai/api/v1"
+    llm_api_model: str = "deepseek/deepseek-chat"
+    llm_api_key: str = ""
+    llm_api_timeout_seconds: float = 120.0
+    llm_provider: str = "api"  # "api" or "ollama"
 
 
 def load_settings() -> Settings:
@@ -31,6 +40,16 @@ def load_settings() -> Settings:
         ),
         ollama_model=os.getenv("LINKEDIN_CAREER_MCP_OLLAMA_MODEL", "qwen3:4b"),
         ollama_timeout_seconds=_float_env("LINKEDIN_CAREER_MCP_OLLAMA_TIMEOUT_SECONDS", 180.0),
+        llm_api_base_url=os.getenv(
+            "LINKEDIN_CAREER_MCP_LLM_API_BASE_URL",
+            "https://openrouter.ai/api/v1",
+        ),
+        llm_api_model=os.getenv("LINKEDIN_CAREER_MCP_LLM_API_MODEL", "deepseek/deepseek-chat"),
+        llm_api_key=os.getenv("LINKEDIN_CAREER_MCP_LLM_API_KEY", ""),
+        llm_api_timeout_seconds=_float_env(
+            "LINKEDIN_CAREER_MCP_LLM_API_TIMEOUT_SECONDS", 120.0
+        ),
+        llm_provider=os.getenv("LINKEDIN_CAREER_MCP_LLM_PROVIDER", "api"),
     )
 
 
