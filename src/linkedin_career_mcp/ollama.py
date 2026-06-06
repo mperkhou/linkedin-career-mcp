@@ -44,6 +44,7 @@ class OllamaClient:
             "model": self._model,
             "prompt": prompt,
             "stream": False,
+            "options": {"temperature": 0},
         }
         if json_response:
             payload["format"] = "json"
@@ -57,7 +58,7 @@ class OllamaClient:
         except json.JSONDecodeError as exc:
             raise OllamaError("Ollama returned a non-JSON HTTP response.") from exc
 
-        text = data.get("response")
+        text = data.get("response") or data.get("thinking")
         if not isinstance(text, str) or not text.strip():
             raise OllamaError("Ollama returned an empty generation.")
         return _strip_thinking(text.strip())
