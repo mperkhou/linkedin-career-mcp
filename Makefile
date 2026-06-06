@@ -5,10 +5,14 @@ CODEX_SKILLS_DIR ?= $(HOME)/.codex/skills
 SKILL_NAME ?= linkedin-career-mcp
 SKILL_SRC := $(CURDIR)/skills/$(SKILL_NAME)
 SKILL_LINK := $(CODEX_SKILLS_DIR)/$(SKILL_NAME)
+OLLAMA_MODEL ?= qwen3:4b
+OLLAMA_INSTALL_URL ?= https://ollama.com/install.sh
 
-.PHONY: install venv skill-link test lint clean
+.PHONY: install install-python install-ollama ollama-model venv skill-link match-jobs test lint clean
 
-install: venv skill-link
+install: install-python install-ollama ollama-model skill-link
+
+install-python: venv
 
 venv: $(VENV)/.installed
 
@@ -32,6 +36,19 @@ skill-link:
 	else \
 		ln -s "$(SKILL_SRC)" "$(SKILL_LINK)"; \
 	fi
+
+install-ollama:
+	@if command -v ollama >/dev/null 2>&1; then \
+		echo "Ollama already installed: $$(command -v ollama)"; \
+	else \
+		curl -fsSL "$(OLLAMA_INSTALL_URL)" | sh; \
+	fi
+
+ollama-model:
+	ollama pull "$(OLLAMA_MODEL)"
+
+match-jobs: venv
+	$(VENV)/bin/linkedin-career-match-jobs
 
 test: venv
 	$(VENV_PYTHON) -m pytest

@@ -10,3 +10,5 @@ dist/
 build/
 htmlcov/
 .coverage
+profile/
+output/

@@ -11,9 +11,10 @@ This skill supports the local Python MCP server in the repository that contains 
 
 ## Setup
 
-- From the repository root, run `make install` to create `.venv`, install the package with development requirements, and link this skill into `~/.codex/skills`.
+- From the repository root, run `make install` to create `.venv`, install the package with development requirements, install Ollama, pull `qwen3:4b`, and link this skill into `~/.codex/skills`.
 - The MCP server executable is `.venv/bin/linkedin-career-mcp` after installation.
 - Run tests with `make test` and lint with `make lint`.
+- Run the local matching workflow with `make match-jobs`.
 
 ## MCP Client Configuration
 
@@ -32,3 +33,12 @@ Use the absolute path to the repository checkout:
 ## Scope
 
 The current tools search public LinkedIn job listings and fetch public job details. The server does not authenticate to LinkedIn, access private member data, or submit applications.
+
+## Matching Workflow
+
+- Put private profile inputs in `profile/`; this directory is intentionally ignored by Git.
+- The workflow reads supported profile files, asks local Ollama with `qwen3:4b` to generate LinkedIn search parameters, and searches both remote and hybrid jobs.
+- Company patterns in `.blacklist` are matched case-insensitively against company names. `Raytheon*` excludes companies whose names start with `Raytheon`.
+- Tailored resumes are written under `output/resumes/[company]/[job_id]_[job_title]/`.
+- Application tracking is appended to `output/tracking/read_applications/linkedin_applications.xlsx`.
+- Generated tracking columns `applied_to` and `date_applied` are user-managed and are not automatically filled beyond the default `No`.
