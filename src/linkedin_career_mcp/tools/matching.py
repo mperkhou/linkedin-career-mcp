@@ -10,6 +10,7 @@ from linkedin_career_mcp.errors import LinkedInCareerMcpError
 from linkedin_career_mcp.models import DatePosted
 from linkedin_career_mcp.workflows.matching import (
     DEFAULT_BLACKLIST_PATH,
+    DEFAULT_CURRENT_JOB_DESCRIPTION,
     DEFAULT_OUTPUT_DIR,
     DEFAULT_PROFILE_DIR,
     DEFAULT_SOURCE_RESUME,
@@ -36,6 +37,10 @@ def register_matching_tools(mcp: FastMCP, workflow: MatchingJobsWorkflow) -> Non
             str,
             Field(description="Profile resume file to use as the primary tailoring source."),
         ] = DEFAULT_SOURCE_RESUME,
+        current_job_description_name: Annotated[
+            str,
+            Field(description="Current job description file used as context for SCJDiR tailoring."),
+        ] = DEFAULT_CURRENT_JOB_DESCRIPTION,
         location: Annotated[
             str,
             Field(
@@ -64,6 +69,7 @@ def register_matching_tools(mcp: FastMCP, workflow: MatchingJobsWorkflow) -> Non
                 blacklist_path=Path(blacklist_path),
                 output_dir=Path(output_dir),
                 source_resume_name=source_resume_name,
+                current_job_description_name=current_job_description_name,
                 location=location,
                 date_posted=date_posted,
                 limit_per_query=limit_per_query,
