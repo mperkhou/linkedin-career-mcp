@@ -62,9 +62,9 @@ class FakeOllama:
 
     async def generate_text(self, prompt: str) -> str:
         return (
-            "Oracle | Remote / International Datacenters\n"
-            "Senior Technical Lead - Cloud Automation Engineer | Feb 2022 - Present\n"
-            "- Platform Component Ownership: Built agentic AI systems and MCP tools."
+            "**Oracle | Remote / International Datacenters**\n"
+            "**Senior Technical Lead - Cloud Automation Engineer | Feb 2022 - Present**\n"
+            "- **Platform Component Ownership:** Built agentic AI systems and MCP tools."
         )
 
 
@@ -187,6 +187,7 @@ async def test_matching_workflow_writes_resume_and_tracking(tmp_path: Path):
     assert "custom tailored for every job position" in resume_text
     assert "Education & Certifications" in resume_text
     assert "Oracle Cloud Infrastructure AI Foundations Associate" in resume_text
+    assert "**" not in resume_text
 
     workbook_path = output_dir / "tracking/read_applications/linkedin_applications.xlsx"
     assert workbook_path.exists()

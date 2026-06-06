@@ -17,7 +17,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import LETTER
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer
 
 from linkedin_career_mcp.api_client import ApiLlmClient
 from linkedin_career_mcp.config import Settings, load_settings
@@ -225,17 +225,18 @@ DEFAULT_PRIOR_EXPERIENCE_ENTRIES: tuple[dict[str, object], ...] = (
     },
 )
 DEFAULT_EDUCATION_CERTIFICATIONS = (
-    "Bachelor of Science in Physics & Mathematics | University of Iowa, IA",
-    "Focus: Graduate-level mathematics, applied statistics, and computer science principles.",
-    "Leadership: Teaching Assistant (Physics Department), President of the University Chess Club.",
-    "Oracle Cloud Infrastructure (OCI) Engineer | Certification (August, 2024)",
-    "Oracle Cloud Infrastructure AI Foundations Associate | Certification (May, 2026)",
-    "AlienVault Certified Security Engineer (AVCSE) | Certification",
+    "- Bachelor of Science in Physics & Mathematics | University of Iowa, IA",
+    "  - Focus: Graduate-level mathematics, applied statistics, and computer science principles.",
     (
-        "Advanced Continuing Education (Udemy): Docker & Kubernetes Ecosystems, Microservices "
-        "Engineering (Node.js & React), PostgreSQL Database Bootcamp, Object-Oriented "
-        "Programming (OOP) & Agile Methodologies."
+        "  - Leadership: Teaching Assistant (Physics Department), President of the University "
+        "Chess Club."
     ),
+    "- Oracle Cloud Infrastructure (OCI) Engineer | Certification (August, 2024)",
+    "- Oracle Cloud Infrastructure AI Foundations Associate | Certification (May, 2026)",
+    "- AlienVault Certified Security Engineer (AVCSE) | Certification",
+    "- Advanced Continuing Education (Udemy): Docker & Kubernetes Ecosystems, Microservices "
+    "Engineering (Node.js & React), PostgreSQL Database Bootcamp, Object-Oriented Programming "
+    "(OOP) & Agile Methodologies.",
 )
 
 
@@ -676,69 +677,127 @@ def _write_text_pdf(*, text: str, path: Path) -> None:
         "ResumeBody",
         parent=styles["BodyText"],
         fontName="Helvetica",
-        fontSize=9,
-        leading=11,
-        spaceAfter=3,
+        fontSize=8.8,
+        leading=10.6,
+        spaceAfter=2,
     )
     bullet = ParagraphStyle(
         "ResumeBullet",
         parent=body,
-        leftIndent=0.18 * inch,
-        firstLineIndent=-0.12 * inch,
-        bulletIndent=0,
+        leftIndent=0.32 * inch,
+        firstLineIndent=-0.18 * inch,
+        bulletIndent=0.03 * inch,
+        spaceAfter=1,
+    )
+    nested_bullet = ParagraphStyle(
+        "ResumeNestedBullet",
+        parent=body,
+        leftIndent=0.72 * inch,
+        firstLineIndent=-0.14 * inch,
+        bulletIndent=0.46 * inch,
+        spaceAfter=1,
     )
     heading = ParagraphStyle(
         "ResumeHeading",
-        parent=styles["Heading2"],
+        parent=body,
+        fontName="Helvetica",
+        fontSize=12,
+        leading=14,
+        spaceBefore=9,
+        spaceAfter=7,
+        textColor=colors.black,
+    )
+    employer_style = ParagraphStyle(
+        "ResumeEmployer",
+        parent=body,
         fontName="Helvetica-Bold",
-        fontSize=10,
-        leading=12,
-        spaceBefore=7,
-        spaceAfter=3,
-        textColor=colors.HexColor("#1F2937"),
+        fontSize=9.5,
+        leading=11.4,
+        spaceBefore=9,
+        spaceAfter=5,
+    )
+    title_style = ParagraphStyle(
+        "ResumeTitle",
+        parent=body,
+        fontName="Helvetica-Bold",
+        fontSize=8.6,
+        leading=10.3,
+        spaceAfter=8,
     )
     name_style = ParagraphStyle(
         "ResumeName",
-        parent=styles["Title"],
-        fontName="Helvetica-Bold",
-        fontSize=15,
-        leading=17,
-        alignment=1,
-        spaceAfter=2,
+        parent=body,
+        fontName="Helvetica",
+        fontSize=11,
+        leading=13,
+        alignment=0,
+        spaceAfter=6,
     )
     contact_style = ParagraphStyle(
         "ResumeContact",
         parent=body,
-        fontSize=8,
-        leading=10,
-        alignment=1,
-        textColor=colors.HexColor("#374151"),
-        spaceAfter=5,
+        fontName="Helvetica-Bold",
+        fontSize=7.2,
+        leading=8.6,
+        alignment=0,
+        textColor=colors.black,
+        spaceAfter=8,
     )
     note_style = ParagraphStyle(
         "ResumeNote",
         parent=body,
-        fontName="Helvetica-Oblique",
+        fontName="Helvetica",
         fontSize=8,
-        leading=10,
-        textColor=colors.HexColor("#374151"),
+        leading=9.6,
+        textColor=colors.black,
     )
 
     story: list[Any] = []
+    story.append(_resume_rule())
+    story.append(Spacer(1, 13))
+
+    current_section: str | None = None
+    previous_line_blank = False
     for line_number, raw_line in enumerate(_clean_resume_text(text).splitlines()):
+        raw_line = _strip_markdown_emphasis(raw_line.rstrip())
         line = raw_line.strip()
+        is_nested_bullet = raw_line.startswith("  - ")
         if not line:
-            story.append(Spacer(1, 4))
+            if not previous_line_blank:
+                story.append(Spacer(1, 5))
+            previous_line_blank = True
+            continue
+        previous_line_blank = False
+
+        if line in RESUME_SECTION_HEADINGS:
+            if line in {"Professional Experience", "Education & Certifications"}:
+                story.append(Spacer(1, 5))
+                story.append(_resume_rule())
+                story.append(Spacer(1, 8))
+            current_section = line
+            story.append(Paragraph(_paragraph_markup(line), heading))
         elif line_number == 0:
             story.append(Paragraph(_paragraph_markup(line), name_style))
         elif line_number == 1:
             story.append(Paragraph(_paragraph_markup(line), contact_style))
-        elif line in RESUME_SECTION_HEADINGS or _looks_like_heading(line):
-            story.append(Paragraph(_paragraph_markup(line), heading))
         elif line.startswith("Note:"):
             story.append(Paragraph(_paragraph_markup(line), note_style))
+        elif current_section == "Professional Experience" and _looks_like_employer_line(line):
+            story.append(Paragraph(_paragraph_markup(line), employer_style))
+        elif current_section == "Professional Experience" and _looks_like_title_line(line):
+            story.append(Paragraph(_title_markup(line), title_style))
+        elif is_nested_bullet:
+            story.append(
+                Paragraph(
+                    _nested_bullet_markup(raw_line[4:].strip()),
+                    nested_bullet,
+                    bulletText="o",
+                )
+            )
         elif line.startswith("- "):
-            story.append(Paragraph(_paragraph_markup(line[2:]), bullet, bulletText="\u2022"))
+            story.append(Paragraph(_bullet_markup(line[2:]), bullet, bulletText="\u2022"))
+        elif _looks_like_heading(line):
+            story.append(Paragraph(_paragraph_markup(line), heading))
         else:
             story.append(Paragraph(_paragraph_markup(line), body))
 
@@ -748,10 +807,10 @@ def _write_text_pdf(*, text: str, path: Path) -> None:
     document = SimpleDocTemplate(
         str(path),
         pagesize=LETTER,
-        rightMargin=36,
-        leftMargin=36,
-        topMargin=32,
-        bottomMargin=32,
+        rightMargin=54,
+        leftMargin=54,
+        topMargin=58,
+        bottomMargin=52,
     )
     document.build(story)
 
@@ -1182,7 +1241,7 @@ def _render_resume_template(
     lines.append("")
     lines.extend(_render_prior_experience_lines(prior_experience))
     lines.extend(["", "Education & Certifications"])
-    lines.extend(f"- {line}" for line in DEFAULT_EDUCATION_CERTIFICATIONS)
+    lines.extend(DEFAULT_EDUCATION_CERTIFICATIONS)
     return "\n".join(lines).strip()
 
 
@@ -1309,6 +1368,8 @@ def _resume_block_lines(text: str) -> list[str]:
         line = _clean_inline_text(raw_line)
         if not line or line in RESUME_SECTION_HEADINGS:
             continue
+        if len(lines) >= 2 and not line.startswith("- ") and ":" in line:
+            line = f"- {line}"
         lines.append(line)
     return lines
 
@@ -1366,6 +1427,79 @@ def _paragraph_markup(line: str) -> str:
         cursor = match.end()
     parts.append(escape(line[cursor:]))
     return "".join(parts)
+
+
+def _bullet_markup(line: str) -> str:
+    line = _strip_markdown_emphasis(line)
+    if ":" in line:
+        label, rest = line.split(":", 1)
+        if 2 <= len(label) <= 60:
+            return f"<b>{_paragraph_markup(label)}:</b>{_paragraph_markup(rest)}"
+    if "|" in line:
+        label, rest = line.split("|", 1)
+        if 2 <= len(label) <= 80:
+            return f"<b>{_paragraph_markup(label.strip())}</b> |{_paragraph_markup(rest)}"
+    return _paragraph_markup(line)
+
+
+def _nested_bullet_markup(line: str) -> str:
+    line = _strip_markdown_emphasis(line)
+    if ":" in line:
+        label, rest = line.split(":", 1)
+        if 2 <= len(label) <= 60:
+            return f"<i>{_paragraph_markup(label)}:</i>{_paragraph_markup(rest)}"
+    return _paragraph_markup(line)
+
+
+def _title_markup(line: str) -> str:
+    line = _strip_markdown_emphasis(line)
+    if "|" not in line:
+        return _paragraph_markup(line)
+    title, dates = line.split("|", 1)
+    return f"<b>{_paragraph_markup(title.strip())}</b> | <i>{_paragraph_markup(dates.strip())}</i>"
+
+
+def _strip_markdown_emphasis(text: str) -> str:
+    return re.sub(r"(?<!\*)\*\*(.+?)\*\*(?!\*)", r"\1", text)
+
+
+def _resume_rule() -> HRFlowable:
+    return HRFlowable(
+        width="100%",
+        thickness=0.55,
+        color=colors.HexColor("#6B7280"),
+        spaceBefore=0,
+        spaceAfter=0,
+    )
+
+
+def _looks_like_employer_line(line: str) -> bool:
+    if line.startswith("- ") or " | " not in line:
+        return False
+    return not any(date in line for date in ("Jan ", "Feb ", "Mar ", "Apr ", "May ", "Jun "))
+
+
+def _looks_like_title_line(line: str) -> bool:
+    if line.startswith("- ") or " | " not in line:
+        return False
+    return any(
+        marker in line
+        for marker in (
+            "Present",
+            "Jan ",
+            "Feb ",
+            "Mar ",
+            "Apr ",
+            "May ",
+            "Jun ",
+            "Jul ",
+            "Aug ",
+            "Sep ",
+            "Oct ",
+            "Nov ",
+            "Dec ",
+        )
+    )
 
 
 def _looks_like_recommendations(text: str) -> bool:
