@@ -5,6 +5,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from fixture_loaders import load_linkedin_job_fixture
 
 from linkedin_career_mcp.config import load_settings
 from linkedin_career_mcp.workflows.matching import (
@@ -14,7 +15,6 @@ from linkedin_career_mcp.workflows.matching import (
     _resume_prompt,
     _scjdir_prompt,
 )
-from fixture_loaders import load_linkedin_job_fixture
 
 SAMPLE_RESUME = f"""
 Max Perkhounkov
