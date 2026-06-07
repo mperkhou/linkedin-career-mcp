@@ -30,6 +30,8 @@ from linkedin_career_mcp.webapp import (
     DEFAULT_DATABASE as APPLICATION_DATABASE,
 )
 from linkedin_career_mcp.webapp import (
+    ApplicationJobRecord,
+    fetch_application_job_records,
     fetch_existing_resume_job_ids,
     import_output_artifacts,
     upsert_application_artifact,
@@ -67,6 +69,101 @@ RESUME_SECTION_HEADINGS = {
     "Professional Experience",
     "Education & Certifications",
 }
+JOB_DESCRIPTION_PROMPT_MAX_CHARS = 12_000
+DISALLOWED_CORE_SKILLS = {
+    "error budget",
+    "error budgets",
+    "error budget analysis",
+}
+LEADING_BULLET_RE = re.compile(
+    r"^(?:[-*]|\u2022|\u2023|\u25e6|\u2043|\u2219|\u25cf|\u25cb)\s+"
+)
+ROLE_RELEVANT_START_HEADINGS = (
+    "Job Summary",
+    "Position Summary",
+    "Role Summary",
+    "The Role",
+    "About the Role",
+    "About this Role",
+    "About the Job",
+    "The Opportunity",
+    "What You’ll Do",
+    "What You'll Do",
+    "What You Will Do",
+    "What You’ll Be Doing",
+    "What You'll Be Doing",
+    "What You Will Be Doing",
+    "What We Need To See",
+    "Key Responsibilities",
+    "Responsibilities",
+    "What You’ll Bring",
+    "What You'll Bring",
+    "What You Bring",
+    "What We’re Looking For",
+    "What We're Looking For",
+    "Required Qualifications",
+    "Minimum Qualifications",
+    "Basic Qualifications",
+    "Qualifications",
+    "Requirements",
+    "Skills and Experience",
+    "Who You Are",
+    "You might thrive",
+    "You could be",
+)
+LOW_SIGNAL_PREAMBLE_HEADINGS = (
+    "Our Mission",
+    "Our Mission & Values",
+    "Mission & Values",
+    "Our Values",
+    "Our Culture",
+    "Our Culture & Work Style",
+    "Culture & Work Style",
+    "Life at",
+    "Why Join",
+    "Why Join Us",
+    "Why Join The",
+)
+TRAILING_BOILERPLATE_HEADINGS = (
+    "How We Support You",
+    "Why Join",
+    "Why Join Us",
+    "Why You’ll Love Working Here",
+    "Why You'll Love Working Here",
+    "Benefits & Perks",
+    "Pay & Benefits",
+    "Our Benefits",
+    "Perks & Benefits",
+    "Health & Wellness",
+    "Financial Well-being",
+    "Family Support",
+    "Growth & Development",
+    "Time Off & Flexibility",
+    "What We Offer",
+    "Compensation",
+    "Compensation Range",
+    "Equal Opportunity",
+    "Equal opportunity employer",
+    "Diversity, Equity",
+    "How we feel about Diversity",
+    "Accommodations",
+    "For US Applicants",
+    "Benefits Offering",
+    "Privacy Statement",
+    "Privacy Notice",
+    "Applicant Privacy Notice",
+    "Applicant Notice",
+    "By providing your information",
+    "Your base salary",
+    "US base salary range",
+    "US Salary Range",
+    "The base salary range",
+    "Base salary range",
+    "Salary range",
+    "Applications for this job",
+    "This posting is for",
+    "NVIDIA uses AI tools",
+)
 DEFAULT_CORE_TECHNICAL_SKILLS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "Languages & Frameworks",
@@ -122,7 +219,7 @@ DEFAULT_CORE_TECHNICAL_SKILLS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "MongoDB",
             "SQL",
             "Data Pipelines",
-            "Error Budgets",
+            "Observability Dashboards",
         ),
     ),
     (
@@ -131,6 +228,17 @@ DEFAULT_CORE_TECHNICAL_SKILLS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "Secure Coding Practices",
             "Vulnerability Mitigation",
             "Role-Based Access Control (RBAC)",
+        ),
+    ),
+    (
+        "AI Tools",
+        (
+            "Codex",
+            "Oracle Code Assist (OCA)",
+            "Cline",
+            "OpenRouter",
+            "ChatGPT",
+            "LLM Prompting",
         ),
     ),
 )
@@ -157,7 +265,7 @@ of a global Chef infrastructure orchestrating contracts for 40,000+ managed endp
 international datacenters.
 Distributed Observability: Built and scaled an enterprise data pipeline utilizing Filebeat agents
 on 40,000+ devices routing via Logstash to centralized OpenSearch clusters; analyzed usage, logs,
-and error budgets to optimize reliability.
+and operational trends to optimize reliability.
 Integration & API Frameworks: Developed a custom Python package and playbooks framework within
 Oracle Linux Automation Manager (OLAM) to replace a legacy third-party platform; unified and
 automated cross-vendor API integrations for 12,000+ network surfaces.
@@ -167,8 +275,8 @@ domains.
 CI/CD & Resilience: Eliminated production configuration drift and boosted delivery velocity by
 replacing manual workflows with automated Jenkins and CloudLab CI/CD release pipelines.
 Developer Tooling Innovation: Spearheaded team-level adoption of AI-assisted engineering tools
-(Cline, Codex, Code Assist), developing reliable internal workflows that reduced test-driven
-development (TDD) busywork by 80%.
+(Cline, Codex, Oracle Code Assist), developing reliable internal workflows that reduced
+test-driven development (TDD) busywork by 80%.
 """.strip()
 DEFAULT_PRIOR_EXPERIENCE_ENTRIES: tuple[dict[str, object], ...] = (
     {
@@ -346,6 +454,12 @@ class _SearchMemory:
         return self.query_key(query) in self.attempted_query_keys
 
 
+@dataclass(frozen=True)
+class _RegenerationCandidate:
+    job: JobDetails
+    stored_job_description: str | None
+
+
 MAX_ITERATIVE_SEARCHES = 1000
 MIN_SEARCHES_BEFORE_STOP = 4
 
@@ -457,59 +571,21 @@ class MatchingJobsWorkflow:
         artifacts: list[TailoredResumeArtifact] = []
         for job in candidates:
             try:
-                resume_text = await self._generate_resume_text(
+                artifact = await self._generate_and_store_resume(
                     source_resume=source_resume,
                     current_job_description=current_job_description,
                     job=job,
-                )
-                artifact_kind: Literal["resume", "recommendations"] = "resume"
-                recommendations_path: Path | None = None
-                if _looks_like_recommendations(resume_text):
-                    artifact_kind = "recommendations"
-                    recommendations_text = await self._generate_recommendations_text(
-                        source_resume=source_resume,
-                        current_job_description=current_job_description,
-                        job=job,
-                        draft_text=resume_text,
-                    )
-                    resume_path = write_resume_recommendations_pdf(
-                        recommendations_text=recommendations_text,
-                        output_dir=output_dir,
-                        job=job,
-                    )
-                    recommendations_path = resume_path
-                else:
-                    resume_path = write_resume_pdf(
-                        resume_text=resume_text,
-                        output_dir=output_dir,
-                        job=job,
-                    )
-                append_tracking_row(tracking_path=tracking_path, job=job, resume_path=resume_path)
-                upsert_application_artifact(
-                    database_path=application_database_path,
-                    job_id=job.job_id,
-                    company=job.company or "",
-                    job_title=job.title,
-                    linkedin_url=str(job.job_url) if job.job_url else "",
-                    resume_path=resume_path,
+                    output_dir=output_dir,
+                    tracking_path=tracking_path,
+                    application_database_path=application_database_path,
+                    append_tracking=True,
+                    stored_job_description=job.description,
                 )
                 existing_resume_job_ids.add(job.job_id)
             except LinkedInCareerMcpError as exc:
                 errors.append(f"{job.job_id}: {exc}")
                 continue
-            artifacts.append(
-                TailoredResumeArtifact(
-                    job_id=job.job_id,
-                    company=job.company,
-                    title=job.title,
-                    linkedin_url=str(job.job_url) if job.job_url else None,
-                    resume_path=str(resume_path),
-                    artifact_kind=artifact_kind,
-                    recommendations_path=(
-                        str(recommendations_path) if recommendations_path else None
-                    ),
-                )
-            )
+            artifacts.append(artifact)
 
         return MatchingJobsWorkflowResult(
             profile_files=[str(document.path) for document in profile_documents],
@@ -524,6 +600,157 @@ class MatchingJobsWorkflow:
             skipped_existing=skipped_existing,
             errors=errors,
             artifacts=artifacts,
+        )
+
+    async def regenerate_resumes(
+        self,
+        *,
+        profile_dir: Path = DEFAULT_PROFILE_DIR,
+        output_dir: Path = DEFAULT_OUTPUT_DIR,
+        source_resume_name: str = DEFAULT_SOURCE_RESUME,
+        current_job_description_name: str = DEFAULT_CURRENT_JOB_DESCRIPTION,
+        job_ids: list[str] | None = None,
+        linkedin_delay_seconds: float = 2.0,
+    ) -> MatchingJobsWorkflowResult:
+        profile_documents = load_profile_documents(profile_dir)
+        source_resume = _find_source_resume(profile_documents, source_resume_name)
+        current_job_description = _find_source_resume(
+            profile_documents,
+            current_job_description_name,
+        )
+        tracking_path = output_dir / TRACKING_WORKBOOK
+        application_database_path = output_dir / APPLICATION_DATABASE
+        if tracking_path.exists():
+            import_output_artifacts(output_dir=output_dir, database_path=application_database_path)
+
+        normalized_job_ids = _normalize_regeneration_job_ids(job_ids)
+        records = fetch_application_job_records(
+            application_database_path,
+            job_ids=normalized_job_ids,
+        )
+        errors: list[str] = []
+        if normalized_job_ids is not None:
+            found_job_ids = {record.job_id for record in records}
+            for job_id in normalized_job_ids:
+                if job_id not in found_job_ids:
+                    errors.append(f"{job_id}: not found in application database.")
+        if not records and normalized_job_ids is None:
+            errors.append(f"No existing jobs were found in {application_database_path}.")
+
+        candidates: list[_RegenerationCandidate] = []
+        linkedin_fetch_count = 0
+        for record in records:
+            if record.prompt_job_description or record.job_description:
+                candidates.append(_regeneration_candidate_from_record(record))
+                continue
+            try:
+                if linkedin_fetch_count > 0 and linkedin_delay_seconds > 0:
+                    await asyncio.sleep(linkedin_delay_seconds)
+                details = await self._service.get_details(record.linkedin_url or record.job_id)
+                linkedin_fetch_count += 1
+            except LinkedInCareerMcpError as exc:
+                errors.append(f"{record.job_id}: {exc}")
+                continue
+            candidates.append(
+                _RegenerationCandidate(
+                    job=_merge_record_with_fetched_details(record, details),
+                    stored_job_description=details.description,
+                )
+            )
+
+        artifacts: list[TailoredResumeArtifact] = []
+        for candidate in candidates:
+            try:
+                artifact = await self._generate_and_store_resume(
+                    source_resume=source_resume,
+                    current_job_description=current_job_description,
+                    job=candidate.job,
+                    output_dir=output_dir,
+                    tracking_path=tracking_path,
+                    application_database_path=application_database_path,
+                    append_tracking=False,
+                    stored_job_description=candidate.stored_job_description,
+                )
+            except LinkedInCareerMcpError as exc:
+                errors.append(f"{candidate.job.job_id}: {exc}")
+                continue
+            artifacts.append(artifact)
+
+        return MatchingJobsWorkflowResult(
+            profile_files=[str(document.path) for document in profile_documents],
+            search_queries=[],
+            jobs_found=len(candidates),
+            resumes_created=sum(1 for artifact in artifacts if artifact.artifact_kind == "resume"),
+            recommendations_created=sum(
+                1 for artifact in artifacts if artifact.artifact_kind == "recommendations"
+            ),
+            tracking_spreadsheet=str(tracking_path),
+            skipped_blacklisted=[],
+            skipped_existing=[],
+            errors=errors,
+            artifacts=artifacts,
+        )
+
+    async def _generate_and_store_resume(
+        self,
+        *,
+        source_resume: ProfileDocument | None,
+        current_job_description: ProfileDocument | None,
+        job: JobDetails,
+        output_dir: Path,
+        tracking_path: Path,
+        application_database_path: Path,
+        append_tracking: bool,
+        stored_job_description: str | None = None,
+    ) -> TailoredResumeArtifact:
+        resume_text = await self._generate_resume_text(
+            source_resume=source_resume,
+            current_job_description=current_job_description,
+            job=job,
+        )
+        artifact_kind: Literal["resume", "recommendations"] = "resume"
+        recommendations_path: Path | None = None
+        if _looks_like_recommendations(resume_text):
+            artifact_kind = "recommendations"
+            recommendations_text = await self._generate_recommendations_text(
+                source_resume=source_resume,
+                current_job_description=current_job_description,
+                job=job,
+                draft_text=resume_text,
+            )
+            resume_path = write_resume_recommendations_pdf(
+                recommendations_text=recommendations_text,
+                output_dir=output_dir,
+                job=job,
+            )
+            recommendations_path = resume_path
+        else:
+            resume_path = write_resume_pdf(
+                resume_text=resume_text,
+                output_dir=output_dir,
+                job=job,
+            )
+        if append_tracking:
+            append_tracking_row(tracking_path=tracking_path, job=job, resume_path=resume_path)
+        prompt_job_description = _job_description_context(job)
+        upsert_application_artifact(
+            database_path=application_database_path,
+            job_id=job.job_id,
+            company=job.company or "",
+            job_title=job.title,
+            linkedin_url=str(job.job_url) if job.job_url else "",
+            resume_path=resume_path,
+            job_description=stored_job_description,
+            prompt_job_description=prompt_job_description,
+        )
+        return TailoredResumeArtifact(
+            job_id=job.job_id,
+            company=job.company,
+            title=job.title,
+            linkedin_url=str(job.job_url) if job.job_url else None,
+            resume_path=str(resume_path),
+            artifact_kind=artifact_kind,
+            recommendations_path=str(recommendations_path) if recommendations_path else None,
         )
 
     async def _generate_search_queries(
@@ -913,11 +1140,187 @@ def _find_source_resume(
     return None
 
 
-def _job_description_context(job: JobDetails, *, max_chars: int = 4_000) -> str:
-    return _limit_context(
-        job.description or "No public job description was available.",
-        max_chars=max_chars,
+def _normalize_regeneration_job_ids(job_ids: list[str] | None) -> list[str] | None:
+    if job_ids is None:
+        return None
+    normalized = _dedupe_preserve_order([job_id.strip() for job_id in job_ids if job_id.strip()])
+    if not normalized:
+        return None
+    all_markers = [job_id for job_id in normalized if job_id.casefold() == "all"]
+    if all_markers and len(normalized) > 1:
+        raise WorkflowError("Use either 'all' or explicit LinkedIn job IDs, not both.")
+    if all_markers:
+        return None
+    return normalized
+
+
+def _regeneration_candidate_from_record(record: ApplicationJobRecord) -> _RegenerationCandidate:
+    return _RegenerationCandidate(
+        job=JobDetails(
+            job_id=record.job_id,
+            title=record.job_title or "Unknown title",
+            company=record.company or None,
+            job_url=record.linkedin_url or None,
+            description=record.job_description or record.prompt_job_description,
+        ),
+        stored_job_description=record.job_description,
     )
+
+
+def _merge_record_with_fetched_details(
+    record: ApplicationJobRecord,
+    details: JobDetails,
+) -> JobDetails:
+    return JobDetails(
+        job_id=record.job_id,
+        title=details.title if details.title != "Unknown title" else record.job_title,
+        company=details.company or record.company or None,
+        location=details.location,
+        listed_at=details.listed_at,
+        posted_text=details.posted_text,
+        job_url=details.job_url or record.linkedin_url or None,
+        company_url=details.company_url,
+        workplace_type=details.workplace_type,
+        source=details.source,
+        description=details.description or record.job_description or record.prompt_job_description,
+        seniority_level=details.seniority_level,
+        employment_type=details.employment_type,
+        job_function=details.job_function,
+        industries=details.industries,
+    )
+
+
+def _job_description_context(job: JobDetails) -> str:
+    description = _clean_job_description_for_prompt(
+        job.description or "No public job description was available."
+    )
+    return _limit_context(description, max_chars=JOB_DESCRIPTION_PROMPT_MAX_CHARS)
+
+
+def _clean_job_description_for_prompt(description: str) -> str:
+    original = _normalize_job_description_text(description)
+    if not original:
+        return "No public job description was available."
+
+    cleaned = _trim_low_signal_preamble(original)
+    cleaned = _trim_trailing_boilerplate(cleaned)
+    return cleaned.strip() or original
+
+
+def _trim_low_signal_preamble(description: str) -> str:
+    role_start = _first_heading_match(description, ROLE_RELEVANT_START_HEADINGS)
+    if role_start is None or role_start.start() == 0:
+        return description
+
+    prefix = description[: role_start.start()]
+    has_low_signal_prefix = _first_heading_match(prefix, LOW_SIGNAL_PREAMBLE_HEADINGS) is not None
+    if has_low_signal_prefix or len(prefix) > 3_000:
+        return description[role_start.start() :].lstrip(" :-\n")
+    return description
+
+
+def _trim_trailing_boilerplate(description: str) -> str:
+    last_role_start = max(
+        (match.start() for match in _heading_matches(description, ROLE_RELEVANT_START_HEADINGS)),
+        default=-1,
+    )
+    boilerplate = _first_heading_match(
+        description,
+        TRAILING_BOILERPLATE_HEADINGS,
+        start=max(1, min(len(description), 300)),
+        skip_before=last_role_start,
+        strict_single_word=True,
+    )
+    if boilerplate is None:
+        return description
+    return description[: boilerplate.start()].rstrip(" :-\n")
+
+
+def _first_heading_match(
+    text: str,
+    headings: tuple[str, ...],
+    *,
+    start: int = 0,
+    skip_before: int = -1,
+    strict_single_word: bool = False,
+) -> re.Match[str] | None:
+    matches = _heading_matches(
+        text,
+        headings,
+        start=start,
+        skip_before=skip_before,
+        strict_single_word=strict_single_word,
+    )
+    if not matches:
+        return None
+    return min(matches, key=lambda match: match.start())
+
+
+def _heading_matches(
+    text: str,
+    headings: tuple[str, ...],
+    *,
+    start: int = 0,
+    skip_before: int = -1,
+    strict_single_word: bool = False,
+) -> list[re.Match[str]]:
+    matches: list[re.Match[str]] = []
+    for heading in headings:
+        for match in _heading_pattern(heading).finditer(text, pos=start):
+            if match.start() < skip_before:
+                continue
+            if _is_heading_like_match(
+                text,
+                match,
+                heading=heading,
+                strict_single_word=strict_single_word,
+            ):
+                matches.append(match)
+    return sorted(matches, key=lambda match: match.start())
+
+
+def _heading_pattern(heading: str) -> re.Pattern[str]:
+    parts = [re.escape(part) for part in heading.split()]
+    pattern = r"\s+".join(parts)
+    return re.compile(rf"(?<![\w/]){pattern}(?=\s|[:?!.,;()\-/–—]|$)", re.IGNORECASE)
+
+
+def _is_heading_like_match(
+    text: str,
+    match: re.Match[str],
+    *,
+    heading: str,
+    strict_single_word: bool,
+) -> bool:
+    matched_text = match.group(0)
+    first_alpha = next((char for char in matched_text if char.isalpha()), "")
+    if first_alpha and not first_alpha.isupper():
+        return False
+
+    heading_word_count = len(heading.split())
+    previous_index = match.start() - 1
+    while previous_index >= 0 and text[previous_index].isspace():
+        previous_index -= 1
+    if (
+        previous_index >= 0
+        and text[previous_index] not in ".!?:;\n\r"
+        and heading_word_count == 1
+    ):
+        return False
+
+    if strict_single_word and heading_word_count == 1:
+        suffix = text[match.end() :].lstrip()
+        if suffix and suffix[0] not in ":-–—\n\r":
+            return False
+    return True
+
+
+def _normalize_job_description_text(description: str) -> str:
+    lines = [" ".join(line.split()) for line in description.splitlines()]
+    normalized_lines = [line for line in lines if line]
+    if len(normalized_lines) > 1:
+        return "\n".join(normalized_lines)
+    return " ".join(description.split())
 
 
 def _coerce_search_query(
@@ -1101,6 +1504,7 @@ Rules:
 - Use the job opening description only to choose emphasis and language.
 - Make small, factual wording changes around the margins.
 - Preserve the approximate length and bullet count of the original SCJDiR.
+- Use plain resume lines only; do not prefix lines with bullets, hyphens, or bullet glyphs.
 - Do not invent products, dates, employers, certifications, tools, metrics, or responsibilities.
 - Prefer resume bullets, not recommendations.
 
@@ -1155,10 +1559,14 @@ Do not include the header, professional summary, AI generation note, Oracle curr
 education/certifications in the JSON response. Those sections are static or generated separately.
 
 Hard requirements:
-- Preserve the six Core Technical Skills categories exactly.
+- Preserve the seven Core Technical Skills categories exactly.
 - Add or remove individual skills only when supported by the source resume, CJD, or tailored SCJDiR.
 - Prefer skills that overlap with the JOD, including AI, agentic AI, and LLM terms only
   when factual.
+- Always keep the AI Tools category and use it for AI-assisted engineering tools such as
+  Codex, Oracle Code Assist (OCA), Cline, OpenRouter, ChatGPT, or LLM prompting.
+- Do not include "Error Budgets" in Core Technical Skills; use concrete observability tools
+  or dashboard/pipeline skills instead.
 - Preserve all prior employers, locations, titles, dates, and the original bullet count per job.
 - For prior experience, make only minor keyword swaps or wording changes that remain factual.
 - Do not invent employers, dates, credentials, projects, tools, metrics, or responsibilities.
@@ -1297,7 +1705,12 @@ def _coerce_core_skill_sections(raw_value: Any) -> list[tuple[str, list[str]]]:
     sections: list[tuple[str, list[str]]] = []
     for category, default_skills in default_sections:
         skills = by_category.get(_normalize_label(category), default_skills)
-        sections.append((category, _dedupe_preserve_order(skills)[:12] or default_skills))
+        if category == "AI Tools":
+            skills = [*skills, *default_skills]
+        clean_skills = _dedupe_preserve_order(
+            [skill for skill in skills if _is_allowed_core_skill(skill)]
+        )
+        sections.append((category, clean_skills[:12] or list(default_skills)))
     return sections
 
 
@@ -1308,11 +1721,12 @@ def _coerce_skill_items(value: Any) -> list[str]:
         raw_items = [str(item) for item in value]
     else:
         return []
-    return [
-        _clean_inline_text(item).removeprefix("- ").strip()
-        for item in raw_items
-        if _clean_inline_text(item).removeprefix("- ").strip()
-    ]
+    items: list[str] = []
+    for item in raw_items:
+        clean_item = _clean_list_item_text(item)
+        if clean_item and _is_allowed_core_skill(clean_item):
+            items.append(clean_item)
+    return items
 
 
 def _coerce_prior_experience_entries(raw_value: Any) -> list[dict[str, object]]:
@@ -1366,9 +1780,9 @@ def _coerce_bullet_items(value: Any) -> list[str]:
     else:
         return []
     return [
-        _clean_inline_text(item).removeprefix("- ").strip()
+        clean_item
         for item in raw_items
-        if _clean_inline_text(item).removeprefix("- ").strip()
+        if (clean_item := _clean_list_item_text(item))
     ]
 
 
@@ -1397,14 +1811,38 @@ def _resume_block_lines(text: str) -> list[str]:
         line = _clean_inline_text(raw_line)
         if not line or line in RESUME_SECTION_HEADINGS:
             continue
-        if len(lines) >= 2 and not line.startswith("- ") and ":" in line:
-            line = f"- {line}"
-        lines.append(line)
+        line_body, had_bullet_marker = _strip_leading_bullet_markers(line)
+        if not line_body or line_body in RESUME_SECTION_HEADINGS:
+            continue
+        if len(lines) >= 2 and (had_bullet_marker or ":" in line_body):
+            line_body = f"- {line_body}"
+        lines.append(line_body)
     return lines
 
 
 def _clean_inline_text(text: str) -> str:
-    return re.sub(r"\s+", " ", text.replace("\u2022", "-")).strip()
+    text = re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _clean_list_item_text(text: str) -> str:
+    return _strip_leading_bullet_markers(_clean_inline_text(text))[0]
+
+
+def _strip_leading_bullet_markers(text: str) -> tuple[str, bool]:
+    line = text.strip()
+    had_bullet_marker = False
+    while True:
+        match = LEADING_BULLET_RE.match(line)
+        if not match:
+            return line, had_bullet_marker
+        had_bullet_marker = True
+        line = line[match.end() :].strip()
+
+
+def _is_allowed_core_skill(skill: str) -> bool:
+    normalized = re.sub(r"[^a-z0-9]+", " ", skill.casefold()).strip()
+    return normalized not in DISALLOWED_CORE_SKILLS and "error budget" not in normalized
 
 
 def _normalize_label(text: str) -> str:
@@ -1635,6 +2073,29 @@ async def run_from_cli(args: argparse.Namespace) -> MatchingJobsWorkflowResult:
         await llm.aclose()
 
 
+async def run_regenerate_from_cli(args: argparse.Namespace) -> MatchingJobsWorkflowResult:
+    settings = load_settings()
+    provider = LinkedInPublicJobsProvider(
+        user_agent=settings.user_agent,
+        timeout_seconds=settings.timeout_seconds,
+    )
+    service = JobSearchService(provider=provider, max_results=settings.max_results)
+    llm = _build_llm_client(settings)
+    workflow = MatchingJobsWorkflow(service=service, ollama=llm)
+    try:
+        return await workflow.regenerate_resumes(
+            profile_dir=Path(args.profile_dir),
+            output_dir=Path(args.output_dir),
+            source_resume_name=args.source_resume_name,
+            current_job_description_name=args.current_job_description_name,
+            job_ids=args.job_ids,
+            linkedin_delay_seconds=args.linkedin_delay_seconds,
+        )
+    finally:
+        await provider.aclose()
+        await llm.aclose()
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Find matching LinkedIn jobs and tailor resumes.")
     parser.add_argument("--profile-dir", default=str(DEFAULT_PROFILE_DIR))
@@ -1654,9 +2115,33 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def build_regenerate_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Regenerate resumes for jobs already stored in the application database."
+    )
+    parser.add_argument(
+        "job_ids",
+        nargs="*",
+        default=["all"],
+        help="Use 'all' or one or more LinkedIn job IDs.",
+    )
+    parser.add_argument("--profile-dir", default=str(DEFAULT_PROFILE_DIR))
+    parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR))
+    parser.add_argument("--source-resume-name", default=DEFAULT_SOURCE_RESUME)
+    parser.add_argument("--current-job-description-name", default=DEFAULT_CURRENT_JOB_DESCRIPTION)
+    parser.add_argument("--linkedin-delay-seconds", type=float, default=2.0)
+    return parser
+
+
 def main() -> None:
     parser = build_arg_parser()
     result = asyncio.run(run_from_cli(parser.parse_args()))
+    print(json.dumps(result.model_dump(mode="json"), indent=2))
+
+
+def regenerate_main() -> None:
+    parser = build_regenerate_arg_parser()
+    result = asyncio.run(run_regenerate_from_cli(parser.parse_args()))
     print(json.dumps(result.model_dump(mode="json"), indent=2))
 
 

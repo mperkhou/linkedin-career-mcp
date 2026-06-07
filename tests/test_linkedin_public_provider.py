@@ -102,6 +102,27 @@ async def test_get_job_details_parses_public_detail_page():
 
 
 @pytest.mark.asyncio
+async def test_get_job_raw_payload_returns_public_detail_html_and_parsed_details():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.endswith("/12345")
+        return httpx.Response(200, text=DETAIL_HTML, headers={"content-type": "text/html"})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    provider = LinkedInPublicJobsProvider(client=client, user_agent="test", timeout_seconds=1)
+
+    payload = await provider.get_job_raw_payload("https://www.linkedin.com/jobs/view/12345/")
+
+    assert payload.job_id == "12345"
+    assert str(payload.detail_url) == "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/12345"
+    assert payload.status_code == 200
+    assert payload.content_type == "text/html"
+    assert payload.payload_type == "html"
+    assert payload.payload_chars == len(DETAIL_HTML)
+    assert "show-more-less-html__markup" in payload.payload
+    assert payload.parsed.description == "Build practical tools with Python."
+
+
+@pytest.mark.asyncio
 async def test_get_job_details_rejects_unparseable_ids():
     client = httpx.AsyncClient(transport=httpx.MockTransport(lambda _: httpx.Response(200)))
     provider = LinkedInPublicJobsProvider(client=client, user_agent="test", timeout_seconds=1)

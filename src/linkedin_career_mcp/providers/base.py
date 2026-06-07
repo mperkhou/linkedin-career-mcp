@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from linkedin_career_mcp.models import JobDetails, JobPosting, JobSearchQuery
+from linkedin_career_mcp.models import JobDetails, JobPosting, JobRawPayload, JobSearchQuery
 
 
 class JobProvider(ABC):
@@ -15,3 +15,7 @@ class JobProvider(ABC):
     @abstractmethod
     async def get_job_details(self, job_id_or_url: str) -> JobDetails:
         """Return a normalized job detail record."""
+
+    @abstractmethod
+    async def get_job_raw_payload(self, job_id_or_url: str) -> JobRawPayload:
+        """Return the raw public detail payload with the normalized parse."""

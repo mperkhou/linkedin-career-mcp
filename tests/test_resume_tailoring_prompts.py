@@ -8,6 +8,7 @@ import pytest
 from fixture_loaders import load_linkedin_job_fixture
 
 from linkedin_career_mcp.config import load_settings
+from linkedin_career_mcp.models import JobDetails
 from linkedin_career_mcp.workflows.matching import (
     AI_GENERATION_NOTE,
     DEFAULT_SCJDIR,
@@ -15,7 +16,9 @@ from linkedin_career_mcp.workflows.matching import (
     RESUME_HEADER_NAME,
     ProfileDocument,
     _coerce_core_skill_sections,
+    _job_description_context,
     _looks_like_recommendations,
+    _recommendations_prompt,
     _render_resume_template,
     _resume_sections_prompt,
     _scjdir_prompt,
@@ -92,8 +95,167 @@ def test_resume_sections_prompt_limits_model_to_dynamic_sections():
     assert "core_technical_skills" in prompt
     assert "prior_experience" in prompt
     assert "Do not include the header" in prompt
+    assert "Preserve the seven Core Technical Skills categories exactly" in prompt
+    assert "AI Tools" in prompt
+    assert "Error Budgets" in prompt
     assert "Tailored Oracle current-role SCJDiR" in prompt
     assert "React" in prompt
+
+
+def test_resume_generation_prompts_include_full_job_description():
+    late_marker = "AI Experience late-section marker should reach the model."
+    job_description = (
+        "Opening summary. "
+        + ("Requires scalable platform engineering, APIs, and cloud automation. " * 90)
+        + late_marker
+    )
+    job = JobDetails(
+        job_id="12345",
+        title="Senior Software Engineer",
+        company="Acme",
+        description=job_description,
+    )
+    source_resume = ProfileDocument(Path("MP-RESUME-AGENTIC.pdf"), SAMPLE_RESUME)
+    current_job_description = ProfileDocument(
+        Path("Senior_Platform_Software_Engineer(IC3).pdf"),
+        SAMPLE_CJD,
+    )
+
+    prompts = [
+        _scjdir_prompt(
+            source_resume=source_resume,
+            current_job_description=current_job_description,
+            job=job,
+        ),
+        _resume_sections_prompt(
+            source_resume=source_resume,
+            current_job_description=current_job_description,
+            tailored_scjdir="Oracle | Remote\nSenior Technical Lead - Cloud Automation Engineer",
+            job=job,
+        ),
+        _recommendations_prompt(
+            source_resume=source_resume,
+            current_job_description=current_job_description,
+            job=job,
+            draft_text="Unusable draft.",
+        ),
+    ]
+
+    assert len(job_description) > 4_000
+    assert _job_description_context(job) == job_description
+    for prompt in prompts:
+        assert late_marker in prompt
+
+
+def test_job_description_context_removes_low_signal_company_boilerplate():
+    job = JobDetails(
+        job_id="4342788295",
+        title="Senior Software Engineer 2",
+        company="Drata",
+        description="""
+Our Mission & Values
+At Drata, we help companies earn and keep the trust of their users.
+Our Culture & Work Style
+Be a Driver. Move at Drata Speed. Stay Mission-Driven.
+Why Join The Drata Team?
+See why we are consistently recognized on workplace lists.
+
+Job Summary
+The Senior Software Engineer II helps lead platform development.
+What You’ll Do
+Architect highly scalable web applications and build RESTful APIs.
+What You’ll Bring
+7+ years of experience as a software engineer.
+AI Experience
+Hands-on experience building features that integrate with LLMs.
+How We Support You
+Shared Success, Health & Wellness, and Financial Well-being.
+        """,
+    )
+
+    context = _job_description_context(job)
+
+    assert context.startswith("Job Summary")
+    assert "Our Mission" not in context
+    assert "Why Join The Drata Team" not in context
+    assert "How We Support You" not in context
+    assert "What You’ll Bring" in context
+    assert "AI Experience" in context
+
+
+def test_job_description_context_keeps_concise_company_context_before_role():
+    job = JobDetails(
+        job_id="4423512582",
+        title="Frontend Engineer",
+        company="Terzo",
+        description=(
+            "Location : US Level : Senior Individual Contributor Team : Engineering "
+            "About Terzo Terzo builds an AI-native enterprise data platform. "
+            "The Opportunity Terzo is hiring a Frontend Engineer. "
+            "You might thrive in this role if you have React and TypeScript experience."
+        ),
+    )
+
+    context = _job_description_context(job)
+
+    assert context.startswith("Location : US")
+    assert "About Terzo" in context
+    assert "The Opportunity" in context
+    assert "React and TypeScript" in context
+
+
+def test_job_description_context_does_not_trim_sentence_case_responsibilities():
+    job = JobDetails(
+        job_id="4395481257",
+        title="Senior Software Engineer - HPC",
+        company="NVIDIA",
+        description=(
+            "NVIDIA has been transforming accelerated computing for more than 25 years. "
+            "We are looking for a Senior Software Engineer to improve HPC infrastructure. "
+            "What We Need To See Strong coding skills in Go, Python, or C++ with a focus "
+            "on backend, systems, or infrastructure engineering. Experience owning services "
+            "end-to-end: architecture, reviews, implementation, testing, rollout, and "
+            "observability. Maintainer or co-maintainer responsibilities for an open source "
+            "component used in production at large scale. Your base salary will be determined "
+            "based on your location and experience. NVIDIA is committed to fostering a diverse "
+            "work environment."
+        ),
+    )
+
+    context = _job_description_context(job)
+
+    assert context.startswith("NVIDIA has been transforming")
+    assert "What We Need To See" in context
+    assert "co-maintainer responsibilities for an open source component" in context
+    assert "Your base salary" not in context
+    assert "NVIDIA is committed" not in context
+
+
+def test_job_description_context_keeps_role_details_after_internal_compensation_text():
+    job = JobDetails(
+        job_id="4413455860",
+        title="Senior Software Engineer, Content Platform",
+        company="Roku",
+        description=(
+            "Roku is changing how the world watches TV. We offer you the opportunity to "
+            "delight millions of streamers. About the role Roku continues to innovate "
+            "and lead the industry. For California Only - The estimated annual salary "
+            "for this position is between $300,000 - $425,000 annually. Compensation "
+            "packages are based on factors unique to each candidate. This role is "
+            "eligible for health insurance, equity awards, life insurance, disability "
+            "benefits, parental leave, wellness benefits, and paid time off. What you'll "
+            "be doing Design and Development: Architect, develop, and maintain scalable "
+            "backend systems and APIs using Java and Akka. Build distributed data "
+            "pipelines for batch and real-time processing."
+        ),
+    )
+
+    context = _job_description_context(job)
+
+    assert "the opportunity to delight millions" in context
+    assert "About the role" in context
+    assert "What you'll be doing" in context
+    assert "Design and Development" in context
 
 
 def test_render_resume_template_preserves_static_sections():
@@ -117,9 +279,26 @@ def test_render_resume_template_preserves_static_sections():
     assert "Professional Summary" in text
     assert "Core Technical Skills" in text
     assert "- Languages & Frameworks: Python, Django, LLMs" in text
+    assert "- AI Tools: Codex, Oracle Code Assist (OCA), Cline, OpenRouter" in text
     assert "Professional Experience" in text
     assert "Education & Certifications" in text
     assert "Oracle Cloud Infrastructure AI Foundations Associate" in text
+
+
+def test_render_resume_template_normalizes_generated_scjdir_bullets():
+    text = _render_resume_template(
+        tailored_scjdir=(
+            "Oracle | Remote / International Datacenters\n"
+            "Senior Technical Lead - Cloud Automation Engineer | Feb 2022 - Present\n"
+            "● Platform Component Ownership: Built platform automation APIs.\n"
+            "- ● Distributed Observability: Built observability pipelines."
+        ),
+        sections_plan={"prior_experience": []},
+    )
+
+    assert "●" not in text
+    assert "- Platform Component Ownership: Built platform automation APIs." in text
+    assert "- Distributed Observability: Built observability pipelines." in text
 
 
 def test_core_skills_falls_back_to_missing_template_categories():
@@ -130,6 +309,32 @@ def test_core_skills_falls_back_to_missing_template_categories():
     assert sections[0] == ("Languages & Frameworks", ["Python", "LLMs"])
     assert sections[1][0] == "Distributed Systems & Cloud"
     assert "AWS" in sections[1][1]
+    assert sections[-1][0] == "AI Tools"
+    assert "Codex" in sections[-1][1]
+    assert "Oracle Code Assist (OCA)" in sections[-1][1]
+    assert "Cline" in sections[-1][1]
+    assert "OpenRouter" in sections[-1][1]
+
+
+def test_core_skills_filters_error_budgets_and_keeps_ai_tools_defaults():
+    sections = _coerce_core_skill_sections(
+        [
+            {
+                "category": "Data & Observability",
+                "skills": ["Data Pipelines", "Error Budgets", "Error Budget Analysis"],
+            },
+            {"category": "AI Tools", "skills": ["Codex"]},
+        ]
+    )
+    by_category = dict(sections)
+
+    assert by_category["Data & Observability"] == ["Data Pipelines"]
+    assert by_category["AI Tools"][:4] == [
+        "Codex",
+        "Oracle Code Assist (OCA)",
+        "Cline",
+        "OpenRouter",
+    ]
 
 
 def test_recommendations_detection_distinguishes_resume_from_advice():

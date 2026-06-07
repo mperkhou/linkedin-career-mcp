@@ -22,14 +22,16 @@ isolation, testable workflows, practical automation, and human-in-the-loop guard
   targeted LinkedIn queries.
 - **Tailored resume generation**: renders job-specific PDF resumes from a structured local
   template, preserving static candidate facts while tailoring the current-role section,
-  skills, and light keyword alignment.
+  skills, and light keyword alignment. Resume prompts use a cleaned role-focused job
+  description that removes obvious company boilerplate before LLM calls.
 - **Duplicate-aware workflow**: uses SQLite job IDs to skip openings that already have
   generated resumes, and does not count skipped jobs toward the requested run size.
 - **Local application tracker**: Flask + SQLite web UI for search/filter, status updates,
   applied dates, notes, PDF links, sync from generated output, and bulk deletion.
 - **Local-first storage**: generated PDFs live under `output/resumes/`; tracking lives in
   both `output/tracking/applications.sqlite3` and the compatibility workbook at
-  `output/tracking/read_applications/linkedin_applications.xlsx`.
+  `output/tracking/read_applications/linkedin_applications.xlsx`. SQLite rows also keep
+  the parsed LinkedIn job description and the cleaned prompt JOD used for generation.
 - **Provider-oriented architecture**: LinkedIn public scraping is isolated behind a
   provider boundary, with service and workflow layers kept testable.
 - **No LinkedIn credentials required**: the current implementation uses public LinkedIn
@@ -169,7 +171,25 @@ Run the matching workflow:
 make match-jobs
 ```
 
-Equivalent executable:
+Regenerate resumes for jobs already stored in SQLite:
+
+```bash
+make regenerate-resumes
+make regenerate-resumes JOB_IDS="4407411418 4342788295"
+```
+
+Regeneration equivalent executable:
+
+```bash
+.venv/bin/linkedin-career-regenerate-resumes all
+.venv/bin/linkedin-career-regenerate-resumes 4407411418 4342788295
+```
+
+Regeneration reuses `prompt_job_description` or `job_description` from SQLite. It only fetches
+LinkedIn details for older rows that do not have either description, waiting two seconds between
+those fallback LinkedIn lookups by default.
+
+Matching equivalent executable:
 
 ```bash
 .venv/bin/linkedin-career-match-jobs \
@@ -246,6 +266,12 @@ Optional:
 ### `get_linkedin_job_details`
 
 Fetch a public LinkedIn job detail page by LinkedIn job ID or public job URL.
+
+### `get_linkedin_job_raw_payload`
+
+Fetch the public LinkedIn guest detail response by LinkedIn job ID or public job URL. This
+returns the raw HTML payload, response metadata, and the normalized `parsed` job details
+produced from the same payload.
 
 ### `find_matching_linkedin_jobs`
 

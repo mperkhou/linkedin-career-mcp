@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from linkedin_career_mcp.models import JobDetails, JobSearchQuery, JobSearchResult
+from linkedin_career_mcp.models import JobDetails, JobRawPayload, JobSearchQuery, JobSearchResult
 from linkedin_career_mcp.providers.base import JobProvider
 
 
@@ -24,3 +24,6 @@ class JobSearchService:
 
     async def get_details(self, job_id_or_url: str) -> JobDetails:
         return await self._provider.get_job_details(job_id_or_url)
+
+    async def get_raw_payload(self, job_id_or_url: str) -> JobRawPayload:
+        return await self._provider.get_job_raw_payload(job_id_or_url)

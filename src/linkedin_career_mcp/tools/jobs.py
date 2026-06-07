@@ -85,3 +85,18 @@ def register_job_tools(mcp: FastMCP, service: JobSearchService) -> None:
         except LinkedInCareerMcpError as exc:
             return {"error": str(exc)}
         return details.model_dump(mode="json")
+
+    @mcp.tool()
+    async def get_linkedin_job_raw_payload(
+        job_id_or_url: Annotated[
+            str,
+            Field(description="LinkedIn job ID or public LinkedIn job URL."),
+        ],
+    ) -> dict[str, object]:
+        """Fetch the raw public LinkedIn job detail payload and normalized parse."""
+
+        try:
+            payload = await service.get_raw_payload(job_id_or_url)
+        except LinkedInCareerMcpError as exc:
+            return {"error": str(exc)}
+        return payload.model_dump(mode="json")

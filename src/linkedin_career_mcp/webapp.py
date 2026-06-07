@@ -26,6 +26,10 @@ TRACKING_COLUMNS = (
     "applied_to",
     "date_applied",
 )
+APPLICATION_TEXT_COLUMNS = {
+    "job_description": "TEXT",
+    "prompt_job_description": "TEXT",
+}
 
 
 @dataclass(frozen=True)
@@ -33,6 +37,16 @@ class ImportResult:
     rows_seen: int
     rows_imported: int
     missing_resumes: int
+
+
+@dataclass(frozen=True)
+class ApplicationJobRecord:
+    job_id: str
+    company: str
+    job_title: str
+    linkedin_url: str
+    job_description: str | None
+    prompt_job_description: str | None
 
 
 def connect_database(database_path: Path) -> sqlite3.Connection:
@@ -51,6 +65,8 @@ def init_database(connection: sqlite3.Connection) -> None:
             company TEXT NOT NULL,
             job_title TEXT NOT NULL,
             linkedin_url TEXT NOT NULL,
+            job_description TEXT,
+            prompt_job_description TEXT,
             resume_filename TEXT NOT NULL,
             resume_content BLOB,
             resume_mime_type TEXT NOT NULL DEFAULT 'application/pdf',
@@ -63,6 +79,7 @@ def init_database(connection: sqlite3.Connection) -> None:
         )
         """
     )
+    _ensure_application_columns(connection)
     connection.execute(
         """
         CREATE UNIQUE INDEX IF NOT EXISTS applications_unique_linkedin_job_id
@@ -70,6 +87,14 @@ def init_database(connection: sqlite3.Connection) -> None:
         """
     )
     connection.commit()
+
+
+def _ensure_application_columns(connection: sqlite3.Connection) -> None:
+    rows = connection.execute("PRAGMA table_info(applications)").fetchall()
+    existing_columns = {str(row["name"]) for row in rows}
+    for column, column_type in APPLICATION_TEXT_COLUMNS.items():
+        if column not in existing_columns:
+            connection.execute(f"ALTER TABLE applications ADD COLUMN {column} {column_type}")
 
 
 def fetch_existing_resume_job_ids(database_path: Path) -> set[str]:
@@ -84,6 +109,49 @@ def fetch_existing_resume_job_ids(database_path: Path) -> set[str]:
     return {str(row["job_id"]) for row in rows}
 
 
+def fetch_application_job_records(
+    database_path: Path,
+    *,
+    job_ids: list[str] | None = None,
+) -> list[ApplicationJobRecord]:
+    with connect_database(database_path) as connection:
+        if job_ids is None:
+            rows = connection.execute(
+                """
+                SELECT job_id, company, job_title, linkedin_url, job_description,
+                       prompt_job_description
+                FROM applications
+                ORDER BY company COLLATE NOCASE ASC, job_title COLLATE NOCASE ASC
+                """
+            ).fetchall()
+        elif not job_ids:
+            rows = []
+        else:
+            placeholders = ", ".join("?" for _ in job_ids)
+            rows = connection.execute(
+                f"""
+                SELECT job_id, company, job_title, linkedin_url, job_description,
+                       prompt_job_description
+                FROM applications
+                WHERE job_id IN ({placeholders})
+                """,
+                job_ids,
+            ).fetchall()
+            row_by_job_id = {str(row["job_id"]): row for row in rows}
+            rows = [row_by_job_id[job_id] for job_id in job_ids if job_id in row_by_job_id]
+    return [
+        ApplicationJobRecord(
+            job_id=str(row["job_id"]),
+            company=str(row["company"] or ""),
+            job_title=str(row["job_title"] or ""),
+            linkedin_url=str(row["linkedin_url"] or ""),
+            job_description=row["job_description"],
+            prompt_job_description=row["prompt_job_description"],
+        )
+        for row in rows
+    ]
+
+
 def upsert_application_artifact(
     *,
     database_path: Path,
@@ -92,6 +160,8 @@ def upsert_application_artifact(
     job_title: str,
     linkedin_url: str,
     resume_path: Path,
+    job_description: str | None = None,
+    prompt_job_description: str | None = None,
     applied_to: str = "No",
     date_applied: str | None = None,
 ) -> None:
@@ -101,14 +171,23 @@ def upsert_application_artifact(
         connection.execute(
             """
             INSERT INTO applications (
-                job_id, company, job_title, linkedin_url, resume_filename, resume_content,
-                source_resume_path, applied_to, date_applied, imported_at, updated_at
+                job_id, company, job_title, linkedin_url, job_description,
+                prompt_job_description, resume_filename, resume_content, source_resume_path,
+                applied_to, date_applied, imported_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(job_id) DO UPDATE SET
                 company = excluded.company,
                 job_title = excluded.job_title,
                 linkedin_url = excluded.linkedin_url,
+                job_description = COALESCE(
+                    excluded.job_description,
+                    applications.job_description
+                ),
+                prompt_job_description = COALESCE(
+                    excluded.prompt_job_description,
+                    applications.prompt_job_description
+                ),
                 resume_filename = excluded.resume_filename,
                 resume_content = COALESCE(excluded.resume_content, applications.resume_content),
                 source_resume_path = excluded.source_resume_path,
@@ -124,6 +203,8 @@ def upsert_application_artifact(
                 company,
                 job_title,
                 linkedin_url,
+                job_description,
+                prompt_job_description,
                 resume_path.name,
                 resume_content,
                 str(resume_path),
@@ -298,6 +379,13 @@ def create_app(*, database_path: Path, output_dir: Path):
             download_name=row["resume_filename"],
             as_attachment=False,
         )
+
+    @app.get("/descriptions/<job_id>")
+    def compare_descriptions(job_id: str):
+        row = _fetch_application(database_path, job_id)
+        if row is None:
+            abort(404)
+        return render_template_string(DESCRIPTION_COMPARE_TEMPLATE, row=row)
 
     @app.get("/output/<path:relative_path>")
     def output_file(relative_path: str):
@@ -683,6 +771,13 @@ INDEX_TEMPLATE = """
                   >
                     Output PDF
                   </a>
+                  <a
+                    href="/descriptions/{{ row.job_id }}"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Compare descriptions
+                  </a>
                 </div>
               </td>
               <td>
@@ -768,6 +863,111 @@ INDEX_TEMPLATE = """
       }
     });
   </script>
+</body>
+</html>
+"""
+
+
+DESCRIPTION_COMPARE_TEMPLATE = """
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Description Compare - {{ row.company }} - {{ row.job_title }}</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #202124;
+      --muted: #626a73;
+      --line: #d9dee5;
+      --surface: #ffffff;
+      --band: #f4f6f8;
+      --accent: #0b6e69;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--band);
+      font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 24px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+    }
+    h1 { margin: 0; font-size: 20px; font-weight: 650; }
+    .meta { color: var(--muted); margin-top: 4px; }
+    a { color: var(--accent); font-weight: 650; }
+    main {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 16px;
+      padding: 16px 24px 24px;
+    }
+    section {
+      min-width: 0;
+      background: var(--surface);
+      border: 1px solid var(--line);
+    }
+    h2 {
+      margin: 0;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      font-size: 14px;
+      font-weight: 700;
+    }
+    pre {
+      min-height: calc(100vh - 160px);
+      max-height: calc(100vh - 160px);
+      margin: 0;
+      overflow: auto;
+      padding: 14px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #fff;
+      color: var(--ink);
+      font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    @media (max-width: 900px) {
+      header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+      main {
+        grid-template-columns: 1fr;
+        padding: 12px;
+      }
+      pre {
+        min-height: 48vh;
+        max-height: 48vh;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>{{ row.job_title }}</h1>
+      <div class="meta">{{ row.company }} · {{ row.job_id }}</div>
+    </div>
+    <a href="/" target="_self">Applications</a>
+  </header>
+  <main>
+    <section>
+      <h2>Parsed Job Description</h2>
+      <pre>{{ row.job_description or "No parsed job description is stored." }}</pre>
+    </section>
+    <section>
+      <h2>Prompt Job Description</h2>
+      <pre>{{ row.prompt_job_description or "No prompt job description is stored." }}</pre>
+    </section>
+  </main>
 </body>
 </html>
 """
