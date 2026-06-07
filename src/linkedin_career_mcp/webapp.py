@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import argparse
 import sqlite3
+import subprocess
+import sys
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from io import BytesIO
@@ -275,6 +278,15 @@ def create_app(*, database_path: Path, output_dir: Path):
         flash(f"Deleted {deleted_count} application rows.")
         return redirect(url_for("index"))
 
+    @app.get("/linkedin/<job_id>")
+    def open_linkedin_job(job_id: str):
+        row = _fetch_application(database_path, job_id)
+        if row is None or not row["linkedin_url"]:
+            abort(404)
+        _open_url_in_chromium(str(row["linkedin_url"]))
+        flash("Opened LinkedIn job in Chromium.")
+        return redirect(url_for("index"))
+
     @app.get("/resumes/<job_id>")
     def resume(job_id: str):
         row = _fetch_application(database_path, job_id)
@@ -308,6 +320,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--no-import", action="store_true")
+    parser.add_argument("--open-browser", action="store_true")
     args = parser.parse_args(argv)
 
     output_dir = Path(args.output_dir)
@@ -315,6 +328,8 @@ def main(argv: list[str] | None = None) -> None:
     if not args.no_import:
         import_output_artifacts(output_dir=output_dir, database_path=database_path)
     app = create_app(database_path=database_path, output_dir=output_dir)
+    if args.open_browser:
+        _schedule_browser_open(host=args.host, port=args.port)
     app.run(host=args.host, port=args.port, debug=args.debug)
 
 
@@ -373,6 +388,75 @@ def _delete_tracking_rows(*, tracking_path: Path, job_ids: set[str]) -> None:
         if job_id in job_ids:
             sheet.delete_rows(row_index, 1)
     workbook.save(tracking_path)
+
+
+def _schedule_browser_open(*, host: str, port: int) -> None:
+    url = _browser_url(host=host, port=port)
+
+    def open_url() -> None:
+        import webbrowser
+
+        webbrowser.open(url)
+
+    timer = threading.Timer(1.0, open_url)
+    timer.daemon = True
+    timer.start()
+
+
+def _browser_url(*, host: str, port: int) -> str:
+    browser_host = "127.0.0.1" if host in {"", "0.0.0.0", "::"} else host
+    if ":" in browser_host and not browser_host.startswith("["):
+        browser_host = f"[{browser_host}]"
+    return f"http://{browser_host}:{port}"
+
+
+def _open_url_in_chromium(url: str) -> None:
+    try:
+        subprocess.Popen(  # noqa: S603
+            [
+                sys.executable,
+                "-c",
+                _PLAYWRIGHT_CHROMIUM_SCRIPT,
+                url,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError:
+        _open_url_in_default_browser(url)
+
+
+def _open_url_in_default_browser(url: str) -> None:
+    import webbrowser
+
+    webbrowser.open(url)
+
+
+_PLAYWRIGHT_CHROMIUM_SCRIPT = r"""
+import sys
+
+url = sys.argv[1]
+
+try:
+    from playwright.sync_api import sync_playwright
+except Exception:
+    import webbrowser
+
+    webbrowser.open(url)
+    raise SystemExit(0)
+
+try:
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=False)
+        page = browser.new_page()
+        page.goto(url)
+        page.wait_for_event("close", timeout=0)
+except Exception:
+    import webbrowser
+
+    webbrowser.open(url)
+"""
 
 
 INDEX_TEMPLATE = """
@@ -588,7 +672,7 @@ INDEX_TEMPLATE = """
               </td>
               <td>
                 <div class="actions">
-                  <a href="{{ row.linkedin_url }}" target="_blank" rel="noreferrer">LinkedIn</a>
+                  <a href="/linkedin/{{ row.job_id }}">LinkedIn</a>
                   <a href="/resumes/{{ row.job_id }}" target="_blank" rel="noreferrer">
                     DB PDF
                   </a>
