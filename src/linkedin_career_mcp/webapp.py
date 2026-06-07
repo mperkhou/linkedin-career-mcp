@@ -380,6 +380,13 @@ def create_app(*, database_path: Path, output_dir: Path):
             as_attachment=False,
         )
 
+    @app.get("/descriptions/<job_id>")
+    def compare_descriptions(job_id: str):
+        row = _fetch_application(database_path, job_id)
+        if row is None:
+            abort(404)
+        return render_template_string(DESCRIPTION_COMPARE_TEMPLATE, row=row)
+
     @app.get("/output/<path:relative_path>")
     def output_file(relative_path: str):
         target = (output_dir / relative_path).resolve()
@@ -764,6 +771,13 @@ INDEX_TEMPLATE = """
                   >
                     Output PDF
                   </a>
+                  <a
+                    href="/descriptions/{{ row.job_id }}"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Compare descriptions
+                  </a>
                 </div>
               </td>
               <td>
@@ -849,6 +863,111 @@ INDEX_TEMPLATE = """
       }
     });
   </script>
+</body>
+</html>
+"""
+
+
+DESCRIPTION_COMPARE_TEMPLATE = """
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Description Compare - {{ row.company }} - {{ row.job_title }}</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #202124;
+      --muted: #626a73;
+      --line: #d9dee5;
+      --surface: #ffffff;
+      --band: #f4f6f8;
+      --accent: #0b6e69;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--band);
+      font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 24px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+    }
+    h1 { margin: 0; font-size: 20px; font-weight: 650; }
+    .meta { color: var(--muted); margin-top: 4px; }
+    a { color: var(--accent); font-weight: 650; }
+    main {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 16px;
+      padding: 16px 24px 24px;
+    }
+    section {
+      min-width: 0;
+      background: var(--surface);
+      border: 1px solid var(--line);
+    }
+    h2 {
+      margin: 0;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      font-size: 14px;
+      font-weight: 700;
+    }
+    pre {
+      min-height: calc(100vh - 160px);
+      max-height: calc(100vh - 160px);
+      margin: 0;
+      overflow: auto;
+      padding: 14px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #fff;
+      color: var(--ink);
+      font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    @media (max-width: 900px) {
+      header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+      main {
+        grid-template-columns: 1fr;
+        padding: 12px;
+      }
+      pre {
+        min-height: 48vh;
+        max-height: 48vh;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>{{ row.job_title }}</h1>
+      <div class="meta">{{ row.company }} · {{ row.job_id }}</div>
+    </div>
+    <a href="/" target="_self">Applications</a>
+  </header>
+  <main>
+    <section>
+      <h2>Parsed Job Description</h2>
+      <pre>{{ row.job_description or "No parsed job description is stored." }}</pre>
+    </section>
+    <section>
+      <h2>Prompt Job Description</h2>
+      <pre>{{ row.prompt_job_description or "No prompt job description is stored." }}</pre>
+    </section>
+  </main>
 </body>
 </html>
 """

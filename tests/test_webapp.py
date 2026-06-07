@@ -87,9 +87,31 @@ def test_import_output_artifacts_stores_workbook_rows_and_resume_blob(tmp_path: 
     assert result.rows_imported == 1
     assert result.missing_resumes == 0
     assert database_path.exists()
+    webapp.upsert_application_artifact(
+        database_path=database_path,
+        job_id="123",
+        company="Example Co",
+        job_title="Senior Engineer",
+        linkedin_url="https://www.linkedin.com/jobs/view/123",
+        resume_path=resume_path,
+        job_description="Full parsed JOD with mission boilerplate and role requirements.",
+        prompt_job_description="Clean prompt JOD with role requirements.",
+    )
 
     app = create_app(database_path=database_path, output_dir=output_dir)
     client = app.test_client()
+
+    index = client.get("/")
+    assert index.status_code == 200
+    assert b"/descriptions/123" in index.data
+    assert b"Compare descriptions" in index.data
+
+    descriptions = client.get("/descriptions/123")
+    assert descriptions.status_code == 200
+    assert b"Parsed Job Description" in descriptions.data
+    assert b"Prompt Job Description" in descriptions.data
+    assert b"Full parsed JOD with mission boilerplate and role requirements." in descriptions.data
+    assert b"Clean prompt JOD with role requirements." in descriptions.data
 
     db_resume = client.get("/resumes/123")
     assert db_resume.status_code == 200
