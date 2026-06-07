@@ -340,8 +340,8 @@ async def test_regenerate_resumes_uses_database_jobs_and_fetches_missing_descrip
         job_title="Existing Engineer",
         linkedin_url="https://www.linkedin.com/jobs/view/111",
         resume_path=stored_resume,
-        job_description="Raw stored JOD with company boilerplate.",
-        prompt_job_description="Stored prompt JOD with AI Experience.",
+        job_description="Raw stored JOD with AI Experience.",
+        prompt_job_description="Over-trimmed stored prompt JOD.",
     )
     upsert_application_artifact(
         database_path=database_path,
@@ -367,7 +367,8 @@ async def test_regenerate_resumes_uses_database_jobs_and_fetches_missing_descrip
     assert result.resumes_created == 2
     assert [artifact.job_id for artifact in result.artifacts] == ["111", "333"]
     assert service.detail_requests == ["https://www.linkedin.com/jobs/view/333"]
-    assert any("Stored prompt JOD with AI Experience." in prompt for prompt in ollama.text_prompts)
+    assert any("Raw stored JOD with AI Experience." in prompt for prompt in ollama.text_prompts)
+    assert not any("Over-trimmed stored prompt JOD." in prompt for prompt in ollama.text_prompts)
     with connect_database(database_path) as connection:
         rows = connection.execute(
             """
@@ -377,8 +378,8 @@ async def test_regenerate_resumes_uses_database_jobs_and_fetches_missing_descrip
             """
         ).fetchall()
     row_by_job_id = {row["job_id"]: row for row in rows}
-    assert row_by_job_id["111"]["job_description"] == "Raw stored JOD with company boilerplate."
-    assert row_by_job_id["111"]["prompt_job_description"] == "Stored prompt JOD with AI Experience."
+    assert row_by_job_id["111"]["job_description"] == "Raw stored JOD with AI Experience."
+    assert row_by_job_id["111"]["prompt_job_description"] == "Raw stored JOD with AI Experience."
     assert row_by_job_id["333"]["job_description"] == (
         "Fresh role that should count toward max_jobs."
     )

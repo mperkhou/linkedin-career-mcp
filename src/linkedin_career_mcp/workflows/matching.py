@@ -90,6 +90,10 @@ ROLE_RELEVANT_START_HEADINGS = (
     "What You’ll Do",
     "What You'll Do",
     "What You Will Do",
+    "What You’ll Be Doing",
+    "What You'll Be Doing",
+    "What You Will Be Doing",
+    "What We Need To See",
     "Key Responsibilities",
     "Responsibilities",
     "What You’ll Bring",
@@ -129,17 +133,36 @@ TRAILING_BOILERPLATE_HEADINGS = (
     "Benefits & Perks",
     "Pay & Benefits",
     "Our Benefits",
+    "Perks & Benefits",
     "Health & Wellness",
     "Financial Well-being",
     "Family Support",
     "Growth & Development",
     "Time Off & Flexibility",
+    "What We Offer",
     "Compensation",
+    "Compensation Range",
     "Equal Opportunity",
+    "Equal opportunity employer",
     "Diversity, Equity",
     "How we feel about Diversity",
+    "Accommodations",
+    "For US Applicants",
+    "Benefits Offering",
     "Privacy Statement",
+    "Privacy Notice",
+    "Applicant Privacy Notice",
     "Applicant Notice",
+    "By providing your information",
+    "Your base salary",
+    "US base salary range",
+    "US Salary Range",
+    "The base salary range",
+    "Base salary range",
+    "Salary range",
+    "Applications for this job",
+    "This posting is for",
+    "NVIDIA uses AI tools",
 )
 DEFAULT_CORE_TECHNICAL_SKILLS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
@@ -1138,7 +1161,7 @@ def _regeneration_candidate_from_record(record: ApplicationJobRecord) -> _Regene
             title=record.job_title or "Unknown title",
             company=record.company or None,
             job_url=record.linkedin_url or None,
-            description=record.prompt_job_description or record.job_description,
+            description=record.job_description or record.prompt_job_description,
         ),
         stored_job_description=record.job_description,
     )
@@ -1197,10 +1220,16 @@ def _trim_low_signal_preamble(description: str) -> str:
 
 
 def _trim_trailing_boilerplate(description: str) -> str:
+    last_role_start = max(
+        (match.start() for match in _heading_matches(description, ROLE_RELEVANT_START_HEADINGS)),
+        default=-1,
+    )
     boilerplate = _first_heading_match(
         description,
         TRAILING_BOILERPLATE_HEADINGS,
         start=max(1, min(len(description), 300)),
+        skip_before=last_role_start,
+        strict_single_word=True,
     )
     if boilerplate is None:
         return description
@@ -1212,21 +1241,78 @@ def _first_heading_match(
     headings: tuple[str, ...],
     *,
     start: int = 0,
+    skip_before: int = -1,
+    strict_single_word: bool = False,
 ) -> re.Match[str] | None:
-    matches = [
-        match
-        for heading in headings
-        if (match := _heading_pattern(heading).search(text, pos=start)) is not None
-    ]
+    matches = _heading_matches(
+        text,
+        headings,
+        start=start,
+        skip_before=skip_before,
+        strict_single_word=strict_single_word,
+    )
     if not matches:
         return None
     return min(matches, key=lambda match: match.start())
 
 
+def _heading_matches(
+    text: str,
+    headings: tuple[str, ...],
+    *,
+    start: int = 0,
+    skip_before: int = -1,
+    strict_single_word: bool = False,
+) -> list[re.Match[str]]:
+    matches: list[re.Match[str]] = []
+    for heading in headings:
+        for match in _heading_pattern(heading).finditer(text, pos=start):
+            if match.start() < skip_before:
+                continue
+            if _is_heading_like_match(
+                text,
+                match,
+                heading=heading,
+                strict_single_word=strict_single_word,
+            ):
+                matches.append(match)
+    return sorted(matches, key=lambda match: match.start())
+
+
 def _heading_pattern(heading: str) -> re.Pattern[str]:
     parts = [re.escape(part) for part in heading.split()]
     pattern = r"\s+".join(parts)
-    return re.compile(rf"(?<![\w/]){pattern}(?=\s|[:?!.,;()\-/]|$)", re.IGNORECASE)
+    return re.compile(rf"(?<![\w/]){pattern}(?=\s|[:?!.,;()\-/–—]|$)", re.IGNORECASE)
+
+
+def _is_heading_like_match(
+    text: str,
+    match: re.Match[str],
+    *,
+    heading: str,
+    strict_single_word: bool,
+) -> bool:
+    matched_text = match.group(0)
+    first_alpha = next((char for char in matched_text if char.isalpha()), "")
+    if first_alpha and not first_alpha.isupper():
+        return False
+
+    heading_word_count = len(heading.split())
+    previous_index = match.start() - 1
+    while previous_index >= 0 and text[previous_index].isspace():
+        previous_index -= 1
+    if (
+        previous_index >= 0
+        and text[previous_index] not in ".!?:;\n\r"
+        and heading_word_count == 1
+    ):
+        return False
+
+    if strict_single_word and heading_word_count == 1:
+        suffix = text[match.end() :].lstrip()
+        if suffix and suffix[0] not in ":-–—\n\r":
+            return False
+    return True
 
 
 def _normalize_job_description_text(description: str) -> str:

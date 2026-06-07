@@ -204,6 +204,60 @@ def test_job_description_context_keeps_concise_company_context_before_role():
     assert "React and TypeScript" in context
 
 
+def test_job_description_context_does_not_trim_sentence_case_responsibilities():
+    job = JobDetails(
+        job_id="4395481257",
+        title="Senior Software Engineer - HPC",
+        company="NVIDIA",
+        description=(
+            "NVIDIA has been transforming accelerated computing for more than 25 years. "
+            "We are looking for a Senior Software Engineer to improve HPC infrastructure. "
+            "What We Need To See Strong coding skills in Go, Python, or C++ with a focus "
+            "on backend, systems, or infrastructure engineering. Experience owning services "
+            "end-to-end: architecture, reviews, implementation, testing, rollout, and "
+            "observability. Maintainer or co-maintainer responsibilities for an open source "
+            "component used in production at large scale. Your base salary will be determined "
+            "based on your location and experience. NVIDIA is committed to fostering a diverse "
+            "work environment."
+        ),
+    )
+
+    context = _job_description_context(job)
+
+    assert context.startswith("NVIDIA has been transforming")
+    assert "What We Need To See" in context
+    assert "co-maintainer responsibilities for an open source component" in context
+    assert "Your base salary" not in context
+    assert "NVIDIA is committed" not in context
+
+
+def test_job_description_context_keeps_role_details_after_internal_compensation_text():
+    job = JobDetails(
+        job_id="4413455860",
+        title="Senior Software Engineer, Content Platform",
+        company="Roku",
+        description=(
+            "Roku is changing how the world watches TV. We offer you the opportunity to "
+            "delight millions of streamers. About the role Roku continues to innovate "
+            "and lead the industry. For California Only - The estimated annual salary "
+            "for this position is between $300,000 - $425,000 annually. Compensation "
+            "packages are based on factors unique to each candidate. This role is "
+            "eligible for health insurance, equity awards, life insurance, disability "
+            "benefits, parental leave, wellness benefits, and paid time off. What you'll "
+            "be doing Design and Development: Architect, develop, and maintain scalable "
+            "backend systems and APIs using Java and Akka. Build distributed data "
+            "pipelines for batch and real-time processing."
+        ),
+    )
+
+    context = _job_description_context(job)
+
+    assert "the opportunity to delight millions" in context
+    assert "About the role" in context
+    assert "What you'll be doing" in context
+    assert "Design and Development" in context
+
+
 def test_render_resume_template_preserves_static_sections():
     text = _render_resume_template(
         tailored_scjdir=(
