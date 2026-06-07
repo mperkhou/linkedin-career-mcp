@@ -39,6 +39,16 @@ class ImportResult:
     missing_resumes: int
 
 
+@dataclass(frozen=True)
+class ApplicationJobRecord:
+    job_id: str
+    company: str
+    job_title: str
+    linkedin_url: str
+    job_description: str | None
+    prompt_job_description: str | None
+
+
 def connect_database(database_path: Path) -> sqlite3.Connection:
     database_path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(database_path)
@@ -97,6 +107,49 @@ def fetch_existing_resume_job_ids(database_path: Path) -> set[str]:
             """
         ).fetchall()
     return {str(row["job_id"]) for row in rows}
+
+
+def fetch_application_job_records(
+    database_path: Path,
+    *,
+    job_ids: list[str] | None = None,
+) -> list[ApplicationJobRecord]:
+    with connect_database(database_path) as connection:
+        if job_ids is None:
+            rows = connection.execute(
+                """
+                SELECT job_id, company, job_title, linkedin_url, job_description,
+                       prompt_job_description
+                FROM applications
+                ORDER BY company COLLATE NOCASE ASC, job_title COLLATE NOCASE ASC
+                """
+            ).fetchall()
+        elif not job_ids:
+            rows = []
+        else:
+            placeholders = ", ".join("?" for _ in job_ids)
+            rows = connection.execute(
+                f"""
+                SELECT job_id, company, job_title, linkedin_url, job_description,
+                       prompt_job_description
+                FROM applications
+                WHERE job_id IN ({placeholders})
+                """,
+                job_ids,
+            ).fetchall()
+            row_by_job_id = {str(row["job_id"]): row for row in rows}
+            rows = [row_by_job_id[job_id] for job_id in job_ids if job_id in row_by_job_id]
+    return [
+        ApplicationJobRecord(
+            job_id=str(row["job_id"]),
+            company=str(row["company"] or ""),
+            job_title=str(row["job_title"] or ""),
+            linkedin_url=str(row["linkedin_url"] or ""),
+            job_description=row["job_description"],
+            prompt_job_description=row["prompt_job_description"],
+        )
+        for row in rows
+    ]
 
 
 def upsert_application_artifact(

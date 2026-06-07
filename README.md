@@ -171,7 +171,25 @@ Run the matching workflow:
 make match-jobs
 ```
 
-Equivalent executable:
+Regenerate resumes for jobs already stored in SQLite:
+
+```bash
+make regenerate-resumes
+make regenerate-resumes JOB_IDS="4407411418 4342788295"
+```
+
+Regeneration equivalent executable:
+
+```bash
+.venv/bin/linkedin-career-regenerate-resumes all
+.venv/bin/linkedin-career-regenerate-resumes 4407411418 4342788295
+```
+
+Regeneration reuses `prompt_job_description` or `job_description` from SQLite. It only fetches
+LinkedIn details for older rows that do not have either description, waiting two seconds between
+those fallback LinkedIn lookups by default.
+
+Matching equivalent executable:
 
 ```bash
 .venv/bin/linkedin-career-match-jobs \

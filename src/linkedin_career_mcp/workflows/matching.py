@@ -30,6 +30,8 @@ from linkedin_career_mcp.webapp import (
     DEFAULT_DATABASE as APPLICATION_DATABASE,
 )
 from linkedin_career_mcp.webapp import (
+    ApplicationJobRecord,
+    fetch_application_job_records,
     fetch_existing_resume_job_ids,
     import_output_artifacts,
     upsert_application_artifact,
@@ -410,6 +412,12 @@ class _SearchMemory:
         return self.query_key(query) in self.attempted_query_keys
 
 
+@dataclass(frozen=True)
+class _RegenerationCandidate:
+    job: JobDetails
+    stored_job_description: str | None
+
+
 MAX_ITERATIVE_SEARCHES = 1000
 MIN_SEARCHES_BEFORE_STOP = 4
 
@@ -521,62 +529,21 @@ class MatchingJobsWorkflow:
         artifacts: list[TailoredResumeArtifact] = []
         for job in candidates:
             try:
-                resume_text = await self._generate_resume_text(
+                artifact = await self._generate_and_store_resume(
                     source_resume=source_resume,
                     current_job_description=current_job_description,
                     job=job,
-                )
-                artifact_kind: Literal["resume", "recommendations"] = "resume"
-                recommendations_path: Path | None = None
-                if _looks_like_recommendations(resume_text):
-                    artifact_kind = "recommendations"
-                    recommendations_text = await self._generate_recommendations_text(
-                        source_resume=source_resume,
-                        current_job_description=current_job_description,
-                        job=job,
-                        draft_text=resume_text,
-                    )
-                    resume_path = write_resume_recommendations_pdf(
-                        recommendations_text=recommendations_text,
-                        output_dir=output_dir,
-                        job=job,
-                    )
-                    recommendations_path = resume_path
-                else:
-                    resume_path = write_resume_pdf(
-                        resume_text=resume_text,
-                        output_dir=output_dir,
-                        job=job,
-                    )
-                append_tracking_row(tracking_path=tracking_path, job=job, resume_path=resume_path)
-                prompt_job_description = _job_description_context(job)
-                upsert_application_artifact(
-                    database_path=application_database_path,
-                    job_id=job.job_id,
-                    company=job.company or "",
-                    job_title=job.title,
-                    linkedin_url=str(job.job_url) if job.job_url else "",
-                    resume_path=resume_path,
-                    job_description=job.description,
-                    prompt_job_description=prompt_job_description,
+                    output_dir=output_dir,
+                    tracking_path=tracking_path,
+                    application_database_path=application_database_path,
+                    append_tracking=True,
+                    stored_job_description=job.description,
                 )
                 existing_resume_job_ids.add(job.job_id)
             except LinkedInCareerMcpError as exc:
                 errors.append(f"{job.job_id}: {exc}")
                 continue
-            artifacts.append(
-                TailoredResumeArtifact(
-                    job_id=job.job_id,
-                    company=job.company,
-                    title=job.title,
-                    linkedin_url=str(job.job_url) if job.job_url else None,
-                    resume_path=str(resume_path),
-                    artifact_kind=artifact_kind,
-                    recommendations_path=(
-                        str(recommendations_path) if recommendations_path else None
-                    ),
-                )
-            )
+            artifacts.append(artifact)
 
         return MatchingJobsWorkflowResult(
             profile_files=[str(document.path) for document in profile_documents],
@@ -591,6 +558,157 @@ class MatchingJobsWorkflow:
             skipped_existing=skipped_existing,
             errors=errors,
             artifacts=artifacts,
+        )
+
+    async def regenerate_resumes(
+        self,
+        *,
+        profile_dir: Path = DEFAULT_PROFILE_DIR,
+        output_dir: Path = DEFAULT_OUTPUT_DIR,
+        source_resume_name: str = DEFAULT_SOURCE_RESUME,
+        current_job_description_name: str = DEFAULT_CURRENT_JOB_DESCRIPTION,
+        job_ids: list[str] | None = None,
+        linkedin_delay_seconds: float = 2.0,
+    ) -> MatchingJobsWorkflowResult:
+        profile_documents = load_profile_documents(profile_dir)
+        source_resume = _find_source_resume(profile_documents, source_resume_name)
+        current_job_description = _find_source_resume(
+            profile_documents,
+            current_job_description_name,
+        )
+        tracking_path = output_dir / TRACKING_WORKBOOK
+        application_database_path = output_dir / APPLICATION_DATABASE
+        if tracking_path.exists():
+            import_output_artifacts(output_dir=output_dir, database_path=application_database_path)
+
+        normalized_job_ids = _normalize_regeneration_job_ids(job_ids)
+        records = fetch_application_job_records(
+            application_database_path,
+            job_ids=normalized_job_ids,
+        )
+        errors: list[str] = []
+        if normalized_job_ids is not None:
+            found_job_ids = {record.job_id for record in records}
+            for job_id in normalized_job_ids:
+                if job_id not in found_job_ids:
+                    errors.append(f"{job_id}: not found in application database.")
+        if not records and normalized_job_ids is None:
+            errors.append(f"No existing jobs were found in {application_database_path}.")
+
+        candidates: list[_RegenerationCandidate] = []
+        linkedin_fetch_count = 0
+        for record in records:
+            if record.prompt_job_description or record.job_description:
+                candidates.append(_regeneration_candidate_from_record(record))
+                continue
+            try:
+                if linkedin_fetch_count > 0 and linkedin_delay_seconds > 0:
+                    await asyncio.sleep(linkedin_delay_seconds)
+                details = await self._service.get_details(record.linkedin_url or record.job_id)
+                linkedin_fetch_count += 1
+            except LinkedInCareerMcpError as exc:
+                errors.append(f"{record.job_id}: {exc}")
+                continue
+            candidates.append(
+                _RegenerationCandidate(
+                    job=_merge_record_with_fetched_details(record, details),
+                    stored_job_description=details.description,
+                )
+            )
+
+        artifacts: list[TailoredResumeArtifact] = []
+        for candidate in candidates:
+            try:
+                artifact = await self._generate_and_store_resume(
+                    source_resume=source_resume,
+                    current_job_description=current_job_description,
+                    job=candidate.job,
+                    output_dir=output_dir,
+                    tracking_path=tracking_path,
+                    application_database_path=application_database_path,
+                    append_tracking=False,
+                    stored_job_description=candidate.stored_job_description,
+                )
+            except LinkedInCareerMcpError as exc:
+                errors.append(f"{candidate.job.job_id}: {exc}")
+                continue
+            artifacts.append(artifact)
+
+        return MatchingJobsWorkflowResult(
+            profile_files=[str(document.path) for document in profile_documents],
+            search_queries=[],
+            jobs_found=len(candidates),
+            resumes_created=sum(1 for artifact in artifacts if artifact.artifact_kind == "resume"),
+            recommendations_created=sum(
+                1 for artifact in artifacts if artifact.artifact_kind == "recommendations"
+            ),
+            tracking_spreadsheet=str(tracking_path),
+            skipped_blacklisted=[],
+            skipped_existing=[],
+            errors=errors,
+            artifacts=artifacts,
+        )
+
+    async def _generate_and_store_resume(
+        self,
+        *,
+        source_resume: ProfileDocument | None,
+        current_job_description: ProfileDocument | None,
+        job: JobDetails,
+        output_dir: Path,
+        tracking_path: Path,
+        application_database_path: Path,
+        append_tracking: bool,
+        stored_job_description: str | None = None,
+    ) -> TailoredResumeArtifact:
+        resume_text = await self._generate_resume_text(
+            source_resume=source_resume,
+            current_job_description=current_job_description,
+            job=job,
+        )
+        artifact_kind: Literal["resume", "recommendations"] = "resume"
+        recommendations_path: Path | None = None
+        if _looks_like_recommendations(resume_text):
+            artifact_kind = "recommendations"
+            recommendations_text = await self._generate_recommendations_text(
+                source_resume=source_resume,
+                current_job_description=current_job_description,
+                job=job,
+                draft_text=resume_text,
+            )
+            resume_path = write_resume_recommendations_pdf(
+                recommendations_text=recommendations_text,
+                output_dir=output_dir,
+                job=job,
+            )
+            recommendations_path = resume_path
+        else:
+            resume_path = write_resume_pdf(
+                resume_text=resume_text,
+                output_dir=output_dir,
+                job=job,
+            )
+        if append_tracking:
+            append_tracking_row(tracking_path=tracking_path, job=job, resume_path=resume_path)
+        prompt_job_description = _job_description_context(job)
+        upsert_application_artifact(
+            database_path=application_database_path,
+            job_id=job.job_id,
+            company=job.company or "",
+            job_title=job.title,
+            linkedin_url=str(job.job_url) if job.job_url else "",
+            resume_path=resume_path,
+            job_description=stored_job_description,
+            prompt_job_description=prompt_job_description,
+        )
+        return TailoredResumeArtifact(
+            job_id=job.job_id,
+            company=job.company,
+            title=job.title,
+            linkedin_url=str(job.job_url) if job.job_url else None,
+            resume_path=str(resume_path),
+            artifact_kind=artifact_kind,
+            recommendations_path=str(recommendations_path) if recommendations_path else None,
         )
 
     async def _generate_search_queries(
@@ -978,6 +1096,56 @@ def _find_source_resume(
         if document.path.name == source_resume_name:
             return document
     return None
+
+
+def _normalize_regeneration_job_ids(job_ids: list[str] | None) -> list[str] | None:
+    if job_ids is None:
+        return None
+    normalized = _dedupe_preserve_order([job_id.strip() for job_id in job_ids if job_id.strip()])
+    if not normalized:
+        return None
+    all_markers = [job_id for job_id in normalized if job_id.casefold() == "all"]
+    if all_markers and len(normalized) > 1:
+        raise WorkflowError("Use either 'all' or explicit LinkedIn job IDs, not both.")
+    if all_markers:
+        return None
+    return normalized
+
+
+def _regeneration_candidate_from_record(record: ApplicationJobRecord) -> _RegenerationCandidate:
+    return _RegenerationCandidate(
+        job=JobDetails(
+            job_id=record.job_id,
+            title=record.job_title or "Unknown title",
+            company=record.company or None,
+            job_url=record.linkedin_url or None,
+            description=record.prompt_job_description or record.job_description,
+        ),
+        stored_job_description=record.job_description,
+    )
+
+
+def _merge_record_with_fetched_details(
+    record: ApplicationJobRecord,
+    details: JobDetails,
+) -> JobDetails:
+    return JobDetails(
+        job_id=record.job_id,
+        title=details.title if details.title != "Unknown title" else record.job_title,
+        company=details.company or record.company or None,
+        location=details.location,
+        listed_at=details.listed_at,
+        posted_text=details.posted_text,
+        job_url=details.job_url or record.linkedin_url or None,
+        company_url=details.company_url,
+        workplace_type=details.workplace_type,
+        source=details.source,
+        description=details.description or record.job_description or record.prompt_job_description,
+        seniority_level=details.seniority_level,
+        employment_type=details.employment_type,
+        job_function=details.job_function,
+        industries=details.industries,
+    )
 
 
 def _job_description_context(job: JobDetails) -> str:
@@ -1765,6 +1933,29 @@ async def run_from_cli(args: argparse.Namespace) -> MatchingJobsWorkflowResult:
         await llm.aclose()
 
 
+async def run_regenerate_from_cli(args: argparse.Namespace) -> MatchingJobsWorkflowResult:
+    settings = load_settings()
+    provider = LinkedInPublicJobsProvider(
+        user_agent=settings.user_agent,
+        timeout_seconds=settings.timeout_seconds,
+    )
+    service = JobSearchService(provider=provider, max_results=settings.max_results)
+    llm = _build_llm_client(settings)
+    workflow = MatchingJobsWorkflow(service=service, ollama=llm)
+    try:
+        return await workflow.regenerate_resumes(
+            profile_dir=Path(args.profile_dir),
+            output_dir=Path(args.output_dir),
+            source_resume_name=args.source_resume_name,
+            current_job_description_name=args.current_job_description_name,
+            job_ids=args.job_ids,
+            linkedin_delay_seconds=args.linkedin_delay_seconds,
+        )
+    finally:
+        await provider.aclose()
+        await llm.aclose()
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Find matching LinkedIn jobs and tailor resumes.")
     parser.add_argument("--profile-dir", default=str(DEFAULT_PROFILE_DIR))
@@ -1784,9 +1975,33 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def build_regenerate_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Regenerate resumes for jobs already stored in the application database."
+    )
+    parser.add_argument(
+        "job_ids",
+        nargs="*",
+        default=["all"],
+        help="Use 'all' or one or more LinkedIn job IDs.",
+    )
+    parser.add_argument("--profile-dir", default=str(DEFAULT_PROFILE_DIR))
+    parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR))
+    parser.add_argument("--source-resume-name", default=DEFAULT_SOURCE_RESUME)
+    parser.add_argument("--current-job-description-name", default=DEFAULT_CURRENT_JOB_DESCRIPTION)
+    parser.add_argument("--linkedin-delay-seconds", type=float, default=2.0)
+    return parser
+
+
 def main() -> None:
     parser = build_arg_parser()
     result = asyncio.run(run_from_cli(parser.parse_args()))
+    print(json.dumps(result.model_dump(mode="json"), indent=2))
+
+
+def regenerate_main() -> None:
+    parser = build_regenerate_arg_parser()
+    result = asyncio.run(run_regenerate_from_cli(parser.parse_args()))
     print(json.dumps(result.model_dump(mode="json"), indent=2))
 
 

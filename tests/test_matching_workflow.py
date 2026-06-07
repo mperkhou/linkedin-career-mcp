@@ -22,7 +22,12 @@ from linkedin_career_mcp.workflows.matching import (
 
 
 class FakeOllama:
+    def __init__(self) -> None:
+        self.text_prompts: list[str] = []
+        self.json_prompts: list[str] = []
+
     async def generate_json(self, prompt: str) -> dict[str, object]:
+        self.json_prompts.append(prompt)
         if "core_technical_skills" in prompt:
             return {
                 "core_technical_skills": [
@@ -67,6 +72,7 @@ class FakeOllama:
         }
 
     async def generate_text(self, prompt: str) -> str:
+        self.text_prompts.append(prompt)
         return (
             "**Oracle | Remote / International Datacenters**\n"
             "**Senior Technical Lead - Cloud Automation Engineer | Feb 2022 - Present**\n"
@@ -301,3 +307,74 @@ async def test_matching_workflow_skips_existing_database_jobs_without_counting_t
     assert result.artifacts[0].job_id == "333"
     assert "Existing Co - Existing Engineer" in result.skipped_existing
     assert fetch_existing_resume_job_ids(database_path) == {"111", "333"}
+
+
+async def test_regenerate_resumes_uses_database_jobs_and_fetches_missing_descriptions(
+    tmp_path: Path,
+):
+    profile_dir = tmp_path / "profile"
+    profile_dir.mkdir()
+    (profile_dir / "MP-RESUME-AGENTIC.txt").write_text(
+        "Resume: built MCP servers and local LLM workflows.",
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "output"
+    database_path = output_dir / DEFAULT_DATABASE
+    stored_resume = output_dir / "resumes/Existing_Co/111_existing_engineer/resume.pdf"
+    stored_resume.parent.mkdir(parents=True)
+    stored_resume.write_bytes(b"%PDF-1.4 existing")
+    missing_description_resume = output_dir / "resumes/Fresh_Co/333_fresh_platform/resume.pdf"
+    missing_description_resume.parent.mkdir(parents=True)
+    missing_description_resume.write_bytes(b"%PDF-1.4 existing")
+    upsert_application_artifact(
+        database_path=database_path,
+        job_id="111",
+        company="Existing Co",
+        job_title="Existing Engineer",
+        linkedin_url="https://www.linkedin.com/jobs/view/111",
+        resume_path=stored_resume,
+        job_description="Raw stored JOD with company boilerplate.",
+        prompt_job_description="Stored prompt JOD with AI Experience.",
+    )
+    upsert_application_artifact(
+        database_path=database_path,
+        job_id="333",
+        company="Fresh Co",
+        job_title="Fresh Platform Engineer",
+        linkedin_url="https://www.linkedin.com/jobs/view/333",
+        resume_path=missing_description_resume,
+    )
+    service = ExistingThenNewJobService()
+    ollama = FakeOllama()
+    workflow = MatchingJobsWorkflow(service=service, ollama=ollama)
+
+    result = await workflow.regenerate_resumes(
+        profile_dir=profile_dir,
+        output_dir=output_dir,
+        source_resume_name="MP-RESUME-AGENTIC.txt",
+        job_ids=["111", "333"],
+        linkedin_delay_seconds=0,
+    )
+
+    assert result.jobs_found == 2
+    assert result.resumes_created == 2
+    assert [artifact.job_id for artifact in result.artifacts] == ["111", "333"]
+    assert service.detail_requests == ["https://www.linkedin.com/jobs/view/333"]
+    assert any("Stored prompt JOD with AI Experience." in prompt for prompt in ollama.text_prompts)
+    with connect_database(database_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT job_id, job_description, prompt_job_description
+            FROM applications
+            ORDER BY job_id
+            """
+        ).fetchall()
+    row_by_job_id = {row["job_id"]: row for row in rows}
+    assert row_by_job_id["111"]["job_description"] == "Raw stored JOD with company boilerplate."
+    assert row_by_job_id["111"]["prompt_job_description"] == "Stored prompt JOD with AI Experience."
+    assert row_by_job_id["333"]["job_description"] == (
+        "Fresh role that should count toward max_jobs."
+    )
+    assert row_by_job_id["333"]["prompt_job_description"] == (
+        "Fresh role that should count toward max_jobs."
+    )

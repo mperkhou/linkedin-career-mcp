@@ -9,8 +9,10 @@ OLLAMA_MODEL ?= qwen3:4b
 OLLAMA_INSTALL_URL ?= https://ollama.com/install.sh
 WEBSITE_HOST ?= 127.0.0.1
 WEBSITE_PORT ?= 8765
+JOB_IDS ?= all
+LINKEDIN_DELAY_SECONDS ?= 2
 
-.PHONY: install install-python install-ollama ollama-model venv skill-link match-jobs launch-website stop-website restart-website test lint clean
+.PHONY: install install-python install-ollama ollama-model venv skill-link match-jobs regenerate-resumes launch-website stop-website restart-website test lint clean
 
 install: install-python install-ollama ollama-model skill-link
 
@@ -51,6 +53,9 @@ ollama-model:
 
 match-jobs: venv
 	$(VENV)/bin/linkedin-career-match-jobs
+
+regenerate-resumes: venv
+	$(VENV)/bin/linkedin-career-regenerate-resumes $(JOB_IDS) --linkedin-delay-seconds "$(LINKEDIN_DELAY_SECONDS)"
 
 launch-website: venv
 	$(VENV)/bin/linkedin-career-webapp --host "$(WEBSITE_HOST)" --port "$(WEBSITE_PORT)" --open-browser
