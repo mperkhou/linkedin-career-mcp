@@ -70,6 +70,14 @@ RESUME_SECTION_HEADINGS = {
     "Education & Certifications",
 }
 JOB_DESCRIPTION_PROMPT_MAX_CHARS = 12_000
+DISALLOWED_CORE_SKILLS = {
+    "error budget",
+    "error budgets",
+    "error budget analysis",
+}
+LEADING_BULLET_RE = re.compile(
+    r"^(?:[-*]|\u2022|\u2023|\u25e6|\u2043|\u2219|\u25cf|\u25cb)\s+"
+)
 ROLE_RELEVANT_START_HEADINGS = (
     "Job Summary",
     "Position Summary",
@@ -188,7 +196,7 @@ DEFAULT_CORE_TECHNICAL_SKILLS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "MongoDB",
             "SQL",
             "Data Pipelines",
-            "Error Budgets",
+            "Observability Dashboards",
         ),
     ),
     (
@@ -197,6 +205,17 @@ DEFAULT_CORE_TECHNICAL_SKILLS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "Secure Coding Practices",
             "Vulnerability Mitigation",
             "Role-Based Access Control (RBAC)",
+        ),
+    ),
+    (
+        "AI Tools",
+        (
+            "Codex",
+            "Oracle Code Assist (OCA)",
+            "Cline",
+            "OpenRouter",
+            "ChatGPT",
+            "LLM Prompting",
         ),
     ),
 )
@@ -223,7 +242,7 @@ of a global Chef infrastructure orchestrating contracts for 40,000+ managed endp
 international datacenters.
 Distributed Observability: Built and scaled an enterprise data pipeline utilizing Filebeat agents
 on 40,000+ devices routing via Logstash to centralized OpenSearch clusters; analyzed usage, logs,
-and error budgets to optimize reliability.
+and operational trends to optimize reliability.
 Integration & API Frameworks: Developed a custom Python package and playbooks framework within
 Oracle Linux Automation Manager (OLAM) to replace a legacy third-party platform; unified and
 automated cross-vendor API integrations for 12,000+ network surfaces.
@@ -233,8 +252,8 @@ domains.
 CI/CD & Resilience: Eliminated production configuration drift and boosted delivery velocity by
 replacing manual workflows with automated Jenkins and CloudLab CI/CD release pipelines.
 Developer Tooling Innovation: Spearheaded team-level adoption of AI-assisted engineering tools
-(Cline, Codex, Code Assist), developing reliable internal workflows that reduced test-driven
-development (TDD) busywork by 80%.
+(Cline, Codex, Oracle Code Assist), developing reliable internal workflows that reduced
+test-driven development (TDD) busywork by 80%.
 """.strip()
 DEFAULT_PRIOR_EXPERIENCE_ENTRIES: tuple[dict[str, object], ...] = (
     {
@@ -1399,6 +1418,7 @@ Rules:
 - Use the job opening description only to choose emphasis and language.
 - Make small, factual wording changes around the margins.
 - Preserve the approximate length and bullet count of the original SCJDiR.
+- Use plain resume lines only; do not prefix lines with bullets, hyphens, or bullet glyphs.
 - Do not invent products, dates, employers, certifications, tools, metrics, or responsibilities.
 - Prefer resume bullets, not recommendations.
 
@@ -1453,10 +1473,14 @@ Do not include the header, professional summary, AI generation note, Oracle curr
 education/certifications in the JSON response. Those sections are static or generated separately.
 
 Hard requirements:
-- Preserve the six Core Technical Skills categories exactly.
+- Preserve the seven Core Technical Skills categories exactly.
 - Add or remove individual skills only when supported by the source resume, CJD, or tailored SCJDiR.
 - Prefer skills that overlap with the JOD, including AI, agentic AI, and LLM terms only
   when factual.
+- Always keep the AI Tools category and use it for AI-assisted engineering tools such as
+  Codex, Oracle Code Assist (OCA), Cline, OpenRouter, ChatGPT, or LLM prompting.
+- Do not include "Error Budgets" in Core Technical Skills; use concrete observability tools
+  or dashboard/pipeline skills instead.
 - Preserve all prior employers, locations, titles, dates, and the original bullet count per job.
 - For prior experience, make only minor keyword swaps or wording changes that remain factual.
 - Do not invent employers, dates, credentials, projects, tools, metrics, or responsibilities.
@@ -1595,7 +1619,12 @@ def _coerce_core_skill_sections(raw_value: Any) -> list[tuple[str, list[str]]]:
     sections: list[tuple[str, list[str]]] = []
     for category, default_skills in default_sections:
         skills = by_category.get(_normalize_label(category), default_skills)
-        sections.append((category, _dedupe_preserve_order(skills)[:12] or default_skills))
+        if category == "AI Tools":
+            skills = [*skills, *default_skills]
+        clean_skills = _dedupe_preserve_order(
+            [skill for skill in skills if _is_allowed_core_skill(skill)]
+        )
+        sections.append((category, clean_skills[:12] or list(default_skills)))
     return sections
 
 
@@ -1606,11 +1635,12 @@ def _coerce_skill_items(value: Any) -> list[str]:
         raw_items = [str(item) for item in value]
     else:
         return []
-    return [
-        _clean_inline_text(item).removeprefix("- ").strip()
-        for item in raw_items
-        if _clean_inline_text(item).removeprefix("- ").strip()
-    ]
+    items: list[str] = []
+    for item in raw_items:
+        clean_item = _clean_list_item_text(item)
+        if clean_item and _is_allowed_core_skill(clean_item):
+            items.append(clean_item)
+    return items
 
 
 def _coerce_prior_experience_entries(raw_value: Any) -> list[dict[str, object]]:
@@ -1664,9 +1694,9 @@ def _coerce_bullet_items(value: Any) -> list[str]:
     else:
         return []
     return [
-        _clean_inline_text(item).removeprefix("- ").strip()
+        clean_item
         for item in raw_items
-        if _clean_inline_text(item).removeprefix("- ").strip()
+        if (clean_item := _clean_list_item_text(item))
     ]
 
 
@@ -1695,14 +1725,38 @@ def _resume_block_lines(text: str) -> list[str]:
         line = _clean_inline_text(raw_line)
         if not line or line in RESUME_SECTION_HEADINGS:
             continue
-        if len(lines) >= 2 and not line.startswith("- ") and ":" in line:
-            line = f"- {line}"
-        lines.append(line)
+        line_body, had_bullet_marker = _strip_leading_bullet_markers(line)
+        if not line_body or line_body in RESUME_SECTION_HEADINGS:
+            continue
+        if len(lines) >= 2 and (had_bullet_marker or ":" in line_body):
+            line_body = f"- {line_body}"
+        lines.append(line_body)
     return lines
 
 
 def _clean_inline_text(text: str) -> str:
-    return re.sub(r"\s+", " ", text.replace("\u2022", "-")).strip()
+    text = re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _clean_list_item_text(text: str) -> str:
+    return _strip_leading_bullet_markers(_clean_inline_text(text))[0]
+
+
+def _strip_leading_bullet_markers(text: str) -> tuple[str, bool]:
+    line = text.strip()
+    had_bullet_marker = False
+    while True:
+        match = LEADING_BULLET_RE.match(line)
+        if not match:
+            return line, had_bullet_marker
+        had_bullet_marker = True
+        line = line[match.end() :].strip()
+
+
+def _is_allowed_core_skill(skill: str) -> bool:
+    normalized = re.sub(r"[^a-z0-9]+", " ", skill.casefold()).strip()
+    return normalized not in DISALLOWED_CORE_SKILLS and "error budget" not in normalized
 
 
 def _normalize_label(text: str) -> str:

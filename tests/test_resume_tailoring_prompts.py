@@ -95,6 +95,9 @@ def test_resume_sections_prompt_limits_model_to_dynamic_sections():
     assert "core_technical_skills" in prompt
     assert "prior_experience" in prompt
     assert "Do not include the header" in prompt
+    assert "Preserve the seven Core Technical Skills categories exactly" in prompt
+    assert "AI Tools" in prompt
+    assert "Error Budgets" in prompt
     assert "Tailored Oracle current-role SCJDiR" in prompt
     assert "React" in prompt
 
@@ -222,9 +225,26 @@ def test_render_resume_template_preserves_static_sections():
     assert "Professional Summary" in text
     assert "Core Technical Skills" in text
     assert "- Languages & Frameworks: Python, Django, LLMs" in text
+    assert "- AI Tools: Codex, Oracle Code Assist (OCA), Cline, OpenRouter" in text
     assert "Professional Experience" in text
     assert "Education & Certifications" in text
     assert "Oracle Cloud Infrastructure AI Foundations Associate" in text
+
+
+def test_render_resume_template_normalizes_generated_scjdir_bullets():
+    text = _render_resume_template(
+        tailored_scjdir=(
+            "Oracle | Remote / International Datacenters\n"
+            "Senior Technical Lead - Cloud Automation Engineer | Feb 2022 - Present\n"
+            "● Platform Component Ownership: Built platform automation APIs.\n"
+            "- ● Distributed Observability: Built observability pipelines."
+        ),
+        sections_plan={"prior_experience": []},
+    )
+
+    assert "●" not in text
+    assert "- Platform Component Ownership: Built platform automation APIs." in text
+    assert "- Distributed Observability: Built observability pipelines." in text
 
 
 def test_core_skills_falls_back_to_missing_template_categories():
@@ -235,6 +255,32 @@ def test_core_skills_falls_back_to_missing_template_categories():
     assert sections[0] == ("Languages & Frameworks", ["Python", "LLMs"])
     assert sections[1][0] == "Distributed Systems & Cloud"
     assert "AWS" in sections[1][1]
+    assert sections[-1][0] == "AI Tools"
+    assert "Codex" in sections[-1][1]
+    assert "Oracle Code Assist (OCA)" in sections[-1][1]
+    assert "Cline" in sections[-1][1]
+    assert "OpenRouter" in sections[-1][1]
+
+
+def test_core_skills_filters_error_budgets_and_keeps_ai_tools_defaults():
+    sections = _coerce_core_skill_sections(
+        [
+            {
+                "category": "Data & Observability",
+                "skills": ["Data Pipelines", "Error Budgets", "Error Budget Analysis"],
+            },
+            {"category": "AI Tools", "skills": ["Codex"]},
+        ]
+    )
+    by_category = dict(sections)
+
+    assert by_category["Data & Observability"] == ["Data Pipelines"]
+    assert by_category["AI Tools"][:4] == [
+        "Codex",
+        "Oracle Code Assist (OCA)",
+        "Cline",
+        "OpenRouter",
+    ]
 
 
 def test_recommendations_detection_distinguishes_resume_from_advice():

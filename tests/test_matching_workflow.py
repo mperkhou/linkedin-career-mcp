@@ -49,11 +49,15 @@ class FakeOllama:
                     },
                     {
                         "category": "Data & Observability",
-                        "skills": ["Data Pipelines", "Error Budgets"],
+                        "skills": ["Data Pipelines", "Observability Dashboards"],
                     },
                     {
                         "category": "Security & Compliance",
                         "skills": ["Secure Coding Practices", "RBAC"],
+                    },
+                    {
+                        "category": "AI Tools",
+                        "skills": ["Codex", "Oracle Code Assist (OCA)", "Cline", "OpenRouter"],
                     },
                 ],
                 "prior_experience": [],
@@ -238,6 +242,9 @@ async def test_matching_workflow_writes_resume_and_tracking(tmp_path: Path):
     assert "custom tailored for every job position" in resume_text
     assert "Education & Certifications" in resume_text
     assert "Oracle Cloud Infrastructure AI Foundations Associate" in resume_text
+    assert "AI Tools" in resume_text
+    assert "OpenRouter" in resume_text
+    assert "Error Budgets" not in resume_text
     assert "**" not in resume_text
 
     database_path = output_dir / DEFAULT_DATABASE
