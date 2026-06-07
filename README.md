@@ -247,6 +247,12 @@ Optional:
 
 Fetch a public LinkedIn job detail page by LinkedIn job ID or public job URL.
 
+### `get_linkedin_job_raw_payload`
+
+Fetch the public LinkedIn guest detail response by LinkedIn job ID or public job URL. This
+returns the raw HTML payload, response metadata, and the normalized `parsed` job details
+produced from the same payload.
+
 ### `find_matching_linkedin_jobs`
 
 Run the end-to-end profile-aware matching workflow:

@@ -8,7 +8,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from linkedin_career_mcp.errors import JobNotFoundError, ProviderError
-from linkedin_career_mcp.models import JobDetails, JobPosting, JobSearchQuery
+from linkedin_career_mcp.models import JobDetails, JobPosting, JobRawPayload, JobSearchQuery
 
 SEARCH_URL = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
 DETAIL_URL = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{job_id}"
@@ -79,12 +79,17 @@ class LinkedInPublicJobsProvider:
         return _parse_search_results(response.text)
 
     async def get_job_details(self, job_id_or_url: str) -> JobDetails:
+        payload = await self.get_job_raw_payload(job_id_or_url)
+        return payload.parsed
+
+    async def get_job_raw_payload(self, job_id_or_url: str) -> JobRawPayload:
         job_id = extract_job_id(job_id_or_url)
         if not job_id:
             raise JobNotFoundError("Provide a LinkedIn job ID or a LinkedIn job URL.")
 
+        detail_url = DETAIL_URL.format(job_id=job_id)
         try:
-            response = await self._client.get(DETAIL_URL.format(job_id=job_id))
+            response = await self._client.get(detail_url)
             if response.status_code == 404:
                 raise JobNotFoundError(f"LinkedIn job {job_id} was not found.")
             response.raise_for_status()
@@ -93,7 +98,16 @@ class LinkedInPublicJobsProvider:
         except httpx.HTTPError as exc:
             raise ProviderError(f"LinkedIn public job detail lookup failed: {exc}") from exc
 
-        return _parse_job_details(response.text, job_id)
+        parsed = _parse_job_details(response.text, job_id)
+        return JobRawPayload(
+            job_id=job_id,
+            detail_url=detail_url,
+            status_code=response.status_code,
+            content_type=response.headers.get("content-type"),
+            payload_chars=len(response.text),
+            payload=response.text,
+            parsed=parsed,
+        )
 
     async def aclose(self) -> None:
         if self._owns_client:

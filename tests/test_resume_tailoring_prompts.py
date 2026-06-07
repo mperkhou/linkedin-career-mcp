@@ -8,6 +8,7 @@ import pytest
 from fixture_loaders import load_linkedin_job_fixture
 
 from linkedin_career_mcp.config import load_settings
+from linkedin_career_mcp.models import JobDetails
 from linkedin_career_mcp.workflows.matching import (
     AI_GENERATION_NOTE,
     DEFAULT_SCJDIR,
@@ -15,7 +16,9 @@ from linkedin_career_mcp.workflows.matching import (
     RESUME_HEADER_NAME,
     ProfileDocument,
     _coerce_core_skill_sections,
+    _job_description_context,
     _looks_like_recommendations,
+    _recommendations_prompt,
     _render_resume_template,
     _resume_sections_prompt,
     _scjdir_prompt,
@@ -94,6 +97,51 @@ def test_resume_sections_prompt_limits_model_to_dynamic_sections():
     assert "Do not include the header" in prompt
     assert "Tailored Oracle current-role SCJDiR" in prompt
     assert "React" in prompt
+
+
+def test_resume_generation_prompts_include_full_job_description():
+    late_marker = "AI Experience late-section marker should reach the model."
+    job_description = (
+        "Opening summary. "
+        + ("Requires scalable platform engineering, APIs, and cloud automation. " * 90)
+        + late_marker
+    )
+    job = JobDetails(
+        job_id="12345",
+        title="Senior Software Engineer",
+        company="Acme",
+        description=job_description,
+    )
+    source_resume = ProfileDocument(Path("MP-RESUME-AGENTIC.pdf"), SAMPLE_RESUME)
+    current_job_description = ProfileDocument(
+        Path("Senior_Platform_Software_Engineer(IC3).pdf"),
+        SAMPLE_CJD,
+    )
+
+    prompts = [
+        _scjdir_prompt(
+            source_resume=source_resume,
+            current_job_description=current_job_description,
+            job=job,
+        ),
+        _resume_sections_prompt(
+            source_resume=source_resume,
+            current_job_description=current_job_description,
+            tailored_scjdir="Oracle | Remote\nSenior Technical Lead - Cloud Automation Engineer",
+            job=job,
+        ),
+        _recommendations_prompt(
+            source_resume=source_resume,
+            current_job_description=current_job_description,
+            job=job,
+            draft_text="Unusable draft.",
+        ),
+    ]
+
+    assert len(job_description) > 4_000
+    assert _job_description_context(job) == job_description
+    for prompt in prompts:
+        assert late_marker in prompt
 
 
 def test_render_resume_template_preserves_static_sections():

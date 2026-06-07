@@ -913,11 +913,8 @@ def _find_source_resume(
     return None
 
 
-def _job_description_context(job: JobDetails, *, max_chars: int = 4_000) -> str:
-    return _limit_context(
-        job.description or "No public job description was available.",
-        max_chars=max_chars,
-    )
+def _job_description_context(job: JobDetails) -> str:
+    return job.description or "No public job description was available."
 
 
 def _coerce_search_query(

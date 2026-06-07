@@ -75,3 +75,16 @@ class JobDetails(JobPosting):
     employment_type: str | None = None
     job_function: str | None = None
     industries: str | None = None
+
+
+class JobRawPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: str
+    detail_url: HttpUrl
+    status_code: int
+    content_type: str | None = None
+    payload_type: str = "html"
+    payload_chars: int
+    payload: str
+    parsed: JobDetails
