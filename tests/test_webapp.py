@@ -2,10 +2,11 @@ from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
 
+from linkedin_career_mcp import webapp
 from linkedin_career_mcp.webapp import create_app, import_output_artifacts
 
 
-def test_import_output_artifacts_stores_workbook_rows_and_resume_blob(tmp_path: Path):
+def test_import_output_artifacts_stores_workbook_rows_and_resume_blob(tmp_path: Path, monkeypatch):
     output_dir = tmp_path / "output"
     resume_path = (
         output_dir
@@ -66,6 +67,12 @@ def test_import_output_artifacts_stores_workbook_rows_and_resume_blob(tmp_path: 
     )
     assert output_resume.status_code == 200
     assert output_resume.data == b"%PDF-1.4 fake pdf"
+
+    opened_urls: list[str] = []
+    monkeypatch.setattr(webapp, "_open_url_in_chromium", opened_urls.append)
+    linkedin_response = client.get("/linkedin/123")
+    assert linkedin_response.status_code == 302
+    assert opened_urls == ["https://www.linkedin.com/jobs/view/123"]
 
     response = client.post("/applications/delete", data={"job_id": "123"})
     assert response.status_code == 302

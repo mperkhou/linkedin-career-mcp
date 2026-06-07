@@ -7,8 +7,10 @@ SKILL_SRC := $(CURDIR)/skills/$(SKILL_NAME)
 SKILL_LINK := $(CODEX_SKILLS_DIR)/$(SKILL_NAME)
 OLLAMA_MODEL ?= qwen3:4b
 OLLAMA_INSTALL_URL ?= https://ollama.com/install.sh
+WEBSITE_HOST ?= 127.0.0.1
+WEBSITE_PORT ?= 8765
 
-.PHONY: install install-python install-ollama ollama-model venv skill-link match-jobs launch-website test lint clean
+.PHONY: install install-python install-ollama ollama-model venv skill-link match-jobs launch-website stop-website restart-website test lint clean
 
 install: install-python install-ollama ollama-model skill-link
 
@@ -51,7 +53,20 @@ match-jobs: venv
 	$(VENV)/bin/linkedin-career-match-jobs
 
 launch-website: venv
-	$(VENV)/bin/linkedin-career-webapp
+	$(VENV)/bin/linkedin-career-webapp --host "$(WEBSITE_HOST)" --port "$(WEBSITE_PORT)" --open-browser
+
+stop-website:
+	@pids="$$(lsof -tiTCP:$(WEBSITE_PORT) -sTCP:LISTEN 2>/dev/null || true)"; \
+	if [ -n "$$pids" ]; then \
+		echo "Stopping website process(es) on port $(WEBSITE_PORT): $$pids"; \
+		kill $$pids; \
+	else \
+		echo "No website process listening on port $(WEBSITE_PORT)"; \
+	fi
+
+restart-website: stop-website
+	@sleep 1
+	$(MAKE) launch-website
 
 test: venv
 	$(VENV_PYTHON) -m pytest

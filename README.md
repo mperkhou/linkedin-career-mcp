@@ -188,6 +188,24 @@ Run the local tracker:
 make launch-website
 ```
 
+This starts the Flask server and opens the tracker in your browser.
+LinkedIn job links route through the local Flask app and try to open in Playwright's
+packaged Chromium. If Playwright or its Chromium browser is not installed, the app falls
+back to your system default browser.
+
+To enable Playwright Chromium:
+
+```bash
+.venv/bin/python -m pip install -e ".[browser]"
+.venv/bin/python -m playwright install chromium
+```
+
+Restart the local tracker after code changes:
+
+```bash
+make restart-website
+```
+
 ## MCP Client Config
 
 Use the absolute path for your local checkout:
