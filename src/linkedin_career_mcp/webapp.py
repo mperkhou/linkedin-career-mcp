@@ -26,6 +26,10 @@ TRACKING_COLUMNS = (
     "applied_to",
     "date_applied",
 )
+APPLICATION_TEXT_COLUMNS = {
+    "job_description": "TEXT",
+    "prompt_job_description": "TEXT",
+}
 
 
 @dataclass(frozen=True)
@@ -51,6 +55,8 @@ def init_database(connection: sqlite3.Connection) -> None:
             company TEXT NOT NULL,
             job_title TEXT NOT NULL,
             linkedin_url TEXT NOT NULL,
+            job_description TEXT,
+            prompt_job_description TEXT,
             resume_filename TEXT NOT NULL,
             resume_content BLOB,
             resume_mime_type TEXT NOT NULL DEFAULT 'application/pdf',
@@ -63,6 +69,7 @@ def init_database(connection: sqlite3.Connection) -> None:
         )
         """
     )
+    _ensure_application_columns(connection)
     connection.execute(
         """
         CREATE UNIQUE INDEX IF NOT EXISTS applications_unique_linkedin_job_id
@@ -70,6 +77,14 @@ def init_database(connection: sqlite3.Connection) -> None:
         """
     )
     connection.commit()
+
+
+def _ensure_application_columns(connection: sqlite3.Connection) -> None:
+    rows = connection.execute("PRAGMA table_info(applications)").fetchall()
+    existing_columns = {str(row["name"]) for row in rows}
+    for column, column_type in APPLICATION_TEXT_COLUMNS.items():
+        if column not in existing_columns:
+            connection.execute(f"ALTER TABLE applications ADD COLUMN {column} {column_type}")
 
 
 def fetch_existing_resume_job_ids(database_path: Path) -> set[str]:
@@ -92,6 +107,8 @@ def upsert_application_artifact(
     job_title: str,
     linkedin_url: str,
     resume_path: Path,
+    job_description: str | None = None,
+    prompt_job_description: str | None = None,
     applied_to: str = "No",
     date_applied: str | None = None,
 ) -> None:
@@ -101,14 +118,23 @@ def upsert_application_artifact(
         connection.execute(
             """
             INSERT INTO applications (
-                job_id, company, job_title, linkedin_url, resume_filename, resume_content,
-                source_resume_path, applied_to, date_applied, imported_at, updated_at
+                job_id, company, job_title, linkedin_url, job_description,
+                prompt_job_description, resume_filename, resume_content, source_resume_path,
+                applied_to, date_applied, imported_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(job_id) DO UPDATE SET
                 company = excluded.company,
                 job_title = excluded.job_title,
                 linkedin_url = excluded.linkedin_url,
+                job_description = COALESCE(
+                    excluded.job_description,
+                    applications.job_description
+                ),
+                prompt_job_description = COALESCE(
+                    excluded.prompt_job_description,
+                    applications.prompt_job_description
+                ),
                 resume_filename = excluded.resume_filename,
                 resume_content = COALESCE(excluded.resume_content, applications.resume_content),
                 source_resume_path = excluded.source_resume_path,
@@ -124,6 +150,8 @@ def upsert_application_artifact(
                 company,
                 job_title,
                 linkedin_url,
+                job_description,
+                prompt_job_description,
                 resume_path.name,
                 resume_content,
                 str(resume_path),

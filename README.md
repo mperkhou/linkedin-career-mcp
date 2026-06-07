@@ -22,14 +22,16 @@ isolation, testable workflows, practical automation, and human-in-the-loop guard
   targeted LinkedIn queries.
 - **Tailored resume generation**: renders job-specific PDF resumes from a structured local
   template, preserving static candidate facts while tailoring the current-role section,
-  skills, and light keyword alignment.
+  skills, and light keyword alignment. Resume prompts use a cleaned role-focused job
+  description that removes obvious company boilerplate before LLM calls.
 - **Duplicate-aware workflow**: uses SQLite job IDs to skip openings that already have
   generated resumes, and does not count skipped jobs toward the requested run size.
 - **Local application tracker**: Flask + SQLite web UI for search/filter, status updates,
   applied dates, notes, PDF links, sync from generated output, and bulk deletion.
 - **Local-first storage**: generated PDFs live under `output/resumes/`; tracking lives in
   both `output/tracking/applications.sqlite3` and the compatibility workbook at
-  `output/tracking/read_applications/linkedin_applications.xlsx`.
+  `output/tracking/read_applications/linkedin_applications.xlsx`. SQLite rows also keep
+  the parsed LinkedIn job description and the cleaned prompt JOD used for generation.
 - **Provider-oriented architecture**: LinkedIn public scraping is isolated behind a
   provider boundary, with service and workflow layers kept testable.
 - **No LinkedIn credentials required**: the current implementation uses public LinkedIn

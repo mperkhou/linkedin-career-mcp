@@ -8,6 +8,7 @@ from pypdf import PdfReader
 from linkedin_career_mcp.models import JobDetails, JobPosting, JobSearchQuery, JobSearchResult
 from linkedin_career_mcp.webapp import (
     DEFAULT_DATABASE,
+    connect_database,
     fetch_existing_resume_job_ids,
     upsert_application_artifact,
 )
@@ -232,6 +233,19 @@ async def test_matching_workflow_writes_resume_and_tracking(tmp_path: Path):
     assert "Education & Certifications" in resume_text
     assert "Oracle Cloud Infrastructure AI Foundations Associate" in resume_text
     assert "**" not in resume_text
+
+    database_path = output_dir / DEFAULT_DATABASE
+    with connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT job_description, prompt_job_description
+            FROM applications
+            WHERE job_id = ?
+            """,
+            ("111",),
+        ).fetchone()
+    assert row["job_description"] == "Build local AI workflows and MCP integrations."
+    assert row["prompt_job_description"] == "Build local AI workflows and MCP integrations."
 
     workbook_path = output_dir / "tracking/read_applications/linkedin_applications.xlsx"
     assert workbook_path.exists()

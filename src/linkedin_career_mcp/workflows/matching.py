@@ -67,6 +67,70 @@ RESUME_SECTION_HEADINGS = {
     "Professional Experience",
     "Education & Certifications",
 }
+JOB_DESCRIPTION_PROMPT_MAX_CHARS = 12_000
+ROLE_RELEVANT_START_HEADINGS = (
+    "Job Summary",
+    "Position Summary",
+    "Role Summary",
+    "The Role",
+    "About the Role",
+    "About this Role",
+    "About the Job",
+    "The Opportunity",
+    "What You’ll Do",
+    "What You'll Do",
+    "What You Will Do",
+    "Key Responsibilities",
+    "Responsibilities",
+    "What You’ll Bring",
+    "What You'll Bring",
+    "What You Bring",
+    "What We’re Looking For",
+    "What We're Looking For",
+    "Required Qualifications",
+    "Minimum Qualifications",
+    "Basic Qualifications",
+    "Qualifications",
+    "Requirements",
+    "Skills and Experience",
+    "Who You Are",
+    "You might thrive",
+    "You could be",
+)
+LOW_SIGNAL_PREAMBLE_HEADINGS = (
+    "Our Mission",
+    "Our Mission & Values",
+    "Mission & Values",
+    "Our Values",
+    "Our Culture",
+    "Our Culture & Work Style",
+    "Culture & Work Style",
+    "Life at",
+    "Why Join",
+    "Why Join Us",
+    "Why Join The",
+)
+TRAILING_BOILERPLATE_HEADINGS = (
+    "How We Support You",
+    "Why Join",
+    "Why Join Us",
+    "Why You’ll Love Working Here",
+    "Why You'll Love Working Here",
+    "Benefits & Perks",
+    "Pay & Benefits",
+    "Our Benefits",
+    "Health & Wellness",
+    "Financial Well-being",
+    "Family Support",
+    "Growth & Development",
+    "Time Off & Flexibility",
+    "Compensation",
+    "Equal Opportunity",
+    "Diversity, Equity",
+    "How we feel about Diversity",
+    "Privacy Statement",
+    "Applicant Notice",
+)
 DEFAULT_CORE_TECHNICAL_SKILLS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "Languages & Frameworks",
@@ -485,6 +549,7 @@ class MatchingJobsWorkflow:
                         job=job,
                     )
                 append_tracking_row(tracking_path=tracking_path, job=job, resume_path=resume_path)
+                prompt_job_description = _job_description_context(job)
                 upsert_application_artifact(
                     database_path=application_database_path,
                     job_id=job.job_id,
@@ -492,6 +557,8 @@ class MatchingJobsWorkflow:
                     job_title=job.title,
                     linkedin_url=str(job.job_url) if job.job_url else "",
                     resume_path=resume_path,
+                    job_description=job.description,
+                    prompt_job_description=prompt_job_description,
                 )
                 existing_resume_job_ids.add(job.job_id)
             except LinkedInCareerMcpError as exc:
@@ -914,7 +981,73 @@ def _find_source_resume(
 
 
 def _job_description_context(job: JobDetails) -> str:
-    return job.description or "No public job description was available."
+    description = _clean_job_description_for_prompt(
+        job.description or "No public job description was available."
+    )
+    return _limit_context(description, max_chars=JOB_DESCRIPTION_PROMPT_MAX_CHARS)
+
+
+def _clean_job_description_for_prompt(description: str) -> str:
+    original = _normalize_job_description_text(description)
+    if not original:
+        return "No public job description was available."
+
+    cleaned = _trim_low_signal_preamble(original)
+    cleaned = _trim_trailing_boilerplate(cleaned)
+    return cleaned.strip() or original
+
+
+def _trim_low_signal_preamble(description: str) -> str:
+    role_start = _first_heading_match(description, ROLE_RELEVANT_START_HEADINGS)
+    if role_start is None or role_start.start() == 0:
+        return description
+
+    prefix = description[: role_start.start()]
+    has_low_signal_prefix = _first_heading_match(prefix, LOW_SIGNAL_PREAMBLE_HEADINGS) is not None
+    if has_low_signal_prefix or len(prefix) > 3_000:
+        return description[role_start.start() :].lstrip(" :-\n")
+    return description
+
+
+def _trim_trailing_boilerplate(description: str) -> str:
+    boilerplate = _first_heading_match(
+        description,
+        TRAILING_BOILERPLATE_HEADINGS,
+        start=max(1, min(len(description), 300)),
+    )
+    if boilerplate is None:
+        return description
+    return description[: boilerplate.start()].rstrip(" :-\n")
+
+
+def _first_heading_match(
+    text: str,
+    headings: tuple[str, ...],
+    *,
+    start: int = 0,
+) -> re.Match[str] | None:
+    matches = [
+        match
+        for heading in headings
+        if (match := _heading_pattern(heading).search(text, pos=start)) is not None
+    ]
+    if not matches:
+        return None
+    return min(matches, key=lambda match: match.start())
+
+
+def _heading_pattern(heading: str) -> re.Pattern[str]:
+    parts = [re.escape(part) for part in heading.split()]
+    pattern = r"\s+".join(parts)
+    return re.compile(rf"(?<![\w/]){pattern}(?=\s|[:?!.,;()\-/]|$)", re.IGNORECASE)
+
+
+def _normalize_job_description_text(description: str) -> str:
+    lines = [" ".join(line.split()) for line in description.splitlines()]
+    normalized_lines = [line for line in lines if line]
+    if len(normalized_lines) > 1:
+        return "\n".join(normalized_lines)
+    return " ".join(description.split())
 
 
 def _coerce_search_query(

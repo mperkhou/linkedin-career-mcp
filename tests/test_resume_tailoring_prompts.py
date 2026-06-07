@@ -144,6 +144,63 @@ def test_resume_generation_prompts_include_full_job_description():
         assert late_marker in prompt
 
 
+def test_job_description_context_removes_low_signal_company_boilerplate():
+    job = JobDetails(
+        job_id="4342788295",
+        title="Senior Software Engineer 2",
+        company="Drata",
+        description="""
+Our Mission & Values
+At Drata, we help companies earn and keep the trust of their users.
+Our Culture & Work Style
+Be a Driver. Move at Drata Speed. Stay Mission-Driven.
+Why Join The Drata Team?
+See why we are consistently recognized on workplace lists.
+
+Job Summary
+The Senior Software Engineer II helps lead platform development.
+What You’ll Do
+Architect highly scalable web applications and build RESTful APIs.
+What You’ll Bring
+7+ years of experience as a software engineer.
+AI Experience
+Hands-on experience building features that integrate with LLMs.
+How We Support You
+Shared Success, Health & Wellness, and Financial Well-being.
+        """,
+    )
+
+    context = _job_description_context(job)
+
+    assert context.startswith("Job Summary")
+    assert "Our Mission" not in context
+    assert "Why Join The Drata Team" not in context
+    assert "How We Support You" not in context
+    assert "What You’ll Bring" in context
+    assert "AI Experience" in context
+
+
+def test_job_description_context_keeps_concise_company_context_before_role():
+    job = JobDetails(
+        job_id="4423512582",
+        title="Frontend Engineer",
+        company="Terzo",
+        description=(
+            "Location : US Level : Senior Individual Contributor Team : Engineering "
+            "About Terzo Terzo builds an AI-native enterprise data platform. "
+            "The Opportunity Terzo is hiring a Frontend Engineer. "
+            "You might thrive in this role if you have React and TypeScript experience."
+        ),
+    )
+
+    context = _job_description_context(job)
+
+    assert context.startswith("Location : US")
+    assert "About Terzo" in context
+    assert "The Opportunity" in context
+    assert "React and TypeScript" in context
+
+
 def test_render_resume_template_preserves_static_sections():
     text = _render_resume_template(
         tailored_scjdir=(
