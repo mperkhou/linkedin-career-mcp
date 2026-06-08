@@ -16,14 +16,23 @@ from reportlab.pdfbase.pdfmetrics import stringWidth
 from linkedin_career_mcp.webapp import DEFAULT_DATABASE as RELATIVE_APPLICATION_DATABASE
 from linkedin_career_mcp.webapp import connect_database
 from linkedin_career_mcp.workflows.matching import (
+    AI_GENERATION_NOTE,
     DEFAULT_OUTPUT_DIR,
     LINKEDIN_PROFILE_LABEL,
     LINKEDIN_PROFILE_URL,
+    RESUME_HEADER_CONTACT,
+    RESUME_HEADER_NAME,
+    RESUME_SECTION_HEADINGS,
+    _looks_like_employer_line,
+    _looks_like_title_line,
+    _write_text_pdf,
 )
 
 OLD_LINKEDIN_PROFILE_LABEL = "linkedin.com/mperkhou"
 DEFAULT_APPLICATION_DATABASE = DEFAULT_OUTPUT_DIR / RELATIVE_APPLICATION_DATABASE
 COVER_LETTER_LINE_LEADING = 14.5
+EMERALD_ACCENT_RGB = (0.341176, 0.729412, 0.52549)
+EMERALD_DARK_RGB = (0.015686, 0.470588, 0.341176)
 RESUME_CONTACT_PREFIX = (
     "Iowa City, IA | 641-781-0477 | mperkhounkov1@gmail.com | "
 )
@@ -109,7 +118,12 @@ def refresh_static_artifacts(
         if resume_path is not None:
             resumes_checked += 1
             if resume_path.exists():
+                resume_changed = False
                 if _patch_resume_pdf(resume_path):
+                    resume_changed = True
+                if _patch_resume_style_pdf(resume_path):
+                    resume_changed = True
+                if resume_changed:
                     resume_updates[job_id] = resume_path
             else:
                 missing_files.append(str(resume_path))
@@ -217,6 +231,111 @@ def _ensure_resume_link_annotation(*, path: Path, reader: PdfReader) -> bool:
     _add_resume_link_annotation(writer=writer, page_number=0, hit=hit)
     _write_pdf(path=path, writer=writer)
     return True
+
+
+def _patch_resume_style_pdf(path: Path) -> bool:
+    reader = PdfReader(path)
+    if _resume_has_emerald_style(reader):
+        return False
+    resume_text = _resume_text_from_pdf(reader)
+    if not resume_text:
+        return False
+    temp_path = path.with_suffix(".emerald.tmp.pdf")
+    _write_text_pdf(text=resume_text, path=temp_path)
+    temp_path.replace(path)
+    return True
+
+
+def _resume_has_emerald_style(reader: PdfReader) -> bool:
+    emerald_colors = {EMERALD_ACCENT_RGB, EMERALD_DARK_RGB}
+    for page in reader.pages:
+        content = ContentStream(page.get_contents(), reader)
+        for operands, operator in content.operations:
+            if operator not in (b"rg", b"RG") or len(operands) < 3:
+                continue
+            color = tuple(round(float(value), 6) for value in operands[:3])
+            if color in emerald_colors:
+                return True
+    return False
+
+
+def _resume_text_from_pdf(reader: PdfReader) -> str:
+    text = _extract_pdf_text(reader)
+    lines = _normalize_resume_pdf_lines(text)
+    return "\n".join(lines).strip()
+
+
+def _normalize_resume_pdf_lines(text: str) -> list[str]:
+    normalized_lines: list[str] = []
+    current_section: str | None = None
+    for raw_line in text.splitlines():
+        line = _normalize_resume_pdf_line(raw_line)
+        if not line:
+            continue
+        if line == RESUME_HEADER_NAME and not normalized_lines:
+            normalized_lines.append(RESUME_HEADER_NAME)
+            continue
+        if line.startswith(RESUME_CONTACT_PREFIX):
+            line = RESUME_HEADER_CONTACT
+        elif line.startswith("Note: This resume is custom tailored"):
+            line = AI_GENERATION_NOTE
+
+        if line in RESUME_SECTION_HEADINGS:
+            current_section = line
+            normalized_lines.append(line)
+            continue
+        if _should_append_resume_continuation(
+            raw_line=raw_line,
+            line=line,
+            previous_line=normalized_lines[-1] if normalized_lines else "",
+            current_section=current_section,
+        ):
+            normalized_lines[-1] = f"{normalized_lines[-1]} {line}"
+            continue
+        normalized_lines.append(line)
+    return normalized_lines
+
+
+def _normalize_resume_pdf_line(raw_line: str) -> str:
+    line = raw_line.strip()
+    if not line:
+        return ""
+    if line.startswith("\x7f"):
+        return f"- {_clean_inline_pdf_text(line[1:])}"
+    if line.startswith("o "):
+        return f"  - {_clean_inline_pdf_text(line[2:])}"
+    return _clean_inline_pdf_text(line)
+
+
+def _clean_inline_pdf_text(text: str) -> str:
+    text = text.replace("\x7f", " ")
+    return " ".join(text.split())
+
+
+def _should_append_resume_continuation(
+    *,
+    raw_line: str,
+    line: str,
+    previous_line: str,
+    current_section: str | None,
+) -> bool:
+    if not previous_line:
+        return False
+    if line in RESUME_SECTION_HEADINGS or line.startswith(("Note:", "- ", "  - ")):
+        return False
+    if previous_line in RESUME_SECTION_HEADINGS:
+        return False
+    if previous_line in {RESUME_HEADER_NAME, RESUME_HEADER_CONTACT}:
+        return False
+    if current_section == "Professional Experience" and (
+        _looks_like_employer_line(line) or _looks_like_title_line(line)
+    ):
+        return False
+    if raw_line[:1].isspace():
+        return True
+    if previous_line.startswith(("- ", "  - ")):
+        return True
+    return current_section == "Professional Summary" and not line.startswith("Note:")
 
 
 def _patch_cover_letter_pdf(path: Path) -> bool:
