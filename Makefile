@@ -14,7 +14,7 @@ LINKEDIN_DELAY_SECONDS ?= 2
 ARTIFACT_MODE ?= all
 COVER_LETTER_RETRIES ?= 1
 
-.PHONY: install install-python install-ollama ollama-model venv skill-link match-jobs regenerate-resumes regenerate-cover-letters regenerate-all launch-website stop-website restart-website test lint clean
+.PHONY: install install-python install-ollama ollama-model venv skill-link match-jobs regenerate-resumes regenerate-cover-letters regenerate-all refresh-static-artifacts launch-website stop-website restart-website test lint clean
 
 install: install-python install-ollama ollama-model skill-link
 
@@ -64,6 +64,9 @@ regenerate-cover-letters: venv
 
 regenerate-all: venv
 	$(VENV)/bin/linkedin-career-regenerate-all $(JOB_IDS) --linkedin-delay-seconds "$(LINKEDIN_DELAY_SECONDS)" --cover-letter-retries "$(COVER_LETTER_RETRIES)"
+
+refresh-static-artifacts: venv
+	$(VENV)/bin/linkedin-career-refresh-static-artifacts $(JOB_IDS)
 
 launch-website: venv
 	$(VENV)/bin/linkedin-career-webapp --host "$(WEBSITE_HOST)" --port "$(WEBSITE_PORT)" --open-browser
