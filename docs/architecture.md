@@ -33,6 +33,6 @@ workflows/
 ## Future Workflow Sketch
 
 ```text
-search jobs -> normalize -> rank against profile -> create application draft
+search jobs -> normalize -> rank against profile -> create resume and cover-letter drafts
   -> user reviews each field -> submit only after explicit approval -> record audit event
 ```

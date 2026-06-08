@@ -11,8 +11,9 @@ WEBSITE_HOST ?= 127.0.0.1
 WEBSITE_PORT ?= 8765
 JOB_IDS ?= all
 LINKEDIN_DELAY_SECONDS ?= 2
+ARTIFACT_MODE ?= all
 
-.PHONY: install install-python install-ollama ollama-model venv skill-link match-jobs regenerate-resumes launch-website stop-website restart-website test lint clean
+.PHONY: install install-python install-ollama ollama-model venv skill-link match-jobs regenerate-resumes regenerate-cover-letters regenerate-all launch-website stop-website restart-website test lint clean
 
 install: install-python install-ollama ollama-model skill-link
 
@@ -52,10 +53,16 @@ ollama-model:
 	ollama pull "$(OLLAMA_MODEL)"
 
 match-jobs: venv
-	$(VENV)/bin/linkedin-career-match-jobs
+	$(VENV)/bin/linkedin-career-match-jobs $(ARTIFACT_MODE)
 
 regenerate-resumes: venv
 	$(VENV)/bin/linkedin-career-regenerate-resumes $(JOB_IDS) --linkedin-delay-seconds "$(LINKEDIN_DELAY_SECONDS)"
+
+regenerate-cover-letters: venv
+	$(VENV)/bin/linkedin-career-regenerate-cover-letters $(JOB_IDS) --linkedin-delay-seconds "$(LINKEDIN_DELAY_SECONDS)"
+
+regenerate-all: venv
+	$(VENV)/bin/linkedin-career-regenerate-all $(JOB_IDS) --linkedin-delay-seconds "$(LINKEDIN_DELAY_SECONDS)"
 
 launch-website: venv
 	$(VENV)/bin/linkedin-career-webapp --host "$(WEBSITE_HOST)" --port "$(WEBSITE_PORT)" --open-browser

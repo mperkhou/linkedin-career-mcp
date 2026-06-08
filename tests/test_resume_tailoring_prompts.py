@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from datetime import date
 from pathlib import Path
 
 import httpx
@@ -11,14 +12,18 @@ from linkedin_career_mcp.config import load_settings
 from linkedin_career_mcp.models import JobDetails
 from linkedin_career_mcp.workflows.matching import (
     AI_GENERATION_NOTE,
+    COVER_LETTER_ORACLE_OPENER,
+    COVER_LETTER_PROJECT_PARAGRAPH,
     DEFAULT_SCJDIR,
     RESUME_HEADER_CONTACT,
     RESUME_HEADER_NAME,
     ProfileDocument,
     _coerce_core_skill_sections,
+    _cover_letter_sections_prompt,
     _job_description_context,
     _looks_like_recommendations,
     _recommendations_prompt,
+    _render_cover_letter_template,
     _render_resume_template,
     _resume_sections_prompt,
     _scjdir_prompt,
@@ -145,6 +150,56 @@ def test_resume_generation_prompts_include_full_job_description():
     assert _job_description_context(job) == job_description
     for prompt in prompts:
         assert late_marker in prompt
+
+
+def test_cover_letter_prompt_limits_model_to_dynamic_sections():
+    job = load_linkedin_job_fixture("4419204491")
+    prompt = _cover_letter_sections_prompt(
+        source_resume=ProfileDocument(Path("MP-RESUME-AGENTIC.pdf"), SAMPLE_RESUME),
+        current_job_description=ProfileDocument(
+            Path("Senior_Platform_Software_Engineer(IC3).pdf"),
+            SAMPLE_CJD,
+        ),
+        job=job,
+    )
+
+    assert "cover_letter_sections" in prompt
+    assert "Return only valid JSON" in prompt
+    assert "opening_alignment" in prompt
+    assert "oracle_alignment" in prompt
+    assert "prior_experience_alignment" in prompt
+    assert COVER_LETTER_ORACLE_OPENER in prompt
+    assert "Section 4 is a static paragraph" in prompt
+    assert "Codex, Cline with DeepSeek, GitHub Copilot" in prompt
+    assert "Python/Django" in prompt
+
+
+def test_render_cover_letter_template_preserves_static_sections():
+    job = JobDetails(
+        job_id="12345",
+        title="Senior AI Platform Engineer",
+        company="Acme AI",
+        description="Build LLM automation features.",
+    )
+
+    text = _render_cover_letter_template(
+        job=job,
+        letter_date=date(2026, 6, 7),
+        sections_plan={
+            "opening_alignment": "the LLM automation capabilities you are looking for",
+            "oracle_alignment": "I have built Oracle automation platforms for distributed teams.",
+            "prior_experience_alignment": "My earlier roles add Python, React, Azure, and Django.",
+        },
+    )
+
+    assert text.startswith("June 7, 2026")
+    assert "Dear Hiring Manager" in text
+    assert "Senior AI Platform Engineer at Acme AI" in text
+    assert COVER_LETTER_ORACLE_OPENER in text
+    assert "My earlier experience also strengthens my fit for this position." in text
+    assert COVER_LETTER_PROJECT_PARAGRAPH in text
+    assert "Please find my resume attached" in text
+    assert text.endswith("Sincerely,\nMaxim Perkhounkov")
 
 
 def test_job_description_context_removes_low_signal_company_boilerplate():
