@@ -199,7 +199,11 @@ def test_render_cover_letter_template_preserves_static_sections():
     assert "My earlier experience also strengthens my fit for this position." in text
     assert COVER_LETTER_PROJECT_PARAGRAPH in text
     assert "Please find my resume attached" in text
-    assert text.endswith("Sincerely,\nMaxim Perkhounkov")
+    assert text.endswith(
+        "Sincerely,\n"
+        "Maxim Perkhounkov\n"
+        "[linkedin.com/in/maxim-perkhounkov](https://www.linkedin.com/in/maxim-perkhounkov/)"
+    )
 
 
 def test_job_description_context_removes_low_signal_company_boilerplate():
@@ -330,6 +334,7 @@ def test_render_resume_template_preserves_static_sections():
 
     assert RESUME_HEADER_NAME in text
     assert RESUME_HEADER_CONTACT in text
+    assert "linkedin.com/mperkhou" not in text
     assert AI_GENERATION_NOTE in text
     assert "Professional Summary" in text
     assert "Core Technical Skills" in text

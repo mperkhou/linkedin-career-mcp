@@ -53,8 +53,12 @@ SUPPORTED_PROFILE_SUFFIXES = SUPPORTED_TEXT_SUFFIXES | {".docx", ".pdf"}
 ArtifactMode = Literal["all", "resumes-only", "cover-letters-only"]
 ProgressCallback = Callable[[str], None]
 RESUME_HEADER_NAME = "Max Perkhounkov"
+LINKEDIN_PROFILE_LABEL = "linkedin.com/in/maxim-perkhounkov"
+LINKEDIN_PROFILE_URL = "https://www.linkedin.com/in/maxim-perkhounkov/"
+LINKEDIN_PROFILE_MARKDOWN = f"[{LINKEDIN_PROFILE_LABEL}]({LINKEDIN_PROFILE_URL})"
 RESUME_HEADER_CONTACT = (
-    "Iowa City, IA | 641-781-0477 | mperkhounkov1@gmail.com | linkedin.com/mperkhou"
+    "Iowa City, IA | 641-781-0477 | mperkhounkov1@gmail.com | "
+    f"{LINKEDIN_PROFILE_MARKDOWN}"
 )
 EMERALD_ACCENT = colors.HexColor("#57BA86")
 EMERALD_DARK = colors.HexColor("#047857")
@@ -1290,7 +1294,10 @@ def _write_cover_letter_text_pdf(*, text: str, path: Path) -> None:
         style = (
             signature
             if paragraph_lines
-            and all(part in {"Sincerely,", "Maxim Perkhounkov"} for part in paragraph_lines)
+            and all(
+                part in {"Sincerely,", "Maxim Perkhounkov", LINKEDIN_PROFILE_MARKDOWN}
+                for part in paragraph_lines
+            )
             else body
         )
         story.append(Paragraph(_cover_letter_markup(line), style))
@@ -2175,6 +2182,7 @@ def _render_cover_letter_template(
         "",
         "Sincerely,",
         "Maxim Perkhounkov",
+        LINKEDIN_PROFILE_MARKDOWN,
     ]
     return _clean_cover_letter_text("\n".join(lines))
 
