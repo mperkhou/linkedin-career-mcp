@@ -100,31 +100,31 @@
   <g transform="translate(410 188)">
     <text x="0" y="0" class="tiny">Intelligence layer</text>
     <rect class="cardHot" x="0" y="18" width="280" height="128" rx="18"/>
-    <text x="24" y="54" class="label">LLM search planner</text>
-    <text x="24" y="80" class="small">Profile-aware keyword strategy</text>
-    <text x="24" y="103" class="small">OpenRouter or local Ollama</text>
-    <text x="24" y="126" class="small">Cost-aware request shaping</text>
+    <text x="24" y="54" class="label">Section-aware planner</text>
+    <text x="24" y="80" class="small">Splits static vs dynamic text</text>
+    <text x="24" y="103" class="small">Builds prompts per section</text>
+    <text x="24" y="126" class="small">Uses CJD + SCJDiR + JOD</text>
 
     <rect class="card" x="0" y="178" width="280" height="128" rx="18"/>
-    <text x="24" y="214" class="label">Duplicate and quality guard</text>
-    <text x="24" y="240" class="small">SQLite job ID source of truth</text>
-    <text x="24" y="263" class="small">Company blacklist filtering</text>
-    <text x="24" y="286" class="small">Cleaned job opening for prompts</text>
+    <text x="24" y="214" class="label">Search and quality guard</text>
+    <text x="24" y="240" class="small">Profile-aware job queries</text>
+    <text x="24" y="263" class="small">Blacklist and duplicate checks</text>
+    <text x="24" y="286" class="small">Cleaned job opening prompts</text>
   </g>
 
   <g transform="translate(780 188)">
     <text x="0" y="0" class="tiny">Generation layer</text>
     <rect class="cardHot" x="0" y="18" width="310" height="128" rx="18"/>
-    <text x="24" y="54" class="label">Resume tailoring</text>
-    <text x="24" y="80" class="small">Static candidate facts preserved</text>
-    <text x="24" y="103" class="small">SCJDiR and skill emphasis</text>
-    <text x="24" y="126" class="small">ReportLab PDF output</text>
+    <text x="24" y="54" class="label">Resume section tailoring</text>
+    <text x="24" y="80" class="small">Static: header, summary, education</text>
+    <text x="24" y="103" class="small">Dynamic: SCJDiR, skills, prior roles</text>
+    <text x="24" y="126" class="small">Custom fit from CJD + JOD</text>
 
     <rect class="cardHot" x="0" y="178" width="310" height="128" rx="18"/>
-    <text x="24" y="214" class="label">Cover-letter synthesis</text>
-    <text x="24" y="240" class="small">Static project paragraph locked</text>
-    <text x="24" y="263" class="small">Dynamic Oracle and prior-role fit</text>
-    <text x="24" y="286" class="small">OpenRouter and DeepSeek ready</text>
+    <text x="24" y="214" class="label">Cover-letter section synthesis</text>
+    <text x="24" y="240" class="small">Static: project paragraph, close</text>
+    <text x="24" y="263" class="small">Dynamic: opening, Oracle, prior fit</text>
+    <text x="24" y="286" class="small">Custom fit from CJD + SCJDiR + JOD</text>
   </g>
 
   <g transform="translate(260 555)">
