@@ -54,6 +54,10 @@ RESUME_HEADER_NAME = "Max Perkhounkov"
 RESUME_HEADER_CONTACT = (
     "Iowa City, IA | 641-781-0477 | mperkhounkov1@gmail.com | linkedin.com/mperkhou"
 )
+EMERALD_ACCENT = colors.HexColor("#57BA86")
+EMERALD_DARK = colors.HexColor("#047857")
+RESUME_BODY_COLOR = colors.HexColor("#111827")
+RESUME_MUTED_COLOR = colors.HexColor("#475569")
 STATIC_PROFESSIONAL_SUMMARY = (
     "Analytical and metrics-driven Senior Platform Software Engineer with over 10 years of "
     "multi-disciplinary experience architecting scalable distributed systems, developer tooling, "
@@ -1075,6 +1079,7 @@ def _write_cover_letter_text_pdf(*, text: str, path: Path) -> None:
         fontSize=10.5,
         leading=14.5,
         spaceAfter=10,
+        textColor=RESUME_BODY_COLOR,
     )
     signature = ParagraphStyle(
         "CoverLetterSignature",
@@ -1083,15 +1088,23 @@ def _write_cover_letter_text_pdf(*, text: str, path: Path) -> None:
         spaceAfter=2,
     )
 
-    story: list[Any] = []
+    story: list[Any] = [_cover_letter_top_bar(), Spacer(1, 34)]
+    content_added = False
     for paragraph in _clean_cover_letter_text(text).split("\n\n"):
         line = paragraph.strip()
         if not line:
             continue
-        style = signature if line in {"Sincerely,", "Maxim Perkhounkov"} else body
-        story.append(Paragraph(_paragraph_markup(line), style))
+        paragraph_lines = [part.strip() for part in line.splitlines() if part.strip()]
+        style = (
+            signature
+            if paragraph_lines
+            and all(part in {"Sincerely,", "Maxim Perkhounkov"} for part in paragraph_lines)
+            else body
+        )
+        story.append(Paragraph(_cover_letter_markup(line), style))
+        content_added = True
 
-    if not story:
+    if not content_added:
         story.append(Paragraph("Cover letter content was empty.", body))
 
     document = SimpleDocTemplate(
@@ -1099,7 +1112,7 @@ def _write_cover_letter_text_pdf(*, text: str, path: Path) -> None:
         pagesize=LETTER,
         rightMargin=72,
         leftMargin=72,
-        topMargin=72,
+        topMargin=54,
         bottomMargin=72,
     )
     document.build(story)
@@ -1116,6 +1129,7 @@ def _write_text_pdf(*, text: str, path: Path) -> None:
         fontSize=8.8,
         leading=10.6,
         spaceAfter=2,
+        textColor=RESUME_BODY_COLOR,
     )
     bullet = ParagraphStyle(
         "ResumeBullet",
@@ -1136,12 +1150,12 @@ def _write_text_pdf(*, text: str, path: Path) -> None:
     heading = ParagraphStyle(
         "ResumeHeading",
         parent=body,
-        fontName="Helvetica",
-        fontSize=12,
-        leading=14,
+        fontName="Helvetica-Bold",
+        fontSize=12.2,
+        leading=14.2,
         spaceBefore=9,
-        spaceAfter=7,
-        textColor=colors.black,
+        spaceAfter=6,
+        textColor=EMERALD_DARK,
     )
     employer_style = ParagraphStyle(
         "ResumeEmployer",
@@ -1151,6 +1165,7 @@ def _write_text_pdf(*, text: str, path: Path) -> None:
         leading=11.4,
         spaceBefore=9,
         spaceAfter=5,
+        textColor=RESUME_BODY_COLOR,
     )
     title_style = ParagraphStyle(
         "ResumeTitle",
@@ -1159,15 +1174,17 @@ def _write_text_pdf(*, text: str, path: Path) -> None:
         fontSize=8.6,
         leading=10.3,
         spaceAfter=8,
+        textColor=RESUME_MUTED_COLOR,
     )
     name_style = ParagraphStyle(
         "ResumeName",
         parent=body,
-        fontName="Helvetica",
-        fontSize=11,
-        leading=13,
+        fontName="Helvetica-Bold",
+        fontSize=13.2,
+        leading=15.4,
         alignment=0,
-        spaceAfter=6,
+        spaceAfter=5,
+        textColor=EMERALD_DARK,
     )
     contact_style = ParagraphStyle(
         "ResumeContact",
@@ -1176,21 +1193,21 @@ def _write_text_pdf(*, text: str, path: Path) -> None:
         fontSize=7.2,
         leading=8.6,
         alignment=0,
-        textColor=colors.black,
+        textColor=RESUME_MUTED_COLOR,
         spaceAfter=8,
     )
     note_style = ParagraphStyle(
         "ResumeNote",
         parent=body,
-        fontName="Helvetica",
+        fontName="Helvetica-Oblique",
         fontSize=8,
         leading=9.6,
-        textColor=colors.black,
+        textColor=RESUME_MUTED_COLOR,
     )
 
     story: list[Any] = []
-    story.append(_resume_rule())
-    story.append(Spacer(1, 13))
+    story.append(_resume_rule(top=True))
+    story.append(Spacer(1, 12))
 
     current_section: str | None = None
     previous_line_blank = False
@@ -2208,6 +2225,8 @@ def _resume_block_lines(text: str) -> list[str]:
         line_body, had_bullet_marker = _strip_leading_bullet_markers(line)
         if not line_body or line_body in RESUME_SECTION_HEADINGS:
             continue
+        if _looks_like_model_intro_line(line_body):
+            continue
         if len(lines) >= 2 and (had_bullet_marker or ":" in line_body):
             line_body = f"- {line_body}"
         lines.append(line_body)
@@ -2221,6 +2240,23 @@ def _clean_inline_text(text: str) -> str:
 
 def _clean_list_item_text(text: str) -> str:
     return _strip_leading_bullet_markers(_clean_inline_text(text))[0]
+
+
+def _looks_like_model_intro_line(line: str) -> bool:
+    normalized = line.casefold().strip()
+    intro_prefixes = (
+        "here is ",
+        "here's ",
+        "here are ",
+        "below is ",
+        "below are ",
+        "the rewritten ",
+        "rewritten ",
+    )
+    resume_markers = ("scjdir", "resume", "section", "version")
+    return normalized.startswith(intro_prefixes) and any(
+        marker in normalized for marker in resume_markers
+    )
 
 
 def _strip_leading_bullet_markers(text: str) -> tuple[str, bool]:
@@ -2290,6 +2326,12 @@ def _paragraph_markup(line: str) -> str:
     return "".join(parts)
 
 
+def _cover_letter_markup(paragraph: str) -> str:
+    return "<br/>".join(
+        _paragraph_markup(line.strip()) for line in paragraph.splitlines() if line.strip()
+    )
+
+
 def _bullet_markup(line: str) -> str:
     line = _strip_markdown_emphasis(line)
     if ":" in line:
@@ -2324,11 +2366,21 @@ def _strip_markdown_emphasis(text: str) -> str:
     return re.sub(r"(?<!\*)\*\*(.+?)\*\*(?!\*)", r"\1", text)
 
 
-def _resume_rule() -> HRFlowable:
+def _cover_letter_top_bar() -> HRFlowable:
     return HRFlowable(
         width="100%",
-        thickness=0.55,
-        color=colors.HexColor("#6B7280"),
+        thickness=7.2,
+        color=EMERALD_ACCENT,
+        spaceBefore=0,
+        spaceAfter=0,
+    )
+
+
+def _resume_rule(*, top: bool = False) -> HRFlowable:
+    return HRFlowable(
+        width="100%",
+        thickness=2.0 if top else 1.35,
+        color=EMERALD_ACCENT,
         spaceBefore=0,
         spaceAfter=0,
     )

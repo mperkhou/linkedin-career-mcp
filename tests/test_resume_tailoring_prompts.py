@@ -343,6 +343,7 @@ def test_render_resume_template_preserves_static_sections():
 def test_render_resume_template_normalizes_generated_scjdir_bullets():
     text = _render_resume_template(
         tailored_scjdir=(
+            "Here is the rewritten SCJDiR section tailored to the job description.\n"
             "Oracle | Remote / International Datacenters\n"
             "Senior Technical Lead - Cloud Automation Engineer | Feb 2022 - Present\n"
             "● Platform Component Ownership: Built platform automation APIs.\n"
@@ -352,6 +353,7 @@ def test_render_resume_template_normalizes_generated_scjdir_bullets():
     )
 
     assert "●" not in text
+    assert "Here is the rewritten" not in text
     assert "- Platform Component Ownership: Built platform automation APIs." in text
     assert "- Distributed Observability: Built observability pipelines." in text
 
