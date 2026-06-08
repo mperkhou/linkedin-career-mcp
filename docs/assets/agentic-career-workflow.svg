@@ -70,19 +70,25 @@
   <text x="70" y="82" class="title">Agentic Career Workflow</text>
   <text x="70" y="112" class="subtitle">Public LinkedIn search, profile-aware LLM generation, local artifacts, and a human-owned application tracker.</text>
 
+  <g transform="translate(70 126)">
+    <rect class="chip" x="0" y="0" width="820" height="42" rx="18"/>
+    <text x="20" y="16" class="tiny">Acronym key</text>
+    <text x="20" y="32" class="small">CJD = current job description · SCJDiR = summarized current job description in resume · JOD = job opening description</text>
+  </g>
+
   <g transform="translate(930 54)">
     <rect class="chip" x="0" y="0" width="214" height="44" rx="22"/>
     <circle cx="28" cy="22" r="8" fill="url(#hot)" filter="url(#glow)"/>
     <text x="46" y="26" class="small">No LinkedIn login required</text>
   </g>
 
-  <g transform="translate(70 170)">
+  <g transform="translate(70 188)">
     <text x="0" y="0" class="tiny">Inputs</text>
     <rect class="card" x="0" y="18" width="250" height="128" rx="18"/>
     <text x="24" y="54" class="label">Private profile context</text>
-    <text x="24" y="80" class="small">Resume, CJD, blacklist</text>
-    <text x="24" y="103" class="small">SCJDiR and prior roles</text>
-    <text x="24" y="126" class="small">Local files stay local</text>
+    <text x="24" y="80" class="small">Resume plus CJD input</text>
+    <text x="24" y="103" class="small">Check blacklists, SCJDiR,</text>
+    <text x="24" y="126" class="small">and prior roles</text>
 
     <rect class="card" x="0" y="178" width="250" height="128" rx="18"/>
     <text x="24" y="214" class="label">Public job market</text>
@@ -91,7 +97,7 @@
     <text x="24" y="286" class="small">No credential scope</text>
   </g>
 
-  <g transform="translate(410 170)">
+  <g transform="translate(410 188)">
     <text x="0" y="0" class="tiny">Intelligence layer</text>
     <rect class="cardHot" x="0" y="18" width="280" height="128" rx="18"/>
     <text x="24" y="54" class="label">LLM search planner</text>
@@ -103,10 +109,10 @@
     <text x="24" y="214" class="label">Duplicate and quality guard</text>
     <text x="24" y="240" class="small">SQLite job ID source of truth</text>
     <text x="24" y="263" class="small">Company blacklist filtering</text>
-    <text x="24" y="286" class="small">Cleaned JOD for prompts</text>
+    <text x="24" y="286" class="small">Cleaned job opening for prompts</text>
   </g>
 
-  <g transform="translate(780 170)">
+  <g transform="translate(780 188)">
     <text x="0" y="0" class="tiny">Generation layer</text>
     <rect class="cardHot" x="0" y="18" width="310" height="128" rx="18"/>
     <text x="24" y="54" class="label">Resume tailoring</text>
@@ -132,9 +138,9 @@
 
   <g transform="translate(590 555)">
     <rect class="card" x="0" y="18" width="250" height="126" rx="18"/>
-    <text x="24" y="54" class="label">SQLite tracker DB</text>
-    <text x="24" y="80" class="small">Resume and cover BLOBs</text>
-    <text x="24" y="103" class="small">Parsed and prompt JODs</text>
+    <text x="24" y="54" class="label">SQLite tracker database</text>
+    <text x="24" y="80" class="small">Resume and cover PDFs</text>
+    <text x="24" y="103" class="small">Parsed and prompt descriptions</text>
     <text x="24" y="126" class="small">Applied status and notes</text>
   </g>
 
@@ -146,10 +152,10 @@
     <text x="24" y="126" class="small">Human-in-the-loop apply flow</text>
   </g>
 
-  <path class="line" d="M 320 250 C 352 250 372 250 410 250"/>
-  <path class="lineSoft" d="M 320 410 C 352 410 372 410 410 410"/>
-  <path class="line" d="M 690 250 C 724 250 742 250 780 250"/>
-  <path class="line" d="M 690 410 C 724 410 742 410 780 410"/>
+  <path class="line" d="M 320 268 C 352 268 372 268 410 268"/>
+  <path class="lineSoft" d="M 320 428 C 352 428 372 428 410 428"/>
+  <path class="line" d="M 690 268 C 724 268 742 268 780 268"/>
+  <path class="line" d="M 690 428 C 724 428 742 428 780 428"/>
   <path class="line" d="M 935 500 C 850 545 710 548 510 618"/>
   <path class="lineSoft" d="M 945 500 C 884 540 770 552 840 618"/>
   <path class="line" d="M 840 636 C 876 636 890 636 920 636"/>
