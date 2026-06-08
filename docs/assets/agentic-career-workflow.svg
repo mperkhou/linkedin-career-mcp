@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="820" viewBox="0 0 1280 820" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="920" viewBox="0 0 1280 920" role="img" aria-labelledby="title desc">
   <title id="title">Agentic LinkedIn career workflow</title>
-  <desc id="desc">A visual workflow showing profile inputs, public LinkedIn search, LLM planning, artifact generation, SQLite tracking, and the local Flask application UI.</desc>
+  <desc id="desc">A top-down two-lane workflow showing private profile context, public LinkedIn search, section-aware planning, resume and cover-letter generation, SQLite tracking, and the local Flask application UI.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#07111f"/>
@@ -56,16 +56,17 @@
       .cardHot { fill: #0f2b3a; stroke: #61efd2; stroke-opacity: 0.55; stroke-width: 1.2; filter: url(#shadow); }
       .line { fill: none; stroke: #61efd2; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; marker-end: url(#arrow); }
       .lineSoft { fill: none; stroke: #7fb8ff; stroke-opacity: 0.72; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; marker-end: url(#arrow); }
+      .divider { fill: none; stroke: #ffffff; stroke-opacity: 0.16; stroke-width: 1; stroke-dasharray: 6 10; }
       .chip { fill: #ffffff; fill-opacity: 0.08; stroke: #ffffff; stroke-opacity: 0.13; }
       .accentText { fill: #68f0d4; }
       .orangeText { fill: #ffd166; }
     </style>
   </defs>
 
-  <rect width="1280" height="820" rx="34" fill="url(#bg)"/>
-  <rect width="1280" height="820" rx="34" fill="url(#pulseA)"/>
-  <rect width="1280" height="820" rx="34" fill="url(#pulseB)"/>
-  <rect width="1280" height="820" rx="34" fill="url(#grid)"/>
+  <rect width="1280" height="920" rx="34" fill="url(#bg)"/>
+  <rect width="1280" height="920" rx="34" fill="url(#pulseA)"/>
+  <rect width="1280" height="920" rx="34" fill="url(#pulseB)"/>
+  <rect width="1280" height="920" rx="34" fill="url(#grid)"/>
 
   <text x="70" y="82" class="title">Agentic Career Workflow</text>
   <text x="70" y="112" class="subtitle">Public LinkedIn search, profile-aware LLM generation, local artifacts, and a human-owned application tracker.</text>
@@ -82,106 +83,112 @@
     <text x="46" y="26" class="small">No LinkedIn login required</text>
   </g>
 
-  <g transform="translate(70 188)">
-    <text x="0" y="0" class="tiny">Inputs</text>
-    <rect class="card" x="0" y="18" width="250" height="128" rx="18"/>
-    <text x="24" y="54" class="label">Private profile context</text>
-    <text x="24" y="80" class="small">Resume plus CJD input</text>
-    <text x="24" y="103" class="small">Check blacklists, SCJDiR,</text>
-    <text x="24" y="126" class="small">and prior roles</text>
+  <line class="divider" x1="640" y1="190" x2="640" y2="604"/>
 
-    <rect class="card" x="0" y="178" width="250" height="128" rx="18"/>
-    <text x="24" y="214" class="label">Public job market</text>
-    <text x="24" y="240" class="small">LinkedIn guest pages</text>
-    <text x="24" y="263" class="small">Remote and hybrid filters</text>
-    <text x="24" y="286" class="small">No credential scope</text>
+  <text x="70" y="198" class="tiny">Inputs</text>
+  <g transform="translate(120 212)">
+    <rect class="card" x="0" y="0" width="400" height="112" rx="18"/>
+    <text x="24" y="36" class="label">Private profile context</text>
+    <text x="24" y="62" class="small">Resume plus CJD input</text>
+    <text x="24" y="85" class="small">Check blacklists, SCJDiR,</text>
+    <text x="24" y="108" class="small">and prior roles</text>
+  </g>
+  <g transform="translate(760 212)">
+    <rect class="card" x="0" y="0" width="400" height="112" rx="18"/>
+    <text x="24" y="36" class="label">Public job market</text>
+    <text x="24" y="62" class="small">JOD from LinkedIn guest pages</text>
+    <text x="24" y="85" class="small">Remote and hybrid filters</text>
+    <text x="24" y="108" class="small">No credential scope</text>
   </g>
 
-  <g transform="translate(410 188)">
-    <text x="0" y="0" class="tiny">Intelligence layer</text>
-    <rect class="cardHot" x="0" y="18" width="280" height="128" rx="18"/>
-    <text x="24" y="54" class="label">Section-aware planner</text>
-    <text x="24" y="80" class="small">Splits static vs dynamic text</text>
-    <text x="24" y="103" class="small">Builds prompts per section</text>
-    <text x="24" y="126" class="small">Uses CJD + SCJDiR + JOD</text>
-
-    <rect class="card" x="0" y="178" width="280" height="128" rx="18"/>
-    <text x="24" y="214" class="label">Search and quality guard</text>
-    <text x="24" y="240" class="small">Profile-aware job queries</text>
-    <text x="24" y="263" class="small">Blacklist and duplicate checks</text>
-    <text x="24" y="286" class="small">Cleaned job opening prompts</text>
+  <text x="70" y="338" class="tiny">Intelligence layer</text>
+  <g transform="translate(120 352)">
+    <rect class="cardHot" x="0" y="0" width="400" height="112" rx="18"/>
+    <text x="24" y="36" class="label">Section-aware planner</text>
+    <text x="24" y="62" class="small">Splits resume and cover sections</text>
+    <text x="24" y="85" class="small">Builds prompts per dynamic block</text>
+    <text x="24" y="108" class="small">Uses CJD + SCJDiR + JOD</text>
+  </g>
+  <g transform="translate(760 352)">
+    <rect class="card" x="0" y="0" width="400" height="112" rx="18"/>
+    <text x="24" y="36" class="label">Search and quality guard</text>
+    <text x="24" y="62" class="small">Profile-aware job queries</text>
+    <text x="24" y="85" class="small">Blacklist and duplicate checks</text>
+    <text x="24" y="108" class="small">Cleaned JOD for generation</text>
   </g>
 
-  <g transform="translate(780 188)">
-    <text x="0" y="0" class="tiny">Generation layer</text>
-    <rect class="cardHot" x="0" y="18" width="310" height="128" rx="18"/>
-    <text x="24" y="54" class="label">Resume section tailoring</text>
-    <text x="24" y="80" class="small">Static: header, summary, education</text>
-    <text x="24" y="103" class="small">Dynamic: SCJDiR, skills, prior roles</text>
-    <text x="24" y="126" class="small">Custom fit from CJD + JOD</text>
-
-    <rect class="cardHot" x="0" y="178" width="310" height="128" rx="18"/>
-    <text x="24" y="214" class="label">Cover-letter section synthesis</text>
-    <text x="24" y="240" class="small">Static: project paragraph, close</text>
-    <text x="24" y="263" class="small">Dynamic: opening, Oracle, prior fit</text>
-    <text x="24" y="286" class="small">Custom fit from CJD + SCJDiR + JOD</text>
+  <text x="70" y="478" class="tiny">Generation layer</text>
+  <g transform="translate(120 492)">
+    <rect class="cardHot" x="0" y="0" width="400" height="112" rx="18"/>
+    <text x="24" y="36" class="label">Resume section tailoring</text>
+    <text x="24" y="62" class="small">Static: header, summary, education</text>
+    <text x="24" y="85" class="small">Dynamic: SCJDiR, skills, roles</text>
+    <text x="24" y="108" class="small">Custom fit from CJD + SCJDiR + JOD</text>
+  </g>
+  <g transform="translate(760 492)">
+    <rect class="cardHot" x="0" y="0" width="400" height="112" rx="18"/>
+    <text x="24" y="36" class="label">Cover-letter section synthesis</text>
+    <text x="24" y="62" class="small">Static: project paragraph, close</text>
+    <text x="24" y="85" class="small">Dynamic: opening, Oracle, prior fit</text>
+    <text x="24" y="108" class="small">Custom fit from CJD + SCJDiR + JOD</text>
   </g>
 
-  <g transform="translate(260 555)">
+  <g transform="translate(400 636)">
+    <rect class="chip" x="0" y="0" width="480" height="56" rx="24"/>
+    <text x="24" y="21" class="tiny">Shared output path</text>
+    <text x="24" y="39" class="small">Both artifact types converge: render PDFs, write files, upsert tracker</text>
+  </g>
+
+  <g transform="translate(140 734)">
     <text x="0" y="0" class="tiny">Local operations</text>
-    <rect class="card" x="0" y="18" width="250" height="126" rx="18"/>
+    <rect class="card" x="0" y="18" width="250" height="104" rx="18"/>
     <text x="24" y="54" class="label">Artifact store</text>
     <text x="24" y="80" class="small">output/resumes</text>
     <text x="24" y="103" class="small">output/cover_letters</text>
-    <text x="24" y="126" class="small">Workbook compatibility</text>
   </g>
 
-  <g transform="translate(590 555)">
-    <rect class="card" x="0" y="18" width="250" height="126" rx="18"/>
+  <g transform="translate(470 734)">
+    <rect class="card" x="0" y="18" width="250" height="104" rx="18"/>
     <text x="24" y="54" class="label">SQLite tracker database</text>
     <text x="24" y="80" class="small">Resume and cover PDFs</text>
-    <text x="24" y="103" class="small">Parsed and prompt descriptions</text>
-    <text x="24" y="126" class="small">Applied status and notes</text>
+    <text x="24" y="103" class="small">Applied status and notes</text>
   </g>
 
-  <g transform="translate(920 555)">
-    <rect class="card" x="0" y="18" width="250" height="126" rx="18"/>
+  <g transform="translate(800 734)">
+    <rect class="card" x="0" y="18" width="250" height="104" rx="18"/>
     <text x="24" y="54" class="label">Flask application UI</text>
     <text x="24" y="80" class="small">Resume and cover links</text>
-    <text x="24" y="103" class="small">Chromium job launcher</text>
-    <text x="24" y="126" class="small">Human-in-the-loop apply flow</text>
+    <text x="24" y="103" class="small">Human-in-the-loop apply flow</text>
   </g>
 
-  <g transform="translate(780 510)">
-    <rect class="chip" x="0" y="0" width="310" height="42" rx="20"/>
-    <text x="24" y="18" class="tiny">Shared output path</text>
-    <text x="24" y="33" class="small">Render PDFs, write files, upsert tracker</text>
-  </g>
+  <path class="line" d="M 320 324 C 320 338 320 342 320 352"/>
+  <path class="lineSoft" d="M 960 324 C 960 338 960 342 960 352"/>
+  <path class="line" d="M 320 464 C 320 478 320 482 320 492"/>
+  <path class="lineSoft" d="M 960 464 C 960 478 960 482 960 492"/>
+  <path class="lineSoft" d="M 760 408 C 690 408 604 408 520 408"/>
+  <path class="line" d="M 520 430 C 640 448 720 478 760 520"/>
+  <path class="line" d="M 320 604 C 400 628 450 636 520 636"/>
+  <path class="lineSoft" d="M 960 604 C 880 628 830 636 760 636"/>
+  <path class="line" d="M 640 692 C 640 708 640 716 640 724"/>
+  <path class="line" d="M 640 724 C 550 724 376 724 265 752"/>
+  <path class="lineSoft" d="M 640 724 C 640 738 640 744 640 752"/>
+  <path class="line" d="M 640 724 C 740 724 864 724 925 752"/>
+  <path class="lineSoft" d="M 720 804 C 764 804 778 804 800 804"/>
+  <path class="lineSoft" d="M 470 804 C 424 804 410 804 390 804"/>
 
-  <path class="line" d="M 320 268 C 352 268 372 268 410 268"/>
-  <path class="lineSoft" d="M 320 428 C 352 428 372 428 410 428"/>
-  <path class="line" d="M 690 268 C 724 268 742 268 780 268"/>
-  <path class="line" d="M 690 428 C 724 428 742 428 780 428"/>
-  <path class="line" d="M 1090 286 C 1150 318 1150 492 1090 531"/>
-  <path class="lineSoft" d="M 935 494 C 936 499 936 504 936 510"/>
-  <path class="line" d="M 780 532 C 684 556 600 586 510 618"/>
-  <path class="lineSoft" d="M 936 552 C 914 584 872 607 840 618"/>
-  <path class="line" d="M 840 636 C 876 636 890 636 920 636"/>
-  <path class="lineSoft" d="M 590 636 C 552 636 534 636 510 636"/>
-
-  <g transform="translate(82 720)">
+  <g transform="translate(82 860)">
     <rect class="chip" x="0" y="0" width="236" height="46" rx="23"/>
     <text x="22" y="29" class="small"><tspan class="accentText">Result:</tspan> tailored PDFs per job</text>
   </g>
-  <g transform="translate(344 720)">
+  <g transform="translate(344 860)">
     <rect class="chip" x="0" y="0" width="280" height="46" rx="23"/>
     <text x="22" y="29" class="small"><tspan class="accentText">Guardrail:</tspan> no automated submission</text>
   </g>
-  <g transform="translate(650 720)">
+  <g transform="translate(650 860)">
     <rect class="chip" x="0" y="0" width="254" height="46" rx="23"/>
     <text x="22" y="29" class="small"><tspan class="orangeText">Signal:</tspan> practical AI automation</text>
   </g>
-  <g transform="translate(930 720)">
+  <g transform="translate(930 860)">
     <rect class="chip" x="0" y="0" width="256" height="46" rx="23"/>
     <text x="22" y="29" class="small"><tspan class="accentText">Scale:</tspan> batch regeneration by ID</text>
   </g>
