@@ -124,9 +124,9 @@
     <text x="42" y="709" class="docText">Resume attached, thank-you, signature, and LinkedIn link.</text>
   </g>
 
-  <path class="arrowBlue" d="M 610 252 C 690 234 716 210 760 210"/>
-  <path class="arrowBlue" d="M 610 362 C 688 354 716 330 760 326"/>
-  <path class="arrowBlue" d="M 610 476 C 686 484 714 458 760 444"/>
+  <path class="arrowBlue" d="M 610 377 C 660 377 690 306 754 306"/>
+  <path class="arrowBlue" d="M 610 488 C 660 488 700 461 778 461"/>
+  <path class="arrowBlue" d="M 610 602 C 662 602 704 620 782 620"/>
 
   <g transform="translate(720 146)">
     <rect class="aiPanel" x="0" y="0" width="520" height="698" rx="24"/>
