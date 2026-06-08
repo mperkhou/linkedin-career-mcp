@@ -152,12 +152,20 @@
     <text x="24" y="126" class="small">Human-in-the-loop apply flow</text>
   </g>
 
+  <g transform="translate(780 510)">
+    <rect class="chip" x="0" y="0" width="310" height="42" rx="20"/>
+    <text x="24" y="18" class="tiny">Shared output path</text>
+    <text x="24" y="33" class="small">Render PDFs, write files, upsert tracker</text>
+  </g>
+
   <path class="line" d="M 320 268 C 352 268 372 268 410 268"/>
   <path class="lineSoft" d="M 320 428 C 352 428 372 428 410 428"/>
   <path class="line" d="M 690 268 C 724 268 742 268 780 268"/>
   <path class="line" d="M 690 428 C 724 428 742 428 780 428"/>
-  <path class="line" d="M 935 500 C 850 545 710 548 510 618"/>
-  <path class="lineSoft" d="M 945 500 C 884 540 770 552 840 618"/>
+  <path class="line" d="M 1090 286 C 1150 318 1150 492 1090 531"/>
+  <path class="lineSoft" d="M 935 494 C 936 499 936 504 936 510"/>
+  <path class="line" d="M 780 532 C 684 556 600 586 510 618"/>
+  <path class="lineSoft" d="M 936 552 C 914 584 872 607 840 618"/>
   <path class="line" d="M 840 636 C 876 636 890 636 920 636"/>
   <path class="lineSoft" d="M 590 636 C 552 636 534 636 510 636"/>
 
