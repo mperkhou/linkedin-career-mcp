@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 import re
+import sys
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from html import escape
@@ -2073,8 +2074,12 @@ async def run_from_cli(args: argparse.Namespace) -> MatchingJobsWorkflowResult:
         await llm.aclose()
 
 
-async def run_regenerate_from_cli(args: argparse.Namespace) -> MatchingJobsWorkflowResult:
-    settings = load_settings()
+async def run_regenerate_from_cli(
+    args: argparse.Namespace,
+    *,
+    settings: Settings | None = None,
+) -> MatchingJobsWorkflowResult:
+    settings = settings or load_settings()
     provider = LinkedInPublicJobsProvider(
         user_agent=settings.user_agent,
         timeout_seconds=settings.timeout_seconds,
@@ -2133,6 +2138,23 @@ def build_regenerate_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _llm_settings_label(settings: Settings) -> str:
+    provider = settings.llm_provider.casefold().strip()
+    if provider == "ollama":
+        return f"ollama:{settings.ollama_model} ({settings.ollama_base_url})"
+    return f"{provider}:{settings.llm_api_model} ({settings.llm_api_base_url})"
+
+
+def _regenerate_processed_summary(result: MatchingJobsWorkflowResult) -> str:
+    processed_count = len(result.artifacts)
+    return (
+        f"Resumes processed: {processed_count}/{result.jobs_found} "
+        f"(created: {result.resumes_created}, "
+        f"recommendations: {result.recommendations_created}, "
+        f"errors: {len(result.errors)})"
+    )
+
+
 def main() -> None:
     parser = build_arg_parser()
     result = asyncio.run(run_from_cli(parser.parse_args()))
@@ -2141,8 +2163,12 @@ def main() -> None:
 
 def regenerate_main() -> None:
     parser = build_regenerate_arg_parser()
-    result = asyncio.run(run_regenerate_from_cli(parser.parse_args()))
+    args = parser.parse_args()
+    settings = load_settings()
+    print(f"LLM: {_llm_settings_label(settings)}", file=sys.stderr, flush=True)
+    result = asyncio.run(run_regenerate_from_cli(args, settings=settings))
     print(json.dumps(result.model_dump(mode="json"), indent=2))
+    print(_regenerate_processed_summary(result), file=sys.stderr, flush=True)
 
 
 if __name__ == "__main__":

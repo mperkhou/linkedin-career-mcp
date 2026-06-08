@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
+import sys
 from pathlib import Path
 
 from openpyxl import load_workbook
 from pypdf import PdfReader
 
+from linkedin_career_mcp.config import Settings
 from linkedin_career_mcp.models import JobDetails, JobPosting, JobSearchQuery, JobSearchResult
 from linkedin_career_mcp.webapp import (
     DEFAULT_DATABASE,
@@ -12,10 +15,13 @@ from linkedin_career_mcp.webapp import (
     fetch_existing_resume_job_ids,
     upsert_application_artifact,
 )
+from linkedin_career_mcp.workflows import matching
 from linkedin_career_mcp.workflows.matching import (
     DEFAULT_SUPPLEMENTAL_SEARCH_KEYWORDS,
     CompanyBlacklist,
     MatchingJobsWorkflow,
+    MatchingJobsWorkflowResult,
+    TailoredResumeArtifact,
     _expand_remote_and_hybrid_queries,
     _supplement_search_queries,
 )
@@ -386,3 +392,60 @@ async def test_regenerate_resumes_uses_database_jobs_and_fetches_missing_descrip
     assert row_by_job_id["333"]["prompt_job_description"] == (
         "Fresh role that should count toward max_jobs."
     )
+
+
+def test_regenerate_main_displays_llm_and_processed_count(
+    monkeypatch,
+    capsys,
+):
+    settings = Settings(
+        llm_provider="api",
+        llm_api_key="test-key",
+        llm_api_model="deepseek/deepseek-v4-flash",
+    )
+    captured_settings: list[Settings | None] = []
+
+    async def fake_run_regenerate_from_cli(args, *, settings=None):
+        captured_settings.append(settings)
+        assert args.job_ids == ["111"]
+        return MatchingJobsWorkflowResult(
+            profile_files=[],
+            search_queries=[],
+            jobs_found=3,
+            resumes_created=1,
+            recommendations_created=1,
+            tracking_spreadsheet="output/tracking/read_applications/linkedin_applications.xlsx",
+            errors=["333: failed"],
+            artifacts=[
+                TailoredResumeArtifact(
+                    job_id="111",
+                    company="Acme",
+                    title="Platform Engineer",
+                    linkedin_url="https://www.linkedin.com/jobs/view/111",
+                    resume_path="output/resumes/acme/111/resume.pdf",
+                ),
+                TailoredResumeArtifact(
+                    job_id="222",
+                    company="Beta",
+                    title="Software Engineer",
+                    linkedin_url="https://www.linkedin.com/jobs/view/222",
+                    resume_path="output/resumes/beta/222/recommendations.pdf",
+                    artifact_kind="recommendations",
+                    recommendations_path="output/resumes/beta/222/recommendations.pdf",
+                ),
+            ],
+        )
+
+    monkeypatch.setattr(matching, "load_settings", lambda: settings)
+    monkeypatch.setattr(matching, "run_regenerate_from_cli", fake_run_regenerate_from_cli)
+    monkeypatch.setattr(sys, "argv", ["linkedin-career-regenerate-resumes", "111"])
+
+    matching.regenerate_main()
+
+    assert captured_settings == [settings]
+    captured = capsys.readouterr()
+    assert "LLM: api:deepseek/deepseek-v4-flash" in captured.err
+    assert "Resumes processed: 2/3 (created: 1, recommendations: 1, errors: 1)" in captured.err
+    result = json.loads(captured.out)
+    assert result["jobs_found"] == 3
+    assert len(result["artifacts"]) == 2
