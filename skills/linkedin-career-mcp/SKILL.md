@@ -14,7 +14,8 @@ This skill supports the local Python MCP server in the repository that contains 
 - From the repository root, run `make install` to create `.venv`, install the package with development requirements, install Ollama, pull `qwen3:4b`, and link this skill into `~/.codex/skills`.
 - The MCP server executable is `.venv/bin/linkedin-career-mcp` after installation.
 - Run tests with `make test` and lint with `make lint`.
-- Run the local matching workflow with `make match-jobs`.
+- Run the local matching workflow with `make match-jobs`; it generates both resumes and
+  cover letters by default.
 
 ## MCP Client Configuration
 
@@ -40,5 +41,11 @@ The current tools search public LinkedIn job listings and fetch public job detai
 - The workflow reads supported profile files, asks local Ollama with `qwen3:4b` to generate LinkedIn search parameters, and searches both remote and hybrid jobs.
 - Company patterns in `.blacklist` are matched case-insensitively against company names. `Raytheon*` excludes companies whose names start with `Raytheon`.
 - Tailored resumes are written under `output/resumes/[company]/[job_id]_[job_title]/`.
+- Cover letters are written under `output/cover_letters/[company]/[job_id]_[job_title]/`.
+- Use `make match-jobs ARTIFACT_MODE=resumes-only` or
+  `make match-jobs ARTIFACT_MODE=cover-letters-only` for one artifact type.
+- Use `make regenerate-resumes`, `make regenerate-cover-letters`, or `make regenerate-all`
+  for jobs already stored in SQLite. Set `JOB_IDS` to `all`, one job ID, space-separated
+  IDs, or a comma-separated list.
 - Application tracking is appended to `output/tracking/read_applications/linkedin_applications.xlsx`.
 - Generated tracking columns `applied_to` and `date_applied` are user-managed and are not automatically filled beyond the default `No`.

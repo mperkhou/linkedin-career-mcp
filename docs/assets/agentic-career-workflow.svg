@@ -1,0 +1,195 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="920" viewBox="0 0 1280 920" role="img" aria-labelledby="title desc">
+  <title id="title">Agentic LinkedIn career workflow</title>
+  <desc id="desc">A top-down two-lane workflow showing private profile context, public LinkedIn search, section-aware planning, resume and cover-letter generation, SQLite tracking, and the local Flask application UI.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#07111f"/>
+      <stop offset="0.42" stop-color="#0c2035"/>
+      <stop offset="1" stop-color="#071a18"/>
+    </linearGradient>
+    <radialGradient id="pulseA" cx="25%" cy="10%" r="70%">
+      <stop offset="0" stop-color="#35f2cc" stop-opacity="0.30"/>
+      <stop offset="0.55" stop-color="#35f2cc" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#35f2cc" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="pulseB" cx="86%" cy="18%" r="74%">
+      <stop offset="0" stop-color="#8cc8ff" stop-opacity="0.26"/>
+      <stop offset="0.55" stop-color="#8cc8ff" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#8cc8ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.06"/>
+    </linearGradient>
+    <linearGradient id="hot" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#40f2c8"/>
+      <stop offset="1" stop-color="#7fb8ff"/>
+    </linearGradient>
+    <linearGradient id="warm" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffd166"/>
+      <stop offset="1" stop-color="#ff8a5b"/>
+    </linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M 32 0 L 0 0 0 32" fill="none" stroke="#ffffff" stroke-opacity="0.045" stroke-width="1"/>
+    </pattern>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#61efd2"/>
+    </marker>
+    <style>
+      .label { font: 700 15px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #eef8ff; }
+      .small { font: 500 12px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #b8c7d6; }
+      .tiny { font: 650 10px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #8fa8ba; letter-spacing: 1px; text-transform: uppercase; }
+      .metric { font: 800 24px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #ffffff; }
+      .title { font: 800 38px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #ffffff; letter-spacing: 0; }
+      .subtitle { font: 500 16px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #b8c7d6; }
+      .card { fill: url(#card); stroke: #ffffff; stroke-opacity: 0.15; stroke-width: 1; filter: url(#shadow); }
+      .cardHot { fill: #0f2b3a; stroke: #61efd2; stroke-opacity: 0.55; stroke-width: 1.2; filter: url(#shadow); }
+      .line { fill: none; stroke: #61efd2; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; marker-end: url(#arrow); }
+      .lineSoft { fill: none; stroke: #7fb8ff; stroke-opacity: 0.72; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; marker-end: url(#arrow); }
+      .divider { fill: none; stroke: #ffffff; stroke-opacity: 0.16; stroke-width: 1; stroke-dasharray: 6 10; }
+      .chip { fill: #ffffff; fill-opacity: 0.08; stroke: #ffffff; stroke-opacity: 0.13; }
+      .accentText { fill: #68f0d4; }
+      .orangeText { fill: #ffd166; }
+    </style>
+  </defs>
+
+  <rect width="1280" height="920" rx="34" fill="url(#bg)"/>
+  <rect width="1280" height="920" rx="34" fill="url(#pulseA)"/>
+  <rect width="1280" height="920" rx="34" fill="url(#pulseB)"/>
+  <rect width="1280" height="920" rx="34" fill="url(#grid)"/>
+
+  <text x="70" y="82" class="title">Agentic Career Workflow</text>
+  <text x="70" y="112" class="subtitle">Public LinkedIn search, profile-aware LLM generation, local artifacts, and a human-owned application tracker.</text>
+
+  <g transform="translate(70 126)">
+    <rect class="chip" x="0" y="0" width="820" height="42" rx="18"/>
+    <text x="20" y="16" class="tiny">Acronym key</text>
+    <text x="20" y="32" class="small">CJD = current job description · SCJDiR = summarized current job description in resume · JOD = job opening description</text>
+  </g>
+
+  <g transform="translate(930 54)">
+    <rect class="chip" x="0" y="0" width="214" height="44" rx="22"/>
+    <circle cx="28" cy="22" r="8" fill="url(#hot)" filter="url(#glow)"/>
+    <text x="46" y="26" class="small">No LinkedIn login required</text>
+  </g>
+
+  <line class="divider" x1="640" y1="190" x2="640" y2="604"/>
+
+  <text x="70" y="198" class="tiny">Inputs</text>
+  <g transform="translate(120 212)">
+    <rect class="card" x="0" y="0" width="400" height="112" rx="18"/>
+    <text x="24" y="36" class="label">Private profile context</text>
+    <text x="24" y="62" class="small">Resume plus CJD input</text>
+    <text x="24" y="85" class="small">Check blacklists, SCJDiR,</text>
+    <text x="24" y="108" class="small">and prior roles</text>
+  </g>
+  <g transform="translate(760 212)">
+    <rect class="card" x="0" y="0" width="400" height="112" rx="18"/>
+    <text x="24" y="36" class="label">Public job market</text>
+    <text x="24" y="62" class="small">JOD from LinkedIn guest pages</text>
+    <text x="24" y="85" class="small">Remote and hybrid filters</text>
+    <text x="24" y="108" class="small">No credential scope</text>
+  </g>
+
+  <text x="70" y="338" class="tiny">Intelligence layer</text>
+  <g transform="translate(120 352)">
+    <rect class="cardHot" x="0" y="0" width="400" height="112" rx="18"/>
+    <text x="24" y="36" class="label">Section-aware planner</text>
+    <text x="24" y="62" class="small">Splits resume and cover sections</text>
+    <text x="24" y="85" class="small">Builds prompts per dynamic block</text>
+    <text x="24" y="108" class="small">Uses CJD + SCJDiR + JOD</text>
+  </g>
+  <g transform="translate(760 352)">
+    <rect class="card" x="0" y="0" width="400" height="112" rx="18"/>
+    <text x="24" y="36" class="label">Search and quality guard</text>
+    <text x="24" y="62" class="small">Profile-aware job queries</text>
+    <text x="24" y="85" class="small">Blacklist and duplicate checks</text>
+    <text x="24" y="108" class="small">Cleaned JOD for generation</text>
+  </g>
+
+  <text x="70" y="478" class="tiny">Generation layer</text>
+  <g transform="translate(120 492)">
+    <rect class="cardHot" x="0" y="0" width="400" height="112" rx="18"/>
+    <text x="24" y="36" class="label">Resume section tailoring</text>
+    <text x="24" y="62" class="small">Static: header, summary, education</text>
+    <text x="24" y="85" class="small">Dynamic: SCJDiR, skills, roles</text>
+    <text x="24" y="108" class="small">Custom fit from CJD + SCJDiR + JOD</text>
+  </g>
+  <g transform="translate(760 492)">
+    <rect class="cardHot" x="0" y="0" width="400" height="112" rx="18"/>
+    <text x="24" y="36" class="label">Cover-letter section synthesis</text>
+    <text x="24" y="62" class="small">Static: project paragraph, close</text>
+    <text x="24" y="85" class="small">Dynamic: opening, Oracle, prior fit</text>
+    <text x="24" y="108" class="small">Custom fit from CJD + SCJDiR + JOD</text>
+  </g>
+
+  <g transform="translate(400 636)">
+    <rect class="chip" x="0" y="0" width="480" height="56" rx="24"/>
+    <text x="24" y="21" class="tiny">Shared output path</text>
+    <text x="24" y="39" class="small">Both artifact types converge: render PDFs, write files, upsert tracker</text>
+  </g>
+
+  <g transform="translate(140 734)">
+    <text x="0" y="0" class="tiny">Local operations</text>
+    <rect class="card" x="0" y="18" width="250" height="104" rx="18"/>
+    <text x="24" y="54" class="label">Artifact store</text>
+    <text x="24" y="80" class="small">output/resumes</text>
+    <text x="24" y="103" class="small">output/cover_letters</text>
+  </g>
+
+  <g transform="translate(470 734)">
+    <rect class="card" x="0" y="18" width="250" height="104" rx="18"/>
+    <text x="24" y="54" class="label">SQLite tracker database</text>
+    <text x="24" y="80" class="small">Resume and cover PDFs</text>
+    <text x="24" y="103" class="small">Applied status and notes</text>
+  </g>
+
+  <g transform="translate(800 734)">
+    <rect class="card" x="0" y="18" width="250" height="104" rx="18"/>
+    <text x="24" y="54" class="label">Flask application UI</text>
+    <text x="24" y="80" class="small">Resume and cover links</text>
+    <text x="24" y="103" class="small">Human-in-the-loop apply flow</text>
+  </g>
+
+  <path class="line" d="M 320 324 C 320 338 320 342 320 352"/>
+  <path class="lineSoft" d="M 960 324 C 960 338 960 342 960 352"/>
+  <path class="line" d="M 320 464 C 320 478 320 482 320 492"/>
+  <path class="lineSoft" d="M 960 464 C 960 478 960 482 960 492"/>
+  <path class="lineSoft" d="M 760 408 C 690 408 604 408 520 408"/>
+  <path class="line" d="M 520 430 C 640 448 720 478 760 520"/>
+  <path class="line" d="M 320 604 C 400 628 450 636 520 636"/>
+  <path class="lineSoft" d="M 960 604 C 880 628 830 636 760 636"/>
+  <path class="line" d="M 640 692 C 640 708 640 716 640 724"/>
+  <path class="line" d="M 640 724 C 550 724 376 724 265 752"/>
+  <path class="lineSoft" d="M 640 724 C 640 738 640 744 640 752"/>
+  <path class="line" d="M 640 724 C 740 724 864 724 925 752"/>
+  <path class="lineSoft" d="M 720 804 C 764 804 778 804 800 804"/>
+  <path class="lineSoft" d="M 470 804 C 424 804 410 804 390 804"/>
+
+  <g transform="translate(82 860)">
+    <rect class="chip" x="0" y="0" width="236" height="46" rx="23"/>
+    <text x="22" y="29" class="small"><tspan class="accentText">Result:</tspan> tailored PDFs per job</text>
+  </g>
+  <g transform="translate(344 860)">
+    <rect class="chip" x="0" y="0" width="280" height="46" rx="23"/>
+    <text x="22" y="29" class="small"><tspan class="accentText">Guardrail:</tspan> no automated submission</text>
+  </g>
+  <g transform="translate(650 860)">
+    <rect class="chip" x="0" y="0" width="254" height="46" rx="23"/>
+    <text x="22" y="29" class="small"><tspan class="orangeText">Signal:</tspan> practical AI automation</text>
+  </g>
+  <g transform="translate(930 860)">
+    <rect class="chip" x="0" y="0" width="256" height="46" rx="23"/>
+    <text x="22" y="29" class="small"><tspan class="accentText">Scale:</tspan> batch regeneration by ID</text>
+  </g>
+</svg>

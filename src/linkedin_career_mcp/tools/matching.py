@@ -14,6 +14,7 @@ from linkedin_career_mcp.workflows.matching import (
     DEFAULT_OUTPUT_DIR,
     DEFAULT_PROFILE_DIR,
     DEFAULT_SOURCE_RESUME,
+    ArtifactMode,
     MatchingJobsWorkflow,
 )
 
@@ -58,10 +59,18 @@ def register_matching_tools(mcp: FastMCP, workflow: MatchingJobsWorkflow) -> Non
         ] = 6,
         max_jobs: Annotated[
             int,
-            Field(ge=1, le=50, description="Maximum jobs to tailor resumes for."),
+            Field(ge=1, le=50, description="Maximum jobs to prepare artifacts for."),
         ] = 10,
+        artifact_mode: Annotated[
+            ArtifactMode,
+            Field(
+                description=(
+                    "Artifact generation mode: all, resumes-only, or cover-letters-only."
+                ),
+            ),
+        ] = "all",
     ) -> dict[str, object]:
-        """Find remote or hybrid matching LinkedIn jobs and prepare tailored resume PDFs."""
+        """Find remote or hybrid matching LinkedIn jobs and prepare application PDFs."""
 
         try:
             result = await workflow.run(
@@ -75,6 +84,7 @@ def register_matching_tools(mcp: FastMCP, workflow: MatchingJobsWorkflow) -> Non
                 limit_per_query=limit_per_query,
                 max_queries=max_queries,
                 max_jobs=max_jobs,
+                artifact_mode=artifact_mode,
             )
         except LinkedInCareerMcpError as exc:
             return {"error": str(exc)}

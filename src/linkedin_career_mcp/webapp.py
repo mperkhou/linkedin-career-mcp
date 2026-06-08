@@ -23,12 +23,26 @@ TRACKING_COLUMNS = (
     "job_title",
     "linkedin_url",
     "customized_resume",
+    "cover_letter",
     "applied_to",
     "date_applied",
 )
-APPLICATION_TEXT_COLUMNS = {
+REQUIRED_TRACKING_COLUMNS = (
+    "job_id",
+    "company",
+    "job_title",
+    "linkedin_url",
+    "customized_resume",
+    "applied_to",
+    "date_applied",
+)
+APPLICATION_EXTRA_COLUMNS = {
     "job_description": "TEXT",
     "prompt_job_description": "TEXT",
+    "cover_letter_filename": "TEXT NOT NULL DEFAULT ''",
+    "cover_letter_content": "BLOB",
+    "cover_letter_mime_type": "TEXT NOT NULL DEFAULT 'application/pdf'",
+    "source_cover_letter_path": "TEXT NOT NULL DEFAULT ''",
 }
 
 
@@ -37,6 +51,7 @@ class ImportResult:
     rows_seen: int
     rows_imported: int
     missing_resumes: int
+    missing_cover_letters: int = 0
 
 
 @dataclass(frozen=True)
@@ -71,6 +86,10 @@ def init_database(connection: sqlite3.Connection) -> None:
             resume_content BLOB,
             resume_mime_type TEXT NOT NULL DEFAULT 'application/pdf',
             source_resume_path TEXT NOT NULL,
+            cover_letter_filename TEXT NOT NULL DEFAULT '',
+            cover_letter_content BLOB,
+            cover_letter_mime_type TEXT NOT NULL DEFAULT 'application/pdf',
+            source_cover_letter_path TEXT NOT NULL DEFAULT '',
             applied_to TEXT NOT NULL DEFAULT 'No',
             date_applied TEXT,
             notes TEXT NOT NULL DEFAULT '',
@@ -92,7 +111,7 @@ def init_database(connection: sqlite3.Connection) -> None:
 def _ensure_application_columns(connection: sqlite3.Connection) -> None:
     rows = connection.execute("PRAGMA table_info(applications)").fetchall()
     existing_columns = {str(row["name"]) for row in rows}
-    for column, column_type in APPLICATION_TEXT_COLUMNS.items():
+    for column, column_type in APPLICATION_EXTRA_COLUMNS.items():
         if column not in existing_columns:
             connection.execute(f"ALTER TABLE applications ADD COLUMN {column} {column_type}")
 
@@ -106,6 +125,24 @@ def fetch_existing_resume_job_ids(database_path: Path) -> set[str]:
             WHERE resume_content IS NOT NULL
             """
         ).fetchall()
+    return {str(row["job_id"]) for row in rows}
+
+
+def fetch_existing_cover_letter_job_ids(database_path: Path) -> set[str]:
+    with connect_database(database_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT job_id
+            FROM applications
+            WHERE cover_letter_content IS NOT NULL
+            """
+        ).fetchall()
+    return {str(row["job_id"]) for row in rows}
+
+
+def fetch_application_job_ids(database_path: Path) -> set[str]:
+    with connect_database(database_path) as connection:
+        rows = connection.execute("SELECT job_id FROM applications").fetchall()
     return {str(row["job_id"]) for row in rows}
 
 
@@ -159,23 +196,35 @@ def upsert_application_artifact(
     company: str,
     job_title: str,
     linkedin_url: str,
-    resume_path: Path,
+    resume_path: Path | None,
+    cover_letter_path: Path | None = None,
     job_description: str | None = None,
     prompt_job_description: str | None = None,
     applied_to: str = "No",
     date_applied: str | None = None,
 ) -> None:
     now = datetime.now(UTC).isoformat(timespec="seconds")
-    resume_content = resume_path.read_bytes() if resume_path.exists() else None
+    resume_content = (
+        resume_path.read_bytes()
+        if resume_path is not None and resume_path.is_file()
+        else None
+    )
+    cover_letter_content = (
+        cover_letter_path.read_bytes()
+        if cover_letter_path is not None and cover_letter_path.is_file()
+        else None
+    )
     with connect_database(database_path) as connection:
         connection.execute(
             """
             INSERT INTO applications (
                 job_id, company, job_title, linkedin_url, job_description,
-                prompt_job_description, resume_filename, resume_content, source_resume_path,
-                applied_to, date_applied, imported_at, updated_at
+                prompt_job_description, resume_filename, resume_content, resume_mime_type,
+                source_resume_path, cover_letter_filename, cover_letter_content,
+                cover_letter_mime_type, source_cover_letter_path, applied_to, date_applied,
+                imported_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(job_id) DO UPDATE SET
                 company = excluded.company,
                 job_title = excluded.job_title,
@@ -188,9 +237,37 @@ def upsert_application_artifact(
                     excluded.prompt_job_description,
                     applications.prompt_job_description
                 ),
-                resume_filename = excluded.resume_filename,
+                resume_filename = CASE
+                    WHEN excluded.resume_filename != '' THEN excluded.resume_filename
+                    ELSE applications.resume_filename
+                END,
                 resume_content = COALESCE(excluded.resume_content, applications.resume_content),
-                source_resume_path = excluded.source_resume_path,
+                resume_mime_type = CASE
+                    WHEN excluded.resume_content IS NOT NULL THEN excluded.resume_mime_type
+                    ELSE applications.resume_mime_type
+                END,
+                source_resume_path = CASE
+                    WHEN excluded.source_resume_path != '' THEN excluded.source_resume_path
+                    ELSE applications.source_resume_path
+                END,
+                cover_letter_filename = CASE
+                    WHEN excluded.cover_letter_filename != '' THEN excluded.cover_letter_filename
+                    ELSE applications.cover_letter_filename
+                END,
+                cover_letter_content = COALESCE(
+                    excluded.cover_letter_content,
+                    applications.cover_letter_content
+                ),
+                cover_letter_mime_type = CASE
+                    WHEN excluded.cover_letter_content IS NOT NULL
+                    THEN excluded.cover_letter_mime_type
+                    ELSE applications.cover_letter_mime_type
+                END,
+                source_cover_letter_path = CASE
+                    WHEN excluded.source_cover_letter_path != ''
+                    THEN excluded.source_cover_letter_path
+                    ELSE applications.source_cover_letter_path
+                END,
                 applied_to = CASE
                     WHEN applications.applied_to != 'No' THEN applications.applied_to
                     ELSE excluded.applied_to
@@ -205,9 +282,14 @@ def upsert_application_artifact(
                 linkedin_url,
                 job_description,
                 prompt_job_description,
-                resume_path.name,
+                resume_path.name if resume_path is not None else "",
                 resume_content,
-                str(resume_path),
+                "application/pdf",
+                str(resume_path) if resume_path is not None else "",
+                cover_letter_path.name if cover_letter_path is not None else "",
+                cover_letter_content,
+                "application/pdf",
+                str(cover_letter_path) if cover_letter_path is not None else "",
                 applied_to,
                 date_applied,
                 now,
@@ -252,26 +334,49 @@ def import_output_artifacts(*, output_dir: Path, database_path: Path) -> ImportR
     sheet = workbook.active
     headers = [str(cell.value or "").strip() for cell in sheet[1]]
     column_indexes = {header: index for index, header in enumerate(headers)}
-    missing_columns = [column for column in TRACKING_COLUMNS if column not in column_indexes]
+    missing_columns = [
+        column for column in REQUIRED_TRACKING_COLUMNS if column not in column_indexes
+    ]
     if missing_columns:
         raise ValueError(f"Tracking workbook is missing columns: {', '.join(missing_columns)}")
 
     rows_seen = 0
     rows_imported = 0
     missing_resumes = 0
+    missing_cover_letters = 0
 
     for row in sheet.iter_rows(min_row=2, values_only=True):
-        values = {column: row[column_indexes[column]] for column in TRACKING_COLUMNS}
+        values = {
+            column: row[column_indexes[column]]
+            for column in REQUIRED_TRACKING_COLUMNS
+        }
         job_id = str(values["job_id"] or "").strip()
         if not job_id:
             continue
         rows_seen += 1
 
         resume_path_text = str(values["customized_resume"] or "").strip()
-        resume_path = _resolve_resume_path(output_dir=output_dir, resume_path_text=resume_path_text)
-        resume_content = resume_path.read_bytes() if resume_path.exists() else None
-        if resume_content is None:
+        resume_path = (
+            _resolve_output_path(output_dir=output_dir, path_text=resume_path_text)
+            if resume_path_text
+            else None
+        )
+        if resume_path_text and (resume_path is None or not resume_path.exists()):
             missing_resumes += 1
+
+        cover_letter_path_text = ""
+        if "cover_letter" in column_indexes:
+            cover_letter_value = row[column_indexes["cover_letter"]]
+            cover_letter_path_text = str(cover_letter_value or "").strip()
+        cover_letter_path = (
+            _resolve_output_path(output_dir=output_dir, path_text=cover_letter_path_text)
+            if cover_letter_path_text
+            else None
+        )
+        if cover_letter_path_text and (
+            cover_letter_path is None or not cover_letter_path.exists()
+        ):
+            missing_cover_letters += 1
 
         upsert_application_artifact(
             database_path=database_path,
@@ -280,6 +385,7 @@ def import_output_artifacts(*, output_dir: Path, database_path: Path) -> ImportR
             job_title=str(values["job_title"] or ""),
             linkedin_url=str(values["linkedin_url"] or ""),
             resume_path=resume_path,
+            cover_letter_path=cover_letter_path,
             applied_to=str(values["applied_to"] or "No"),
             date_applied=_date_value(values["date_applied"]),
         )
@@ -289,6 +395,7 @@ def import_output_artifacts(*, output_dir: Path, database_path: Path) -> ImportR
         rows_seen=rows_seen,
         rows_imported=rows_imported,
         missing_resumes=missing_resumes,
+        missing_cover_letters=missing_cover_letters,
     )
 
 
@@ -344,7 +451,8 @@ def create_app(*, database_path: Path, output_dir: Path):
         result = import_output_artifacts(output_dir=output_dir, database_path=database_path)
         flash(
             f"Imported {result.rows_imported} workbook rows "
-            f"({result.missing_resumes} missing resume files)."
+            f"({result.missing_resumes} missing resume files, "
+            f"{result.missing_cover_letters} missing cover letter files)."
         )
         return redirect(url_for("index"))
 
@@ -377,6 +485,18 @@ def create_app(*, database_path: Path, output_dir: Path):
             BytesIO(row["resume_content"]),
             mimetype=row["resume_mime_type"],
             download_name=row["resume_filename"],
+            as_attachment=False,
+        )
+
+    @app.get("/cover-letters/<job_id>")
+    def cover_letter(job_id: str):
+        row = _fetch_application(database_path, job_id)
+        if row is None or row["cover_letter_content"] is None:
+            return Response("Cover letter was not found in the database.", status=404)
+        return send_file(
+            BytesIO(row["cover_letter_content"]),
+            mimetype=row["cover_letter_mime_type"],
+            download_name=row["cover_letter_filename"],
             as_attachment=False,
         )
 
@@ -442,13 +562,13 @@ def _fetch_application(database_path: Path, job_id: str) -> sqlite3.Row | None:
         ).fetchone()
 
 
-def _resolve_resume_path(*, output_dir: Path, resume_path_text: str) -> Path:
-    resume_path = Path(resume_path_text)
-    if resume_path.is_absolute():
-        return resume_path
-    if resume_path.parts and resume_path.parts[0] == output_dir.name:
-        return output_dir.parent / resume_path
-    return output_dir / resume_path
+def _resolve_output_path(*, output_dir: Path, path_text: str) -> Path:
+    artifact_path = Path(path_text)
+    if artifact_path.is_absolute():
+        return artifact_path
+    if artifact_path.parts and artifact_path.parts[0] == output_dir.name:
+        return output_dir.parent / artifact_path
+    return output_dir / artifact_path
 
 
 def _date_value(value: Any) -> str | None:
@@ -674,6 +794,7 @@ INDEX_TEMPLATE = """
     .job { min-width: 260px; }
     .job-id { display: block; color: var(--muted); font-size: 12px; margin-top: 3px; }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; min-width: 170px; }
+    .muted { color: var(--muted); }
     .apply-form {
       display: grid;
       grid-template-columns: 96px 150px minmax(180px, 1fr) auto;
@@ -734,7 +855,9 @@ INDEX_TEMPLATE = """
             </th>
             <th>Company</th>
             <th>Job</th>
-            <th>Links</th>
+            <th>Job Links</th>
+            <th>Resume</th>
+            <th>Cover Letter</th>
             <th>Application</th>
           </tr>
         </thead>
@@ -761,16 +884,6 @@ INDEX_TEMPLATE = """
               <td>
                 <div class="actions">
                   <a href="/linkedin/{{ row.job_id }}">LinkedIn</a>
-                  <a href="/resumes/{{ row.job_id }}" target="_blank" rel="noreferrer">
-                    DB PDF
-                  </a>
-                  <a
-                    href="/{{ row.source_resume_path }}"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Output PDF
-                  </a>
                   <a
                     href="/descriptions/{{ row.job_id }}"
                     target="_blank"
@@ -778,6 +891,43 @@ INDEX_TEMPLATE = """
                   >
                     Compare descriptions
                   </a>
+                </div>
+              </td>
+              <td>
+                <div class="actions">
+                  <a href="/resumes/{{ row.job_id }}" target="_blank" rel="noreferrer">
+                    DB Resume
+                  </a>
+                  {% if row.source_resume_path %}
+                    <a
+                      href="/{{ row.source_resume_path }}"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Output Resume
+                    </a>
+                  {% endif %}
+                </div>
+              </td>
+              <td>
+                <div class="actions">
+                  {% if row.cover_letter_content %}
+                    <a href="/cover-letters/{{ row.job_id }}" target="_blank" rel="noreferrer">
+                      DB Cover
+                    </a>
+                  {% endif %}
+                  {% if row.source_cover_letter_path %}
+                    <a
+                      href="/{{ row.source_cover_letter_path }}"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Output Cover
+                    </a>
+                  {% endif %}
+                  {% if not row.cover_letter_content and not row.source_cover_letter_path %}
+                    <span class="muted">Missing</span>
+                  {% endif %}
                 </div>
               </td>
               <td>

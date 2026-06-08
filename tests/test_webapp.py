@@ -37,9 +37,15 @@ def test_connect_database_migrates_job_description_columns(tmp_path: Path):
     columns = {row["name"] for row in rows}
     assert "job_description" in columns
     assert "prompt_job_description" in columns
+    assert "cover_letter_filename" in columns
+    assert "cover_letter_content" in columns
+    assert "source_cover_letter_path" in columns
 
 
-def test_import_output_artifacts_stores_workbook_rows_and_resume_blob(tmp_path: Path, monkeypatch):
+def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
+    tmp_path: Path,
+    monkeypatch,
+):
     output_dir = tmp_path / "output"
     resume_path = (
         output_dir
@@ -50,6 +56,15 @@ def test_import_output_artifacts_stores_workbook_rows_and_resume_blob(tmp_path: 
     )
     resume_path.parent.mkdir(parents=True)
     resume_path.write_bytes(b"%PDF-1.4 fake pdf")
+    cover_letter_path = (
+        output_dir
+        / "cover_letters"
+        / "Example_Co"
+        / "123_senior_engineer"
+        / "mp_cover_letter_senior_engineer.pdf"
+    )
+    cover_letter_path.parent.mkdir(parents=True)
+    cover_letter_path.write_bytes(b"%PDF-1.4 fake cover")
 
     tracking_path = output_dir / "tracking/read_applications/linkedin_applications.xlsx"
     tracking_path.parent.mkdir(parents=True)
@@ -63,6 +78,7 @@ def test_import_output_artifacts_stores_workbook_rows_and_resume_blob(tmp_path: 
             "job_title",
             "linkedin_url",
             "customized_resume",
+            "cover_letter",
             "applied_to",
             "date_applied",
         ]
@@ -74,6 +90,7 @@ def test_import_output_artifacts_stores_workbook_rows_and_resume_blob(tmp_path: 
             "Senior Engineer",
             "https://www.linkedin.com/jobs/view/123",
             str(resume_path.relative_to(tmp_path)),
+            str(cover_letter_path.relative_to(tmp_path)),
             "No",
             "",
         ]
@@ -86,6 +103,7 @@ def test_import_output_artifacts_stores_workbook_rows_and_resume_blob(tmp_path: 
     assert result.rows_seen == 1
     assert result.rows_imported == 1
     assert result.missing_resumes == 0
+    assert result.missing_cover_letters == 0
     assert database_path.exists()
     webapp.upsert_application_artifact(
         database_path=database_path,
@@ -94,6 +112,7 @@ def test_import_output_artifacts_stores_workbook_rows_and_resume_blob(tmp_path: 
         job_title="Senior Engineer",
         linkedin_url="https://www.linkedin.com/jobs/view/123",
         resume_path=resume_path,
+        cover_letter_path=cover_letter_path,
         job_description="Full parsed JOD with mission boilerplate and role requirements.",
         prompt_job_description="Clean prompt JOD with role requirements.",
     )
@@ -105,6 +124,9 @@ def test_import_output_artifacts_stores_workbook_rows_and_resume_blob(tmp_path: 
     assert index.status_code == 200
     assert b"/descriptions/123" in index.data
     assert b"Compare descriptions" in index.data
+    assert b"Cover Letter" in index.data
+    assert b"/cover-letters/123" in index.data
+    assert b"DB Cover" in index.data
 
     descriptions = client.get("/descriptions/123")
     assert descriptions.status_code == 200
@@ -117,11 +139,21 @@ def test_import_output_artifacts_stores_workbook_rows_and_resume_blob(tmp_path: 
     assert db_resume.status_code == 200
     assert db_resume.data == b"%PDF-1.4 fake pdf"
 
+    db_cover_letter = client.get("/cover-letters/123")
+    assert db_cover_letter.status_code == 200
+    assert db_cover_letter.data == b"%PDF-1.4 fake cover"
+
     output_resume = client.get(
         "/output/resumes/Example_Co/123_senior_engineer/mp_resume_senior_engineer.pdf"
     )
     assert output_resume.status_code == 200
     assert output_resume.data == b"%PDF-1.4 fake pdf"
+
+    output_cover_letter = client.get(
+        "/output/cover_letters/Example_Co/123_senior_engineer/mp_cover_letter_senior_engineer.pdf"
+    )
+    assert output_cover_letter.status_code == 200
+    assert output_cover_letter.data == b"%PDF-1.4 fake cover"
 
     opened_urls: list[str] = []
     monkeypatch.setattr(webapp, "_open_url_in_chromium", opened_urls.append)
@@ -132,6 +164,7 @@ def test_import_output_artifacts_stores_workbook_rows_and_resume_blob(tmp_path: 
     response = client.post("/applications/delete", data={"job_id": "123"})
     assert response.status_code == 302
     assert client.get("/resumes/123").status_code == 404
+    assert client.get("/cover-letters/123").status_code == 404
 
     workbook = load_workbook(tracking_path)
     sheet = workbook.active

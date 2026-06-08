@@ -7,7 +7,8 @@ generation, and a private SQLite-backed application tracker.
 This repo is intentionally more than a scraper. It is a small career operations
 platform: it searches public LinkedIn openings, plans profile-specific queries, filters
 companies and duplicate jobs, fetches job descriptions, generates tailored resume PDFs,
-stores artifacts locally, and presents the application queue in a fast local web UI.
+generates cover-letter PDFs, stores artifacts locally, and presents the application queue
+in a fast local web UI.
 
 The resume note points here because the project demonstrates the same engineering habits
 I try to bring to production systems: clear boundaries, typed domain models, provider
@@ -20,22 +21,31 @@ isolation, testable workflows, practical automation, and human-in-the-loop guard
   sort order.
 - **Profile-aware search planning**: reads local profile files and asks an LLM to propose
   targeted LinkedIn queries.
-- **Tailored resume generation**: renders job-specific PDF resumes from a structured local
-  template, preserving static candidate facts while tailoring the current-role section,
-  skills, and light keyword alignment. Resume prompts use a cleaned role-focused job
-  description that removes obvious company boilerplate before LLM calls.
-- **Duplicate-aware workflow**: uses SQLite job IDs to skip openings that already have
-  generated resumes, and does not count skipped jobs toward the requested run size.
+- **Tailored resume and cover-letter generation**: renders job-specific PDF resumes from a
+  structured local template, then generates cover letters from static template sections plus
+  targeted LLM-written opening, Oracle-current-role, and prior-experience fragments. Prompts
+  use a cleaned role-focused job description that removes obvious company boilerplate before
+  LLM calls.
+- **Duplicate-aware workflow**: uses SQLite job IDs to skip openings that already have the
+  requested artifact type, and does not count skipped jobs toward the requested run size.
 - **Local application tracker**: Flask + SQLite web UI for search/filter, status updates,
   applied dates, notes, PDF links, sync from generated output, and bulk deletion.
-- **Local-first storage**: generated PDFs live under `output/resumes/`; tracking lives in
-  both `output/tracking/applications.sqlite3` and the compatibility workbook at
-  `output/tracking/read_applications/linkedin_applications.xlsx`. SQLite rows also keep
-  the parsed LinkedIn job description and the cleaned prompt JOD used for generation.
+- **Local-first storage**: generated PDFs live under `output/resumes/` and
+  `output/cover_letters/`; tracking lives in both `output/tracking/applications.sqlite3`
+  and the compatibility workbook at
+  `output/tracking/read_applications/linkedin_applications.xlsx`. SQLite rows also keep the
+  parsed LinkedIn job description and the cleaned prompt JOD used for generation.
 - **Provider-oriented architecture**: LinkedIn public scraping is isolated behind a
   provider boundary, with service and workflow layers kept testable.
 - **No LinkedIn credentials required**: the current implementation uses public LinkedIn
   guest pages only. It does not log in, access private member data, or submit applications.
+
+## Workflow Graphic
+
+![Agentic LinkedIn career workflow](docs/assets/agentic-career-workflow.svg)
+
+This system turns public job descriptions and private profile context into reviewable
+application artifacts while preserving a human-owned application workflow.
 
 ## Current Workflow
 
@@ -46,17 +56,19 @@ profile/* + .blacklist
   -> LinkedIn public job pages
   -> duplicate/company filters
   -> public job detail fetch
-  -> LLM resume tailoring
+  -> LLM resume and cover-letter generation
   -> ReportLab PDF renderer
   -> output/resumes/*
+  -> output/cover_letters/*
   -> output/tracking/applications.sqlite3
   -> local Flask application tracker
 ```
 
 The workflow is designed to spend requests where they matter. Existing LinkedIn job IDs
 are loaded from SQLite before each matching run. If a returned posting already exists, the
-workflow skips detail lookup and resume generation for that job, then keeps searching for
-additional fresh openings.
+workflow skips detail lookup and artifact generation for that job, then keeps searching for
+additional fresh openings. The skip key follows the requested mode: resumes for the default
+and `resumes-only` runs, cover letters for `cover-letters-only` runs.
 
 LinkedIn's public guest endpoint does not expose a supported "exclude these job IDs"
 search parameter, so exclusion is applied inside this project after a public search page
@@ -89,7 +101,10 @@ The web UI is intentionally dense and work-focused:
 PDFs are available in two useful forms:
 
 - `/resumes/<job_id>` serves the PDF BLOB stored in SQLite.
+- `/cover-letters/<job_id>` serves the cover-letter PDF BLOB stored in SQLite.
 - `/output/resumes/...pdf` serves the generated file from the local output tree.
+- `/output/cover_letters/...pdf` serves the generated cover-letter file from the local output
+  tree.
 
 Example:
 
@@ -107,6 +122,10 @@ output/
     [company]/
       [job_id]_[job_title]/
         mp_resume_[job_title].pdf
+  cover_letters/
+    [company]/
+      [job_id]_[job_title]/
+        mp_cover_letter_[job_title].pdf
   tracking/
     applications.sqlite3
     read_applications/
@@ -171,11 +190,24 @@ Run the matching workflow:
 make match-jobs
 ```
 
-Regenerate resumes for jobs already stored in SQLite:
+By default, `match-jobs` generates both a tailored resume and cover letter for each fresh
+job. To generate only one artifact type:
+
+```bash
+make match-jobs ARTIFACT_MODE=resumes-only
+make match-jobs ARTIFACT_MODE=cover-letters-only
+```
+
+Regenerate artifacts for jobs already stored in SQLite:
 
 ```bash
 make regenerate-resumes
+make regenerate-cover-letters
+make regenerate-all
 make regenerate-resumes JOB_IDS="4407411418 4342788295"
+make regenerate-cover-letters JOB_IDS="4407411418 4342788295"
+make regenerate-all JOB_IDS="4407411418 4342788295"
+make regenerate-all JOB_IDS="4407411418,4342788295"
 ```
 
 Regeneration equivalent executable:
@@ -183,11 +215,15 @@ Regeneration equivalent executable:
 ```bash
 .venv/bin/linkedin-career-regenerate-resumes all
 .venv/bin/linkedin-career-regenerate-resumes 4407411418 4342788295
+.venv/bin/linkedin-career-regenerate-cover-letters all
+.venv/bin/linkedin-career-regenerate-all all
+.venv/bin/linkedin-career-regenerate-all 4407411418,4342788295
 ```
 
 Regeneration reuses `prompt_job_description` or `job_description` from SQLite. It only fetches
 LinkedIn details for older rows that do not have either description, waiting two seconds between
-those fallback LinkedIn lookups by default.
+those fallback LinkedIn lookups by default. Each regeneration command accepts `all`, one job ID,
+space-separated job IDs, or a comma-separated list of job IDs.
 
 Matching equivalent executable:
 
@@ -200,6 +236,14 @@ Matching equivalent executable:
   --limit-per-query 10 \
   --max-queries 6 \
   --max-jobs 10
+```
+
+Executable artifact modes:
+
+```bash
+.venv/bin/linkedin-career-match-jobs
+.venv/bin/linkedin-career-match-jobs resumes-only
+.venv/bin/linkedin-career-match-jobs cover-letters-only
 ```
 
 Run the local tracker:
@@ -281,10 +325,13 @@ Run the end-to-end profile-aware matching workflow:
 2. Generate LinkedIn search queries from the profile context.
 3. Expand promising searches across remote and hybrid workplace filters.
 4. Filter blacklisted companies.
-5. Skip LinkedIn job IDs that already exist in SQLite with resume artifacts.
+5. Skip LinkedIn job IDs that already exist in SQLite with requested artifacts.
 6. Fetch public details for fresh jobs.
-7. Generate and render tailored resume PDFs.
+7. Generate and render tailored resume and cover-letter PDFs.
 8. Append workbook rows and upsert SQLite tracker records.
+
+The optional `artifact_mode` argument accepts `all`, `resumes-only`, or
+`cover-letters-only`; `all` is the default.
 
 ## Project Structure
 
@@ -300,7 +347,7 @@ src/linkedin_career_mcp/
   tools/                     MCP tool registration
   webapp.py                  Flask + SQLite application tracker
   workflows/
-    matching.py              profile-aware search and resume workflow
+    matching.py              profile-aware search and application-artifact workflow
 ```
 
 ## Inputs
@@ -369,4 +416,4 @@ without confirmation.
 This project was informed by the MIT-licensed
 [`administrativetrick/linkedin-mcp`](https://github.com/administrativetrick/linkedin-mcp)
 TypeScript server, but this implementation is Python-first, local-first, and expanded into
-resume generation plus application tracking.
+resume and cover-letter generation plus application tracking.

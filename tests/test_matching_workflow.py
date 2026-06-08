@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
+import sys
 from pathlib import Path
 
 from openpyxl import load_workbook
 from pypdf import PdfReader
 
+from linkedin_career_mcp.config import Settings
 from linkedin_career_mcp.models import JobDetails, JobPosting, JobSearchQuery, JobSearchResult
 from linkedin_career_mcp.webapp import (
     DEFAULT_DATABASE,
@@ -12,11 +15,15 @@ from linkedin_career_mcp.webapp import (
     fetch_existing_resume_job_ids,
     upsert_application_artifact,
 )
+from linkedin_career_mcp.workflows import matching
 from linkedin_career_mcp.workflows.matching import (
     DEFAULT_SUPPLEMENTAL_SEARCH_KEYWORDS,
     CompanyBlacklist,
     MatchingJobsWorkflow,
+    MatchingJobsWorkflowResult,
+    TailoredResumeArtifact,
     _expand_remote_and_hybrid_queries,
+    _normalize_regeneration_job_ids,
     _supplement_search_queries,
 )
 
@@ -28,6 +35,20 @@ class FakeOllama:
 
     async def generate_json(self, prompt: str) -> dict[str, object]:
         self.json_prompts.append(prompt)
+        if "cover_letter_sections" in prompt:
+            return {
+                "opening_alignment": (
+                    "the AI platform engineering and automation capabilities you are looking for"
+                ),
+                "oracle_alignment": (
+                    "I have owned Oracle automation components and built observability pipelines "
+                    "that map to this role's distributed systems needs."
+                ),
+                "prior_experience_alignment": (
+                    "My pre-Oracle roles add healthcare automation, React development, Azure "
+                    "migration, and Django platform experience relevant to this position."
+                ),
+            }
         if "core_technical_skills" in prompt:
             return {
                 "core_technical_skills": [
@@ -206,6 +227,13 @@ def test_search_queries_are_supplemented_with_trending_keyword_fallbacks():
     assert {query.workplace_type for query in expanded[:2]} == {"remote", "hybrid"}
 
 
+def test_normalize_regeneration_job_ids_accepts_csv_and_positional_ids():
+    assert _normalize_regeneration_job_ids(["111"]) == ["111"]
+    assert _normalize_regeneration_job_ids(["111,222", "333"]) == ["111", "222", "333"]
+    assert _normalize_regeneration_job_ids(["111, 222", "222"]) == ["111", "222"]
+    assert _normalize_regeneration_job_ids(["all"]) is None
+
+
 async def test_matching_workflow_writes_resume_and_tracking(tmp_path: Path):
     profile_dir = tmp_path / "profile"
     profile_dir.mkdir()
@@ -231,6 +259,7 @@ async def test_matching_workflow_writes_resume_and_tracking(tmp_path: Path):
 
     assert {query.workplace_type for query in service.queries} == {"remote", "hybrid"}
     assert result.resumes_created == 1
+    assert result.cover_letters_created == 1
     assert result.artifacts[0].company == "Acme AI"
     assert "Raytheon Technologies - Defense AI Engineer" in result.skipped_blacklisted
 
@@ -247,11 +276,23 @@ async def test_matching_workflow_writes_resume_and_tracking(tmp_path: Path):
     assert "Error Budgets" not in resume_text
     assert "**" not in resume_text
 
+    cover_letter_path = Path(result.artifacts[0].cover_letter_path or "")
+    assert cover_letter_path.exists()
+    assert cover_letter_path.name == "mp_cover_letter_agentic_ai_engineer.pdf"
+    cover_letter_text = "\n".join(
+        page.extract_text() or "" for page in PdfReader(cover_letter_path).pages
+    )
+    assert "Dear Hiring Manager" in cover_letter_text
+    assert "Agentic AI Engineer at Acme AI" in cover_letter_text
+    assert "linkedin-career-mcp" in cover_letter_text
+    assert "OpenRouter and DeepSeek" in cover_letter_text
+
     database_path = output_dir / DEFAULT_DATABASE
     with connect_database(database_path) as connection:
         row = connection.execute(
             """
-            SELECT job_description, prompt_job_description
+            SELECT job_description, prompt_job_description, cover_letter_content,
+                   source_cover_letter_path
             FROM applications
             WHERE job_id = ?
             """,
@@ -259,6 +300,8 @@ async def test_matching_workflow_writes_resume_and_tracking(tmp_path: Path):
         ).fetchone()
     assert row["job_description"] == "Build local AI workflows and MCP integrations."
     assert row["prompt_job_description"] == "Build local AI workflows and MCP integrations."
+    assert row["cover_letter_content"] is not None
+    assert row["source_cover_letter_path"] == str(cover_letter_path)
 
     workbook_path = output_dir / "tracking/read_applications/linkedin_applications.xlsx"
     assert workbook_path.exists()
@@ -266,8 +309,10 @@ async def test_matching_workflow_writes_resume_and_tracking(tmp_path: Path):
     sheet = workbook.active
     assert sheet.cell(row=2, column=1).value == "111"
     assert sheet.cell(row=2, column=4).hyperlink.target == "https://www.linkedin.com/jobs/view/111"
-    assert sheet.cell(row=2, column=6).value == "No"
-    assert sheet.cell(row=2, column=7).value is None
+    assert sheet.cell(row=2, column=6).value == str(cover_letter_path)
+    assert sheet.cell(row=2, column=6).hyperlink.target == cover_letter_path.resolve().as_uri()
+    assert sheet.cell(row=2, column=7).value == "No"
+    assert sheet.cell(row=2, column=8).value is None
 
 
 async def test_matching_workflow_skips_existing_database_jobs_without_counting_them(
@@ -386,3 +431,130 @@ async def test_regenerate_resumes_uses_database_jobs_and_fetches_missing_descrip
     assert row_by_job_id["333"]["prompt_job_description"] == (
         "Fresh role that should count toward max_jobs."
     )
+
+
+async def test_regenerate_cover_letters_uses_database_jobs_without_regenerating_resumes(
+    tmp_path: Path,
+):
+    profile_dir = tmp_path / "profile"
+    profile_dir.mkdir()
+    (profile_dir / "MP-RESUME-AGENTIC.txt").write_text(
+        "Resume: built MCP servers and local LLM workflows.",
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "output"
+    database_path = output_dir / DEFAULT_DATABASE
+    stored_resume = output_dir / "resumes/Existing_Co/111_existing_engineer/resume.pdf"
+    stored_resume.parent.mkdir(parents=True)
+    stored_resume.write_bytes(b"%PDF-1.4 existing")
+    upsert_application_artifact(
+        database_path=database_path,
+        job_id="111",
+        company="Existing Co",
+        job_title="Existing Engineer",
+        linkedin_url="https://www.linkedin.com/jobs/view/111",
+        resume_path=stored_resume,
+        job_description="Raw stored JOD with AI Experience.",
+        prompt_job_description="Raw stored JOD with AI Experience.",
+    )
+    service = ExistingThenNewJobService()
+    ollama = FakeOllama()
+    workflow = MatchingJobsWorkflow(service=service, ollama=ollama)
+
+    result = await workflow.regenerate_resumes(
+        profile_dir=profile_dir,
+        output_dir=output_dir,
+        source_resume_name="MP-RESUME-AGENTIC.txt",
+        job_ids=["111"],
+        linkedin_delay_seconds=0,
+        artifact_mode="cover-letters-only",
+    )
+
+    assert result.jobs_found == 1
+    assert result.resumes_created == 0
+    assert result.cover_letters_created == 1
+    assert result.artifacts[0].artifact_kind == "cover_letter"
+    assert result.artifacts[0].resume_path == ""
+    cover_letter_path = Path(result.artifacts[0].cover_letter_path or "")
+    assert cover_letter_path.exists()
+    assert service.detail_requests == []
+    assert not ollama.text_prompts
+    assert any("Raw stored JOD with AI Experience." in prompt for prompt in ollama.json_prompts)
+    with connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT resume_content, cover_letter_content, source_resume_path,
+                   source_cover_letter_path
+            FROM applications
+            WHERE job_id = ?
+            """,
+            ("111",),
+        ).fetchone()
+    assert row["resume_content"] == b"%PDF-1.4 existing"
+    assert row["cover_letter_content"] is not None
+    assert row["source_resume_path"] == str(stored_resume)
+    assert row["source_cover_letter_path"] == str(cover_letter_path)
+
+
+def test_regenerate_main_displays_llm_and_processed_count(
+    monkeypatch,
+    capsys,
+):
+    settings = Settings(
+        llm_provider="api",
+        llm_api_key="test-key",
+        llm_api_model="deepseek/deepseek-v4-flash",
+    )
+    captured_settings: list[Settings | None] = []
+    captured_modes: list[str] = []
+
+    async def fake_run_regenerate_from_cli(args, *, settings=None, artifact_mode="resumes-only"):
+        captured_settings.append(settings)
+        captured_modes.append(artifact_mode)
+        assert args.job_ids == ["111"]
+        return MatchingJobsWorkflowResult(
+            profile_files=[],
+            search_queries=[],
+            jobs_found=3,
+            resumes_created=1,
+            cover_letters_created=1,
+            recommendations_created=1,
+            tracking_spreadsheet="output/tracking/read_applications/linkedin_applications.xlsx",
+            errors=["333: failed"],
+            artifacts=[
+                TailoredResumeArtifact(
+                    job_id="111",
+                    company="Acme",
+                    title="Platform Engineer",
+                    linkedin_url="https://www.linkedin.com/jobs/view/111",
+                    resume_path="output/resumes/acme/111/resume.pdf",
+                ),
+                TailoredResumeArtifact(
+                    job_id="222",
+                    company="Beta",
+                    title="Software Engineer",
+                    linkedin_url="https://www.linkedin.com/jobs/view/222",
+                    resume_path="output/resumes/beta/222/recommendations.pdf",
+                    artifact_kind="recommendations",
+                    recommendations_path="output/resumes/beta/222/recommendations.pdf",
+                ),
+            ],
+        )
+
+    monkeypatch.setattr(matching, "load_settings", lambda: settings)
+    monkeypatch.setattr(matching, "run_regenerate_from_cli", fake_run_regenerate_from_cli)
+    monkeypatch.setattr(sys, "argv", ["linkedin-career-regenerate-resumes", "111"])
+
+    matching.regenerate_main()
+
+    assert captured_settings == [settings]
+    assert captured_modes == ["resumes-only"]
+    captured = capsys.readouterr()
+    assert "LLM: api:deepseek/deepseek-v4-flash" in captured.err
+    assert (
+        "Jobs processed: 2/3 "
+        "(resumes: 1, cover letters: 1, recommendations: 1, errors: 1)"
+    ) in captured.err
+    result = json.loads(captured.out)
+    assert result["jobs_found"] == 3
+    assert len(result["artifacts"]) == 2

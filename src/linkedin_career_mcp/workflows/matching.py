@@ -4,8 +4,10 @@ import argparse
 import asyncio
 import json
 import re
+import sys
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import date
 from html import escape
 from pathlib import Path
 from typing import Any, Literal
@@ -31,7 +33,9 @@ from linkedin_career_mcp.webapp import (
 )
 from linkedin_career_mcp.webapp import (
     ApplicationJobRecord,
+    fetch_application_job_ids,
     fetch_application_job_records,
+    fetch_existing_cover_letter_job_ids,
     fetch_existing_resume_job_ids,
     import_output_artifacts,
     upsert_application_artifact,
@@ -45,10 +49,15 @@ DEFAULT_CURRENT_JOB_DESCRIPTION = "Senior_Platform_Software_Engineer(IC3).pdf"
 TRACKING_WORKBOOK = Path("tracking/read_applications/linkedin_applications.xlsx")
 SUPPORTED_TEXT_SUFFIXES = {".csv", ".json", ".md", ".rst", ".text", ".txt"}
 SUPPORTED_PROFILE_SUFFIXES = SUPPORTED_TEXT_SUFFIXES | {".docx", ".pdf"}
+ArtifactMode = Literal["all", "resumes-only", "cover-letters-only"]
 RESUME_HEADER_NAME = "Max Perkhounkov"
 RESUME_HEADER_CONTACT = (
     "Iowa City, IA | 641-781-0477 | mperkhounkov1@gmail.com | linkedin.com/mperkhou"
 )
+EMERALD_ACCENT = colors.HexColor("#57BA86")
+EMERALD_DARK = colors.HexColor("#047857")
+RESUME_BODY_COLOR = colors.HexColor("#111827")
+RESUME_MUTED_COLOR = colors.HexColor("#475569")
 STATIC_PROFESSIONAL_SUMMARY = (
     "Analytical and metrics-driven Senior Platform Software Engineer with over 10 years of "
     "multi-disciplinary experience architecting scalable distributed systems, developer tooling, "
@@ -62,6 +71,50 @@ AI_GENERATION_NOTE = (
     "Note: This resume is custom tailored for every job position using my automated agentic "
     "workflow found at: "
     "[mperkhou/linkedin-career-mcp](https://github.com/mperkhou/linkedin-career-mcp)"
+)
+COVER_LETTER_ORACLE_OPENER = (
+    "In my current role at Oracle, I work as a Senior Technical Lead and Cloud Automation "
+    "Engineer building and maintaining large-scale platform automation systems across "
+    "international datacenters."
+)
+COVER_LETTER_PRIOR_EXPERIENCE_OPENER = (
+    "My earlier experience also strengthens my fit for this position."
+)
+COVER_LETTER_PROJECT_PARAGRAPH = (
+    "I also want to highlight the automation project "
+    "([mperkhou/linkedin-career-mcp](https://github.com/mperkhou/linkedin-career-mcp)) used "
+    "to generate the resume and cover letter submitted with this application. I built a custom "
+    "agentic workflow that searches public LinkedIn job postings, compares each Job Opening "
+    "Description against my resume and current role context, and generates tailored resume "
+    "artifacts through cost-conscious API calls to OpenRouter and DeepSeek. I developed the "
+    "project using multiple AI-assisted engineering tools, including Codex, Cline with DeepSeek, "
+    "and GitHub Copilot, while actively managing prompt structure, context windows, token usage, "
+    "model selection, and output validation. This project reflects more than interest in AI; it "
+    "shows hands-on experience applying LLMs to a real workflow, balancing quality with cost, "
+    "and building practical automation around prompt engineering, structured context, and "
+    "repeatable generation."
+)
+COVER_LETTER_DEFAULT_OPENING_ALIGNMENT = (
+    "the platform engineering, automation, distributed systems, and AI-focused capabilities "
+    "you are looking for"
+)
+COVER_LETTER_DEFAULT_ORACLE_ALIGNMENT = (
+    "I have owned multi-tenant infrastructure components serving 40,000+ managed endpoints, "
+    "built distributed observability pipelines using Filebeat, Logstash, and OpenSearch, and "
+    "developed Python automation frameworks to replace legacy third-party tooling. That "
+    "experience maps directly to roles requiring resilient platform services, secure API "
+    "integrations, debugging across distributed systems, developer tooling, CI/CD, and practical "
+    "automation at enterprise scale."
+)
+COVER_LETTER_DEFAULT_PRIOR_EXPERIENCE_ALIGNMENT = (
+    "At the University of Iowa Hospitals and Clinics, I built Python and AutoIT automation "
+    "scripts, supported regulated medical platforms, and contributed to a React-based DICOM "
+    "anonymization server. At Steindler Orthopedic Clinic, Stamats Communications, and VIDA "
+    "Diagnostics, I led infrastructure modernization, Azure migrations, monitoring and reporting "
+    "workflows, Python data-transfer tooling, and a Django platform rebuild. Across those roles, "
+    "I developed the mix of software engineering, systems thinking, data movement, cloud "
+    "infrastructure, and cross-functional troubleshooting needed to contribute effectively in "
+    "complex technical environments."
 )
 RESUME_SECTION_HEADINGS = {
     "Professional Summary",
@@ -248,12 +301,22 @@ DEFAULT_SUPPLEMENTAL_SEARCH_KEYWORDS = (
     "Infrastructure Software Engineer agentic AI",
     "DevOps Engineer distributed systems",
 )
+LEGACY_TRACKING_HEADERS = [
+    "job_id",
+    "company",
+    "job_title",
+    "linkedin_url",
+    "customized_resume",
+    "applied_to",
+    "date_applied",
+]
 TRACKING_HEADERS = [
     "job_id",
     "company",
     "job_title",
     "linkedin_url",
     "customized_resume",
+    "cover_letter",
     "applied_to",
     "date_applied",
 ]
@@ -369,8 +432,9 @@ class TailoredResumeArtifact(BaseModel):
     company: str | None
     title: str
     linkedin_url: str | None
-    resume_path: str
-    artifact_kind: Literal["resume", "recommendations"] = "resume"
+    resume_path: str = ""
+    cover_letter_path: str | None = None
+    artifact_kind: Literal["resume", "recommendations", "cover_letter"] = "resume"
     recommendations_path: str | None = None
 
 
@@ -381,6 +445,7 @@ class MatchingJobsWorkflowResult(BaseModel):
     search_queries: list[JobSearchQuery]
     jobs_found: int
     resumes_created: int
+    cover_letters_created: int = 0
     recommendations_created: int = 0
     tracking_spreadsheet: str
     skipped_blacklisted: list[str] = Field(default_factory=list)
@@ -482,6 +547,7 @@ class MatchingJobsWorkflow:
         limit_per_query: int = 10,
         max_queries: int = 6,
         max_jobs: int = 10,
+        artifact_mode: ArtifactMode = "all",
     ) -> MatchingJobsWorkflowResult:
         profile_documents = load_profile_documents(profile_dir)
         profile_context = format_profile_context(profile_documents)
@@ -502,6 +568,15 @@ class MatchingJobsWorkflow:
         if tracking_path.exists():
             import_output_artifacts(output_dir=output_dir, database_path=application_database_path)
         existing_resume_job_ids = fetch_existing_resume_job_ids(application_database_path)
+        existing_cover_letter_job_ids = fetch_existing_cover_letter_job_ids(
+            application_database_path
+        )
+        existing_application_job_ids = fetch_application_job_ids(application_database_path)
+        existing_artifact_job_ids = (
+            existing_cover_letter_job_ids
+            if artifact_mode == "cover-letters-only"
+            else existing_resume_job_ids
+        )
         search_memory = _SearchMemory()
         all_search_queries: list[JobSearchQuery] = []
         min_searches_before_stop = min(max(max_queries, 1), MIN_SEARCHES_BEFORE_STOP)
@@ -527,7 +602,7 @@ class MatchingJobsWorkflow:
                     continue
                 new_query_found = True
                 all_search_queries.append(query)
-                excluded_job_ids = existing_resume_job_ids | seen_job_ids
+                excluded_job_ids = existing_artifact_job_ids | seen_job_ids
                 search_query = query.model_copy(update={"exclude_job_ids": excluded_job_ids})
                 try:
                     result = await self._service.search(search_query)
@@ -542,7 +617,7 @@ class MatchingJobsWorkflow:
                     if posting.job_id in seen_job_ids:
                         continue
                     seen_job_ids.add(posting.job_id)
-                    if posting.job_id in existing_resume_job_ids:
+                    if posting.job_id in existing_artifact_job_ids:
                         skipped_existing.append(_job_label(posting.company, posting.title))
                         continue
                     if blacklist.matches(posting.company):
@@ -571,17 +646,22 @@ class MatchingJobsWorkflow:
         artifacts: list[TailoredResumeArtifact] = []
         for job in candidates:
             try:
-                artifact = await self._generate_and_store_resume(
+                artifact = await self._generate_and_store_application_artifacts(
                     source_resume=source_resume,
                     current_job_description=current_job_description,
                     job=job,
                     output_dir=output_dir,
                     tracking_path=tracking_path,
                     application_database_path=application_database_path,
-                    append_tracking=True,
+                    append_tracking=job.job_id not in existing_application_job_ids,
                     stored_job_description=job.description,
+                    artifact_mode=artifact_mode,
                 )
-                existing_resume_job_ids.add(job.job_id)
+                if artifact.resume_path and artifact.artifact_kind == "resume":
+                    existing_resume_job_ids.add(job.job_id)
+                if artifact.cover_letter_path:
+                    existing_cover_letter_job_ids.add(job.job_id)
+                existing_application_job_ids.add(job.job_id)
             except LinkedInCareerMcpError as exc:
                 errors.append(f"{job.job_id}: {exc}")
                 continue
@@ -592,6 +672,7 @@ class MatchingJobsWorkflow:
             search_queries=all_search_queries,
             jobs_found=len(candidates),
             resumes_created=sum(1 for artifact in artifacts if artifact.artifact_kind == "resume"),
+            cover_letters_created=sum(1 for artifact in artifacts if artifact.cover_letter_path),
             recommendations_created=sum(
                 1 for artifact in artifacts if artifact.artifact_kind == "recommendations"
             ),
@@ -611,6 +692,7 @@ class MatchingJobsWorkflow:
         current_job_description_name: str = DEFAULT_CURRENT_JOB_DESCRIPTION,
         job_ids: list[str] | None = None,
         linkedin_delay_seconds: float = 2.0,
+        artifact_mode: ArtifactMode = "resumes-only",
     ) -> MatchingJobsWorkflowResult:
         profile_documents = load_profile_documents(profile_dir)
         source_resume = _find_source_resume(profile_documents, source_resume_name)
@@ -661,7 +743,7 @@ class MatchingJobsWorkflow:
         artifacts: list[TailoredResumeArtifact] = []
         for candidate in candidates:
             try:
-                artifact = await self._generate_and_store_resume(
+                artifact = await self._generate_and_store_application_artifacts(
                     source_resume=source_resume,
                     current_job_description=current_job_description,
                     job=candidate.job,
@@ -670,6 +752,7 @@ class MatchingJobsWorkflow:
                     application_database_path=application_database_path,
                     append_tracking=False,
                     stored_job_description=candidate.stored_job_description,
+                    artifact_mode=artifact_mode,
                 )
             except LinkedInCareerMcpError as exc:
                 errors.append(f"{candidate.job.job_id}: {exc}")
@@ -681,6 +764,7 @@ class MatchingJobsWorkflow:
             search_queries=[],
             jobs_found=len(candidates),
             resumes_created=sum(1 for artifact in artifacts if artifact.artifact_kind == "resume"),
+            cover_letters_created=sum(1 for artifact in artifacts if artifact.cover_letter_path),
             recommendations_created=sum(
                 1 for artifact in artifacts if artifact.artifact_kind == "recommendations"
             ),
@@ -691,7 +775,7 @@ class MatchingJobsWorkflow:
             artifacts=artifacts,
         )
 
-    async def _generate_and_store_resume(
+    async def _generate_and_store_application_artifacts(
         self,
         *,
         source_resume: ProfileDocument | None,
@@ -702,36 +786,60 @@ class MatchingJobsWorkflow:
         application_database_path: Path,
         append_tracking: bool,
         stored_job_description: str | None = None,
+        artifact_mode: ArtifactMode,
     ) -> TailoredResumeArtifact:
-        resume_text = await self._generate_resume_text(
-            source_resume=source_resume,
-            current_job_description=current_job_description,
-            job=job,
-        )
-        artifact_kind: Literal["resume", "recommendations"] = "resume"
+        artifact_kind: Literal["resume", "recommendations", "cover_letter"] = "cover_letter"
+        resume_path: Path | None = None
         recommendations_path: Path | None = None
-        if _looks_like_recommendations(resume_text):
-            artifact_kind = "recommendations"
-            recommendations_text = await self._generate_recommendations_text(
+        cover_letter_path: Path | None = None
+
+        if artifact_mode in {"all", "resumes-only"}:
+            resume_text = await self._generate_resume_text(
                 source_resume=source_resume,
                 current_job_description=current_job_description,
                 job=job,
-                draft_text=resume_text,
             )
-            resume_path = write_resume_recommendations_pdf(
-                recommendations_text=recommendations_text,
+            artifact_kind = "resume"
+            if _looks_like_recommendations(resume_text):
+                artifact_kind = "recommendations"
+                recommendations_text = await self._generate_recommendations_text(
+                    source_resume=source_resume,
+                    current_job_description=current_job_description,
+                    job=job,
+                    draft_text=resume_text,
+                )
+                resume_path = write_resume_recommendations_pdf(
+                    recommendations_text=recommendations_text,
+                    output_dir=output_dir,
+                    job=job,
+                )
+                recommendations_path = resume_path
+            else:
+                resume_path = write_resume_pdf(
+                    resume_text=resume_text,
+                    output_dir=output_dir,
+                    job=job,
+                )
+
+        if artifact_mode in {"all", "cover-letters-only"}:
+            cover_letter_text = await self._generate_cover_letter_text(
+                source_resume=source_resume,
+                current_job_description=current_job_description,
+                job=job,
+            )
+            cover_letter_path = write_cover_letter_pdf(
+                cover_letter_text=cover_letter_text,
                 output_dir=output_dir,
                 job=job,
             )
-            recommendations_path = resume_path
-        else:
-            resume_path = write_resume_pdf(
-                resume_text=resume_text,
-                output_dir=output_dir,
-                job=job,
-            )
+
         if append_tracking:
-            append_tracking_row(tracking_path=tracking_path, job=job, resume_path=resume_path)
+            append_tracking_row(
+                tracking_path=tracking_path,
+                job=job,
+                resume_path=resume_path,
+                cover_letter_path=cover_letter_path,
+            )
         prompt_job_description = _job_description_context(job)
         upsert_application_artifact(
             database_path=application_database_path,
@@ -740,6 +848,7 @@ class MatchingJobsWorkflow:
             job_title=job.title,
             linkedin_url=str(job.job_url) if job.job_url else "",
             resume_path=resume_path,
+            cover_letter_path=cover_letter_path,
             job_description=stored_job_description,
             prompt_job_description=prompt_job_description,
         )
@@ -748,7 +857,8 @@ class MatchingJobsWorkflow:
             company=job.company,
             title=job.title,
             linkedin_url=str(job.job_url) if job.job_url else None,
-            resume_path=str(resume_path),
+            resume_path=str(resume_path) if resume_path else "",
+            cover_letter_path=str(cover_letter_path) if cover_letter_path else None,
             artifact_kind=artifact_kind,
             recommendations_path=str(recommendations_path) if recommendations_path else None,
         )
@@ -839,6 +949,24 @@ class MatchingJobsWorkflow:
             sections_plan=sections_plan,
         )
 
+    async def _generate_cover_letter_text(
+        self,
+        *,
+        source_resume: ProfileDocument | None,
+        current_job_description: ProfileDocument | None,
+        job: JobDetails,
+    ) -> str:
+        if source_resume is None:
+            raise WorkflowError(f"Source resume file was not found: {DEFAULT_SOURCE_RESUME}")
+        sections_plan = await self._ollama.generate_json(
+            _cover_letter_sections_prompt(
+                source_resume=source_resume,
+                current_job_description=current_job_description,
+                job=job,
+            )
+        )
+        return _render_cover_letter_template(job=job, sections_plan=sections_plan)
+
     async def _generate_recommendations_text(
         self,
         *,
@@ -925,6 +1053,71 @@ def write_resume_recommendations_pdf(
     return recommendations_path
 
 
+def write_cover_letter_pdf(*, cover_letter_text: str, output_dir: Path, job: JobDetails) -> Path:
+    company_dir = _path_part(job.company or "unknown_company")
+    title_part = _path_part(job.title, lower=True)
+    job_dir = _path_part(f"{job.job_id}_{job.title}", lower=True)
+    cover_letter_path = (
+        output_dir
+        / "cover_letters"
+        / company_dir
+        / job_dir
+        / f"mp_cover_letter_{title_part}.pdf"
+    )
+    _write_cover_letter_text_pdf(text=cover_letter_text, path=cover_letter_path)
+    return cover_letter_path
+
+
+def _write_cover_letter_text_pdf(*, text: str, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    styles = getSampleStyleSheet()
+    body = ParagraphStyle(
+        "CoverLetterBody",
+        parent=styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=10.5,
+        leading=14.5,
+        spaceAfter=10,
+        textColor=RESUME_BODY_COLOR,
+    )
+    signature = ParagraphStyle(
+        "CoverLetterSignature",
+        parent=body,
+        spaceBefore=2,
+        spaceAfter=2,
+    )
+
+    story: list[Any] = [_cover_letter_top_bar(), Spacer(1, 34)]
+    content_added = False
+    for paragraph in _clean_cover_letter_text(text).split("\n\n"):
+        line = paragraph.strip()
+        if not line:
+            continue
+        paragraph_lines = [part.strip() for part in line.splitlines() if part.strip()]
+        style = (
+            signature
+            if paragraph_lines
+            and all(part in {"Sincerely,", "Maxim Perkhounkov"} for part in paragraph_lines)
+            else body
+        )
+        story.append(Paragraph(_cover_letter_markup(line), style))
+        content_added = True
+
+    if not content_added:
+        story.append(Paragraph("Cover letter content was empty.", body))
+
+    document = SimpleDocTemplate(
+        str(path),
+        pagesize=LETTER,
+        rightMargin=72,
+        leftMargin=72,
+        topMargin=54,
+        bottomMargin=72,
+    )
+    document.build(story)
+
+
 def _write_text_pdf(*, text: str, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -936,6 +1129,7 @@ def _write_text_pdf(*, text: str, path: Path) -> None:
         fontSize=8.8,
         leading=10.6,
         spaceAfter=2,
+        textColor=RESUME_BODY_COLOR,
     )
     bullet = ParagraphStyle(
         "ResumeBullet",
@@ -956,12 +1150,12 @@ def _write_text_pdf(*, text: str, path: Path) -> None:
     heading = ParagraphStyle(
         "ResumeHeading",
         parent=body,
-        fontName="Helvetica",
-        fontSize=12,
-        leading=14,
+        fontName="Helvetica-Bold",
+        fontSize=12.2,
+        leading=14.2,
         spaceBefore=9,
-        spaceAfter=7,
-        textColor=colors.black,
+        spaceAfter=6,
+        textColor=EMERALD_DARK,
     )
     employer_style = ParagraphStyle(
         "ResumeEmployer",
@@ -971,6 +1165,7 @@ def _write_text_pdf(*, text: str, path: Path) -> None:
         leading=11.4,
         spaceBefore=9,
         spaceAfter=5,
+        textColor=RESUME_BODY_COLOR,
     )
     title_style = ParagraphStyle(
         "ResumeTitle",
@@ -979,15 +1174,17 @@ def _write_text_pdf(*, text: str, path: Path) -> None:
         fontSize=8.6,
         leading=10.3,
         spaceAfter=8,
+        textColor=RESUME_MUTED_COLOR,
     )
     name_style = ParagraphStyle(
         "ResumeName",
         parent=body,
-        fontName="Helvetica",
-        fontSize=11,
-        leading=13,
+        fontName="Helvetica-Bold",
+        fontSize=13.2,
+        leading=15.4,
         alignment=0,
-        spaceAfter=6,
+        spaceAfter=5,
+        textColor=EMERALD_DARK,
     )
     contact_style = ParagraphStyle(
         "ResumeContact",
@@ -996,21 +1193,21 @@ def _write_text_pdf(*, text: str, path: Path) -> None:
         fontSize=7.2,
         leading=8.6,
         alignment=0,
-        textColor=colors.black,
+        textColor=RESUME_MUTED_COLOR,
         spaceAfter=8,
     )
     note_style = ParagraphStyle(
         "ResumeNote",
         parent=body,
-        fontName="Helvetica",
+        fontName="Helvetica-Oblique",
         fontSize=8,
         leading=9.6,
-        textColor=colors.black,
+        textColor=RESUME_MUTED_COLOR,
     )
 
     story: list[Any] = []
-    story.append(_resume_rule())
-    story.append(Spacer(1, 13))
+    story.append(_resume_rule(top=True))
+    story.append(Spacer(1, 12))
 
     current_section: str | None = None
     previous_line_blank = False
@@ -1071,7 +1268,13 @@ def _write_text_pdf(*, text: str, path: Path) -> None:
     document.build(story)
 
 
-def append_tracking_row(*, tracking_path: Path, job: JobDetails, resume_path: Path) -> None:
+def append_tracking_row(
+    *,
+    tracking_path: Path,
+    job: JobDetails,
+    resume_path: Path | None,
+    cover_letter_path: Path | None = None,
+) -> None:
     tracking_path.parent.mkdir(parents=True, exist_ok=True)
     workbook: Workbook
     if tracking_path.exists():
@@ -1088,13 +1291,15 @@ def append_tracking_row(*, tracking_path: Path, job: JobDetails, resume_path: Pa
 
     row = sheet.max_row + 1
     job_url = str(job.job_url) if job.job_url else ""
-    relative_resume = str(resume_path)
+    relative_resume = str(resume_path) if resume_path else ""
+    relative_cover_letter = str(cover_letter_path) if cover_letter_path else ""
     values = [
         job.job_id,
         job.company or "",
         job.title,
         job_url,
         relative_resume,
+        relative_cover_letter,
         "No",
         "",
     ]
@@ -1106,9 +1311,15 @@ def append_tracking_row(*, tracking_path: Path, job: JobDetails, resume_path: Pa
         link_cell.hyperlink = job_url
         link_cell.style = "Hyperlink"
 
-    resume_cell = sheet.cell(row=row, column=5)
-    resume_cell.hyperlink = resume_path.resolve().as_uri()
-    resume_cell.style = "Hyperlink"
+    if resume_path is not None:
+        resume_cell = sheet.cell(row=row, column=5)
+        resume_cell.hyperlink = resume_path.resolve().as_uri()
+        resume_cell.style = "Hyperlink"
+
+    if cover_letter_path is not None:
+        cover_letter_cell = sheet.cell(row=row, column=6)
+        cover_letter_cell.hyperlink = cover_letter_path.resolve().as_uri()
+        cover_letter_cell.style = "Hyperlink"
 
     workbook.save(tracking_path)
 
@@ -1143,7 +1354,7 @@ def _find_source_resume(
 def _normalize_regeneration_job_ids(job_ids: list[str] | None) -> list[str] | None:
     if job_ids is None:
         return None
-    normalized = _dedupe_preserve_order([job_id.strip() for job_id in job_ids if job_id.strip()])
+    normalized = _dedupe_preserve_order(_split_regeneration_job_ids(job_ids))
     if not normalized:
         return None
     all_markers = [job_id for job_id in normalized if job_id.casefold() == "all"]
@@ -1152,6 +1363,16 @@ def _normalize_regeneration_job_ids(job_ids: list[str] | None) -> list[str] | No
     if all_markers:
         return None
     return normalized
+
+
+def _split_regeneration_job_ids(job_ids: list[str]) -> list[str]:
+    values: list[str] = []
+    for raw_value in job_ids:
+        for job_id in str(raw_value).split(","):
+            value = job_id.strip()
+            if value:
+                values.append(value)
+    return values
 
 
 def _regeneration_candidate_from_record(record: ApplicationJobRecord) -> _RegenerationCandidate:
@@ -1650,6 +1871,196 @@ Unusable draft text:
 """.strip()
 
 
+def _cover_letter_sections_prompt(
+    *,
+    source_resume: ProfileDocument | None,
+    current_job_description: ProfileDocument | None,
+    job: JobDetails,
+) -> str:
+    source_resume_text = _limit_context(
+        source_resume.text if source_resume else "",
+        max_chars=14_000,
+    )
+    cjd_text = _limit_context(
+        current_job_description.text if current_job_description else "No CJD was available.",
+        max_chars=8_000,
+    )
+    prior_experience_text = _render_prior_experience_text(DEFAULT_PRIOR_EXPERIENCE_ENTRIES)
+    return f"""
+You produce dynamic cover_letter_sections JSON for a local cover-letter template.
+Return only valid JSON. Do not return markdown fences, commentary, a full cover letter, or
+instructions.
+
+The application renders these static sections itself:
+- Date, salutation, resume-attached sentence, thank-you sentence, and signature.
+- Section 1 opening sentence with the real job title and company.
+- Section 2 starts with this exact Oracle sentence:
+  {COVER_LETTER_ORACLE_OPENER}
+- Section 3 starts with this exact sentence:
+  {COVER_LETTER_PRIOR_EXPERIENCE_OPENER}
+- Section 4 is a static paragraph about the candidate's linkedin-career-mcp automation project,
+  OpenRouter/DeepSeek, Codex, Cline with DeepSeek, GitHub Copilot, prompt structure, context
+  windows, token usage, model selection, and output validation.
+
+You only control:
+1. opening_alignment: a concise noun phrase for the end of Section 1.
+2. oracle_alignment: 2 concise sentences connecting the current Oracle role and CJD to this JOD.
+3. prior_experience_alignment: 2-3 concise sentences connecting pre-Oracle experience to this JOD.
+
+Rules:
+- Stay factual. Do not invent employers, projects, credentials, tools, dates, metrics, products,
+  leadership scope, or submitted-application facts.
+- Use the JOD to choose emphasis and vocabulary.
+- Use the CJD only to describe the current Oracle role.
+- Use the prior experience context for pre-Oracle jobs; do not turn Oracle facts into prior jobs.
+- Avoid flattery, buzzword stuffing, and generic claims.
+- Do not mention salary, availability, relocation, immigration, or application logistics.
+- Do not include greetings, closings, markdown, bullets, or section labels.
+
+Return this exact JSON shape:
+{{
+  "opening_alignment": "the platform and AI automation capabilities you are looking for",
+  "oracle_alignment": "I have owned ...",
+  "prior_experience_alignment": "At the University of Iowa Hospitals and Clinics, ..."
+}}
+
+Source resume:
+{source_resume_text}
+
+Current job description (CJD):
+{cjd_text}
+
+Pre-Oracle experience context from the resume:
+{prior_experience_text}
+
+Job opening description (JOD):
+Title: {job.title}
+Company: {job.company or "Unknown"}
+Location: {job.location or "Unknown"}
+LinkedIn job ID: {job.job_id}
+Description:
+{_job_description_context(job)}
+""".strip()
+
+
+def _render_cover_letter_template(
+    *,
+    job: JobDetails,
+    sections_plan: Mapping[str, Any],
+    letter_date: date | None = None,
+) -> str:
+    sections = _coerce_cover_letter_sections(sections_plan)
+    company = job.company or "[Company Name]"
+    title = job.title or "[Position Title]"
+    opening = (
+        f"Please accept my application for the position of {title} at {company}. Having read "
+        "through the job description, I am excited to apply because my previous experience and "
+        f"technical background align closely with {sections['opening_alignment']}."
+    )
+    oracle = f"{COVER_LETTER_ORACLE_OPENER} {sections['oracle_alignment']}"
+    prior = (
+        f"{COVER_LETTER_PRIOR_EXPERIENCE_OPENER} "
+        f"{sections['prior_experience_alignment']}"
+    )
+
+    lines = [
+        _format_cover_letter_date(letter_date or date.today()),
+        "",
+        "Dear Hiring Manager,",
+        "",
+        opening,
+        "",
+        oracle,
+        "",
+        prior,
+        "",
+        COVER_LETTER_PROJECT_PARAGRAPH,
+        "",
+        "Please find my resume attached for your consideration.",
+        "",
+        "Thank you for your time. I look forward to hearing from you and would be happy to "
+        "answer any questions.",
+        "",
+        "Sincerely,",
+        "Maxim Perkhounkov",
+    ]
+    return _clean_cover_letter_text("\n".join(lines))
+
+
+def _coerce_cover_letter_sections(raw_value: Any) -> dict[str, str]:
+    if not isinstance(raw_value, Mapping):
+        raw_value = {}
+    return {
+        "opening_alignment": _clean_cover_letter_fragment(
+            raw_value.get("opening_alignment"),
+            default=COVER_LETTER_DEFAULT_OPENING_ALIGNMENT,
+            max_chars=220,
+            ensure_sentence=False,
+        ),
+        "oracle_alignment": _clean_cover_letter_fragment(
+            raw_value.get("oracle_alignment"),
+            default=COVER_LETTER_DEFAULT_ORACLE_ALIGNMENT,
+            max_chars=850,
+            ensure_sentence=True,
+        ),
+        "prior_experience_alignment": _clean_cover_letter_fragment(
+            raw_value.get("prior_experience_alignment"),
+            default=COVER_LETTER_DEFAULT_PRIOR_EXPERIENCE_ALIGNMENT,
+            max_chars=950,
+            ensure_sentence=True,
+        ),
+    }
+
+
+def _clean_cover_letter_fragment(
+    value: Any,
+    *,
+    default: str,
+    max_chars: int,
+    ensure_sentence: bool,
+) -> str:
+    text = (
+        " ".join(str(item) for item in value)
+        if isinstance(value, list)
+        else str(value or "")
+    )
+    text = _strip_markdown_emphasis(_clean_resume_text(text))
+    text = re.sub(
+        r"^\s*(?:opening_alignment|oracle_alignment|prior_experience_alignment)\s*:\s*",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = _clean_inline_text(text)
+    if not text:
+        text = default
+    text = text[:max_chars].strip(" ,;")
+    if not ensure_sentence:
+        return text.rstrip(".!?")
+    if text and text[-1] not in ".!?":
+        text = f"{text}."
+    return text
+
+
+def _format_cover_letter_date(value: date) -> str:
+    return f"{value.strftime('%B')} {value.day}, {value.year}"
+
+
+def _clean_cover_letter_text(text: str) -> str:
+    lines = [_clean_inline_text(line) for line in text.splitlines()]
+    cleaned: list[str] = []
+    previous_blank = False
+    for line in lines:
+        if not line:
+            if not previous_blank and cleaned:
+                cleaned.append("")
+            previous_blank = True
+            continue
+        cleaned.append(line)
+        previous_blank = False
+    return "\n".join(cleaned).strip()
+
+
 def _render_resume_template(
     *,
     tailored_scjdir: str,
@@ -1814,6 +2225,8 @@ def _resume_block_lines(text: str) -> list[str]:
         line_body, had_bullet_marker = _strip_leading_bullet_markers(line)
         if not line_body or line_body in RESUME_SECTION_HEADINGS:
             continue
+        if _looks_like_model_intro_line(line_body):
+            continue
         if len(lines) >= 2 and (had_bullet_marker or ":" in line_body):
             line_body = f"- {line_body}"
         lines.append(line_body)
@@ -1827,6 +2240,23 @@ def _clean_inline_text(text: str) -> str:
 
 def _clean_list_item_text(text: str) -> str:
     return _strip_leading_bullet_markers(_clean_inline_text(text))[0]
+
+
+def _looks_like_model_intro_line(line: str) -> bool:
+    normalized = line.casefold().strip()
+    intro_prefixes = (
+        "here is ",
+        "here's ",
+        "here are ",
+        "below is ",
+        "below are ",
+        "the rewritten ",
+        "rewritten ",
+    )
+    resume_markers = ("scjdir", "resume", "section", "version")
+    return normalized.startswith(intro_prefixes) and any(
+        marker in normalized for marker in resume_markers
+    )
 
 
 def _strip_leading_bullet_markers(text: str) -> tuple[str, bool]:
@@ -1896,6 +2326,12 @@ def _paragraph_markup(line: str) -> str:
     return "".join(parts)
 
 
+def _cover_letter_markup(paragraph: str) -> str:
+    return "<br/>".join(
+        _paragraph_markup(line.strip()) for line in paragraph.splitlines() if line.strip()
+    )
+
+
 def _bullet_markup(line: str) -> str:
     line = _strip_markdown_emphasis(line)
     if ":" in line:
@@ -1930,11 +2366,21 @@ def _strip_markdown_emphasis(text: str) -> str:
     return re.sub(r"(?<!\*)\*\*(.+?)\*\*(?!\*)", r"\1", text)
 
 
-def _resume_rule() -> HRFlowable:
+def _cover_letter_top_bar() -> HRFlowable:
     return HRFlowable(
         width="100%",
-        thickness=0.55,
-        color=colors.HexColor("#6B7280"),
+        thickness=7.2,
+        color=EMERALD_ACCENT,
+        spaceBefore=0,
+        spaceAfter=0,
+    )
+
+
+def _resume_rule(*, top: bool = False) -> HRFlowable:
+    return HRFlowable(
+        width="100%",
+        thickness=2.0 if top else 1.35,
+        color=EMERALD_ACCENT,
         spaceBefore=0,
         spaceAfter=0,
     )
@@ -2001,6 +2447,15 @@ def _ensure_tracking_headers(sheet: Worksheet) -> None:
     ]
     if existing == TRACKING_HEADERS:
         return
+    legacy_existing = [
+        sheet.cell(row=1, column=column).value
+        for column in range(1, len(LEGACY_TRACKING_HEADERS) + 1)
+    ]
+    if legacy_existing == LEGACY_TRACKING_HEADERS:
+        sheet.insert_cols(6, 1)
+        sheet.cell(row=1, column=6, value="cover_letter")
+        _size_tracking_columns(sheet)
+        return
     if sheet.max_row == 1 and all(value is None for value in existing):
         for column, header in enumerate(TRACKING_HEADERS, start=1):
             sheet.cell(row=1, column=column, value=header)
@@ -2010,7 +2465,7 @@ def _ensure_tracking_headers(sheet: Worksheet) -> None:
 
 
 def _size_tracking_columns(sheet: Worksheet) -> None:
-    widths = [16, 24, 36, 60, 70, 14, 16]
+    widths = [16, 24, 36, 60, 70, 70, 14, 16]
     for index, width in enumerate(widths, start=1):
         sheet.column_dimensions[chr(64 + index)].width = width
 
@@ -2067,14 +2522,20 @@ async def run_from_cli(args: argparse.Namespace) -> MatchingJobsWorkflowResult:
             limit_per_query=args.limit_per_query,
             max_queries=args.max_queries,
             max_jobs=args.max_jobs,
+            artifact_mode=args.artifact_mode,
         )
     finally:
         await provider.aclose()
         await llm.aclose()
 
 
-async def run_regenerate_from_cli(args: argparse.Namespace) -> MatchingJobsWorkflowResult:
-    settings = load_settings()
+async def run_regenerate_from_cli(
+    args: argparse.Namespace,
+    *,
+    settings: Settings | None = None,
+    artifact_mode: ArtifactMode = "resumes-only",
+) -> MatchingJobsWorkflowResult:
+    settings = settings or load_settings()
     provider = LinkedInPublicJobsProvider(
         user_agent=settings.user_agent,
         timeout_seconds=settings.timeout_seconds,
@@ -2090,6 +2551,7 @@ async def run_regenerate_from_cli(args: argparse.Namespace) -> MatchingJobsWorkf
             current_job_description_name=args.current_job_description_name,
             job_ids=args.job_ids,
             linkedin_delay_seconds=args.linkedin_delay_seconds,
+            artifact_mode=artifact_mode,
         )
     finally:
         await provider.aclose()
@@ -2097,7 +2559,16 @@ async def run_regenerate_from_cli(args: argparse.Namespace) -> MatchingJobsWorkf
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Find matching LinkedIn jobs and tailor resumes.")
+    parser = argparse.ArgumentParser(
+        description="Find matching LinkedIn jobs and generate application artifacts."
+    )
+    parser.add_argument(
+        "artifact_mode",
+        nargs="?",
+        default="all",
+        choices=["all", "resumes-only", "cover-letters-only"],
+        help="Generate resumes and cover letters by default, or only one artifact type.",
+    )
     parser.add_argument("--profile-dir", default=str(DEFAULT_PROFILE_DIR))
     parser.add_argument("--blacklist-path", default=str(DEFAULT_BLACKLIST_PATH))
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR))
@@ -2117,13 +2588,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def build_regenerate_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Regenerate resumes for jobs already stored in the application database."
+        description="Regenerate artifacts for jobs already stored in the application database."
     )
     parser.add_argument(
         "job_ids",
         nargs="*",
         default=["all"],
-        help="Use 'all' or one or more LinkedIn job IDs.",
+        help="Use 'all', one LinkedIn job ID, space-separated IDs, or a comma-separated ID list.",
     )
     parser.add_argument("--profile-dir", default=str(DEFAULT_PROFILE_DIR))
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR))
@@ -2131,6 +2602,24 @@ def build_regenerate_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--current-job-description-name", default=DEFAULT_CURRENT_JOB_DESCRIPTION)
     parser.add_argument("--linkedin-delay-seconds", type=float, default=2.0)
     return parser
+
+
+def _llm_settings_label(settings: Settings) -> str:
+    provider = settings.llm_provider.casefold().strip()
+    if provider == "ollama":
+        return f"ollama:{settings.ollama_model} ({settings.ollama_base_url})"
+    return f"{provider}:{settings.llm_api_model} ({settings.llm_api_base_url})"
+
+
+def _regenerate_processed_summary(result: MatchingJobsWorkflowResult) -> str:
+    processed_count = len(result.artifacts)
+    return (
+        f"Jobs processed: {processed_count}/{result.jobs_found} "
+        f"(resumes: {result.resumes_created}, "
+        f"cover letters: {result.cover_letters_created}, "
+        f"recommendations: {result.recommendations_created}, "
+        f"errors: {len(result.errors)})"
+    )
 
 
 def main() -> None:
@@ -2141,8 +2630,36 @@ def main() -> None:
 
 def regenerate_main() -> None:
     parser = build_regenerate_arg_parser()
-    result = asyncio.run(run_regenerate_from_cli(parser.parse_args()))
+    args = parser.parse_args()
+    settings = load_settings()
+    print(f"LLM: {_llm_settings_label(settings)}", file=sys.stderr, flush=True)
+    result = asyncio.run(
+        run_regenerate_from_cli(args, settings=settings, artifact_mode="resumes-only")
+    )
     print(json.dumps(result.model_dump(mode="json"), indent=2))
+    print(_regenerate_processed_summary(result), file=sys.stderr, flush=True)
+
+
+def regenerate_cover_letters_main() -> None:
+    parser = build_regenerate_arg_parser()
+    args = parser.parse_args()
+    settings = load_settings()
+    print(f"LLM: {_llm_settings_label(settings)}", file=sys.stderr, flush=True)
+    result = asyncio.run(
+        run_regenerate_from_cli(args, settings=settings, artifact_mode="cover-letters-only")
+    )
+    print(json.dumps(result.model_dump(mode="json"), indent=2))
+    print(_regenerate_processed_summary(result), file=sys.stderr, flush=True)
+
+
+def regenerate_all_main() -> None:
+    parser = build_regenerate_arg_parser()
+    args = parser.parse_args()
+    settings = load_settings()
+    print(f"LLM: {_llm_settings_label(settings)}", file=sys.stderr, flush=True)
+    result = asyncio.run(run_regenerate_from_cli(args, settings=settings, artifact_mode="all"))
+    print(json.dumps(result.model_dump(mode="json"), indent=2))
+    print(_regenerate_processed_summary(result), file=sys.stderr, flush=True)
 
 
 if __name__ == "__main__":
