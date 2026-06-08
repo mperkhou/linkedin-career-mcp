@@ -95,10 +95,10 @@ COVER_LETTER_PROJECT_PARAGRAPH = (
     "artifacts through cost-conscious API calls to OpenRouter and DeepSeek. I developed the "
     "project using multiple AI-assisted engineering tools, including Codex, Cline with DeepSeek, "
     "and GitHub Copilot, while actively managing prompt structure, context windows, token usage, "
-    "model selection, and output validation. This project reflects more than interest in AI; it "
-    "shows hands-on experience applying LLMs to a real workflow, balancing quality with cost, "
-    "and building practical automation around prompt engineering, structured context, and "
-    "repeatable generation."
+    "model selection, and output validation. I built this in my own time because I genuinely "
+    "enjoy automation, AI tooling, and turning repetitive workflows into reliable systems. I am "
+    "happy in my current role, but this project gives me a thoughtful way to explore where my "
+    "platform engineering experience and interest in applied AI could be useful next."
 )
 COVER_LETTER_DEFAULT_OPENING_ALIGNMENT = (
     "the platform engineering, automation, distributed systems, and AI-focused capabilities "
