@@ -105,6 +105,19 @@ class FakeOllama:
         )
 
 
+class FlakyCoverLetterOllama(FakeOllama):
+    def __init__(self) -> None:
+        super().__init__()
+        self.cover_letter_attempts = 0
+
+    async def generate_json(self, prompt: str) -> dict[str, object]:
+        if "cover_letter_sections" in prompt:
+            self.cover_letter_attempts += 1
+            if self.cover_letter_attempts == 1:
+                raise matching.WorkflowError("temporary cover-letter failure")
+        return await super().generate_json(prompt)
+
+
 class FakeJobService:
     def __init__(self) -> None:
         self.queries: list[JobSearchQuery] = []
@@ -496,6 +509,72 @@ async def test_regenerate_cover_letters_uses_database_jobs_without_regenerating_
     assert row["source_cover_letter_path"] == str(cover_letter_path)
 
 
+async def test_regenerate_cover_letters_retries_failed_generation_and_reports_progress(
+    tmp_path: Path,
+):
+    profile_dir = tmp_path / "profile"
+    profile_dir.mkdir()
+    (profile_dir / "MP-RESUME-AGENTIC.txt").write_text(
+        "Resume: built MCP servers and local LLM workflows.",
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "output"
+    database_path = output_dir / DEFAULT_DATABASE
+    stored_resume = output_dir / "resumes/Existing_Co/111_existing_engineer/resume.pdf"
+    stored_resume.parent.mkdir(parents=True)
+    stored_resume.write_bytes(b"%PDF-1.4 existing")
+    stored_cover_letter = (
+        output_dir / "cover_letters/Existing_Co/111_existing_engineer/cover_letter.pdf"
+    )
+    stored_cover_letter.parent.mkdir(parents=True)
+    stored_cover_letter.write_bytes(b"%PDF-1.4 stale cover")
+    upsert_application_artifact(
+        database_path=database_path,
+        job_id="111",
+        company="Existing Co",
+        job_title="Existing Engineer",
+        linkedin_url="https://www.linkedin.com/jobs/view/111",
+        resume_path=stored_resume,
+        cover_letter_path=stored_cover_letter,
+        job_description="Raw stored JOD with AI Experience.",
+        prompt_job_description="Raw stored JOD with AI Experience.",
+    )
+    service = ExistingThenNewJobService()
+    ollama = FlakyCoverLetterOllama()
+    workflow = MatchingJobsWorkflow(service=service, ollama=ollama)
+    progress_messages: list[str] = []
+
+    result = await workflow.regenerate_resumes(
+        profile_dir=profile_dir,
+        output_dir=output_dir,
+        source_resume_name="MP-RESUME-AGENTIC.txt",
+        job_ids=["111"],
+        linkedin_delay_seconds=0,
+        artifact_mode="cover-letters-only",
+        cover_letter_retry_attempts=1,
+        progress_callback=progress_messages.append,
+    )
+
+    assert result.jobs_found == 1
+    assert result.cover_letters_created == 1
+    assert result.errors == ["111: temporary cover-letter failure"]
+    assert len(result.cover_letter_retries) == 1
+    assert result.cover_letter_retries[0].status == "created"
+    assert result.artifact_audit.total_jobs == 1
+    assert result.artifact_audit.with_cover_letters == 1
+    assert result.artifact_audit.missing_artifacts == []
+    assert any(
+        "Working on job 1/1 - job title: 'Existing Engineer', company: 'Existing Co', "
+        "job id: '111'" in message
+        for message in progress_messages
+    )
+    assert any(
+        "Retrying cover letter 1/1 (attempt 1/1) - job title: 'Existing Engineer'"
+        in message
+        for message in progress_messages
+    )
+
+
 def test_regenerate_main_displays_llm_and_processed_count(
     monkeypatch,
     capsys,
@@ -507,10 +586,20 @@ def test_regenerate_main_displays_llm_and_processed_count(
     )
     captured_settings: list[Settings | None] = []
     captured_modes: list[str] = []
+    captured_retry_counts: list[int] = []
+    captured_progress_callbacks: list[object] = []
 
-    async def fake_run_regenerate_from_cli(args, *, settings=None, artifact_mode="resumes-only"):
+    async def fake_run_regenerate_from_cli(
+        args,
+        *,
+        settings=None,
+        artifact_mode="resumes-only",
+        progress_callback=None,
+    ):
         captured_settings.append(settings)
         captured_modes.append(artifact_mode)
+        captured_retry_counts.append(args.cover_letter_retries)
+        captured_progress_callbacks.append(progress_callback)
         assert args.job_ids == ["111"]
         return MatchingJobsWorkflowResult(
             profile_files=[],
@@ -549,12 +638,16 @@ def test_regenerate_main_displays_llm_and_processed_count(
 
     assert captured_settings == [settings]
     assert captured_modes == ["resumes-only"]
+    assert captured_retry_counts == [1]
+    assert captured_progress_callbacks[0] is matching._stderr_progress
     captured = capsys.readouterr()
     assert "LLM: api:deepseek/deepseek-v4-flash" in captured.err
     assert (
         "Jobs processed: 2/3 "
         "(resumes: 1, cover letters: 1, recommendations: 1, errors: 1)"
     ) in captured.err
+    assert "Artifact audit: 0/0 resumes, 0/0 cover letters." in captured.err
+    assert "Missing artifacts: none." in captured.err
     result = json.loads(captured.out)
     assert result["jobs_found"] == 3
     assert len(result["artifacts"]) == 2

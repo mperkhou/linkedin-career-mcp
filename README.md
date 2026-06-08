@@ -225,6 +225,11 @@ LinkedIn details for older rows that do not have either description, waiting two
 those fallback LinkedIn lookups by default. Each regeneration command accepts `all`, one job ID,
 space-separated job IDs, or a comma-separated list of job IDs.
 
+Long-running match and regeneration commands print the active job title, company, and job ID to
+stderr while they work, then print an artifact audit showing resume and cover-letter coverage.
+Cover-letter generation gets one post-run retry by default for jobs still missing a cover letter;
+set `COVER_LETTER_RETRIES=0` on the `make` command to disable it.
+
 Matching equivalent executable:
 
 ```bash
