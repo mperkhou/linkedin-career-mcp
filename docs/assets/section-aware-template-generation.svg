@@ -1,0 +1,198 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="920" viewBox="0 0 1280 920" role="img" aria-labelledby="title desc">
+  <title id="title">Section-aware resume and cover-letter template generation</title>
+  <desc id="desc">A document template diagram showing red static sections and blue generated sections connected to prompt generation, OpenRouter models, and CJD, SCJDiR, and JOD context.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#08111f"/>
+      <stop offset="0.55" stop-color="#0c1d2d"/>
+      <stop offset="1" stop-color="#071a18"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f9fbff"/>
+      <stop offset="1" stop-color="#eef4f8"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.15"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.06"/>
+    </linearGradient>
+    <linearGradient id="aiPanel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#12334a"/>
+      <stop offset="1" stop-color="#10243a"/>
+    </linearGradient>
+    <linearGradient id="blueStroke" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2dd4ff"/>
+      <stop offset="1" stop-color="#60a5fa"/>
+    </linearGradient>
+    <pattern id="grid" width="34" height="34" patternUnits="userSpaceOnUse">
+      <path d="M 34 0 L 0 0 0 34" fill="none" stroke="#ffffff" stroke-opacity="0.045" stroke-width="1"/>
+    </pattern>
+    <filter id="shadow" x="-18%" y="-18%" width="136%" height="150%">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+    <filter id="softGlow" x="-35%" y="-35%" width="170%" height="170%">
+      <feGaussianBlur stdDeviation="2.6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#38bdf8"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#57d9ba"/>
+    </marker>
+    <style>
+      .title { font-family: Arial, Helvetica, sans-serif; font-size: 36px; font-weight: 800; fill: #ffffff; letter-spacing: 0; }
+      .subtitle { font-family: Arial, Helvetica, sans-serif; font-size: 15px; font-weight: 500; fill: #b8c7d6; }
+      .tiny { font-family: Arial, Helvetica, sans-serif; font-size: 10px; font-weight: 750; fill: #8fa8ba; letter-spacing: 1px; text-transform: uppercase; }
+      .label { font-family: Arial, Helvetica, sans-serif; font-size: 15px; font-weight: 800; fill: #f2f8ff; }
+      .small { font-family: Arial, Helvetica, sans-serif; font-size: 12px; font-weight: 560; fill: #bbcad7; }
+      .docTitle { font-family: Arial, Helvetica, sans-serif; font-size: 14px; font-weight: 800; fill: #0f172a; }
+      .docText { font-family: Arial, Helvetica, sans-serif; font-size: 11px; font-weight: 520; fill: #1e293b; }
+      .docMuted { font-family: Arial, Helvetica, sans-serif; font-size: 9.5px; font-weight: 520; fill: #64748b; }
+      .redText { fill: #ff5a5f; }
+      .blueText { fill: #38bdf8; }
+      .greenText { fill: #68e7c9; }
+      .panel { fill: url(#panel); stroke: #ffffff; stroke-opacity: 0.14; stroke-width: 1; filter: url(#shadow); }
+      .aiPanel { fill: url(#aiPanel); stroke: #38bdf8; stroke-opacity: 0.38; stroke-width: 1.2; filter: url(#shadow); }
+      .paper { fill: url(#paper); stroke: #cbd5e1; stroke-width: 1; filter: url(#shadow); }
+      .staticBox { fill: #fff1f2; stroke: #ef4444; stroke-width: 2.2; }
+      .dynamicBox { fill: #effaff; stroke: #18bdf7; stroke-width: 2.5; }
+      .chip { fill: #ffffff; fill-opacity: 0.08; stroke: #ffffff; stroke-opacity: 0.14; }
+      .modelChip { fill: #102a3e; stroke: #38bdf8; stroke-opacity: 0.48; }
+      .staticChip { fill: #2d1119; stroke: #ef4444; stroke-opacity: 0.72; }
+      .dynamicChip { fill: #0d2a3f; stroke: #38bdf8; stroke-opacity: 0.72; }
+      .arrowBlue { fill: none; stroke: #38bdf8; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; marker-end: url(#arrowBlue); }
+      .arrowGreen { fill: none; stroke: #57d9ba; stroke-width: 2.3; stroke-linecap: round; stroke-linejoin: round; marker-end: url(#arrowGreen); }
+      .wordA { font-family: Arial, Helvetica, sans-serif; font-size: 22px; font-weight: 800; fill: #eaf8ff; }
+      .wordB { font-family: Arial, Helvetica, sans-serif; font-size: 17px; font-weight: 750; fill: #90dfff; }
+      .wordC { font-family: Arial, Helvetica, sans-serif; font-size: 14px; font-weight: 700; fill: #84dcc5; }
+      .wordD { font-family: Arial, Helvetica, sans-serif; font-size: 12px; font-weight: 650; fill: #b7c8d6; }
+    </style>
+  </defs>
+
+  <rect width="1280" height="920" rx="32" fill="url(#bg)"/>
+  <rect width="1280" height="920" rx="32" fill="url(#grid)"/>
+
+  <text x="66" y="72" class="title">Section-Aware Template Generation</text>
+  <text x="66" y="102" class="subtitle">Red sections stay fixed. Blue sections are generated from CJD, SCJDiR, and JOD by focused prompts.</text>
+
+  <g transform="translate(930 52)">
+    <rect class="chip" x="0" y="0" width="244" height="44" rx="22"/>
+    <text x="20" y="18" class="tiny">Legend</text>
+    <rect class="staticChip" x="86" y="12" width="18" height="18" rx="4"/>
+    <text x="112" y="26" class="small">Static</text>
+    <rect class="dynamicChip" x="166" y="12" width="18" height="18" rx="4"/>
+    <text x="192" y="26" class="small">Generated</text>
+  </g>
+
+  <g transform="translate(66 126)">
+    <rect class="paper" x="0" y="0" width="560" height="718" rx="16"/>
+    <text x="34" y="38" class="tiny">Example artifact template</text>
+    <text x="34" y="64" class="docTitle">Max Perkhounkov</text>
+    <text x="34" y="82" class="docMuted">Iowa City, IA | email | linkedin.com/in/maxim-perkhounkov</text>
+
+    <rect class="staticBox" x="24" y="104" width="512" height="82" rx="8"/>
+    <text x="42" y="130" class="docTitle">Static header and contact block</text>
+    <text x="42" y="153" class="docText">Name, contact details, stable links, date, greeting, and fixed template framing.</text>
+    <text x="42" y="171" class="docMuted">Stored in code and rendered consistently for every artifact.</text>
+
+    <rect class="dynamicBox" x="24" y="208" width="512" height="86" rx="26"/>
+    <text x="42" y="234" class="docTitle">Opening alignment</text>
+    <text x="42" y="257" class="docText">Position title, company name, and job-specific fit language.</text>
+    <text x="42" y="275" class="docMuted">Generated from the cleaned JOD plus private profile context.</text>
+
+    <rect class="dynamicBox" x="24" y="316" width="512" height="92" rx="26"/>
+    <text x="42" y="342" class="docTitle">Current-role fit</text>
+    <text x="42" y="365" class="docText">Oracle platform automation experience mapped to the posting.</text>
+    <text x="42" y="383" class="docMuted">Prompt uses CJD + SCJDiR + JOD to pick the strongest overlap.</text>
+
+    <rect class="dynamicBox" x="24" y="430" width="512" height="92" rx="26"/>
+    <text x="42" y="456" class="docTitle">Prior experience fit</text>
+    <text x="42" y="479" class="docText">Earlier roles, skills, and domain experience reweighted for the job.</text>
+    <text x="42" y="497" class="docMuted">Highlights matching Python, cloud, data, and systems work.</text>
+
+    <rect class="staticBox" x="24" y="544" width="512" height="98" rx="8"/>
+    <text x="42" y="570" class="docTitle">Static automation-project paragraph</text>
+    <text x="42" y="593" class="docText">A fixed signal about AI-assisted engineering, OpenRouter cost control,</text>
+    <text x="42" y="611" class="docText">prompt structure, context windows, and practical automation.</text>
+    <text x="42" y="629" class="docMuted">Same wording across jobs unless the template itself changes.</text>
+
+    <rect class="staticBox" x="24" y="660" width="512" height="64" rx="8"/>
+    <text x="42" y="686" class="docTitle">Static closing</text>
+    <text x="42" y="709" class="docText">Resume attached, thank-you, signature, and LinkedIn link.</text>
+  </g>
+
+  <path class="arrowBlue" d="M 610 377 C 660 377 690 306 754 306"/>
+  <path class="arrowBlue" d="M 610 488 C 660 488 700 461 778 461"/>
+  <path class="arrowBlue" d="M 610 602 C 662 602 704 620 782 620"/>
+
+  <g transform="translate(720 146)">
+    <rect class="aiPanel" x="0" y="0" width="520" height="698" rx="24"/>
+    <text x="34" y="44" class="tiny">Dynamic generation loop</text>
+    <text x="34" y="72" class="label">Generated sections are prompted, not hand-written</text>
+    <text x="34" y="96" class="small">Each blue block receives a focused prompt with only the context it needs.</text>
+
+    <g transform="translate(34 128)">
+      <rect class="chip" x="0" y="0" width="146" height="72" rx="14"/>
+      <text x="18" y="26" class="label">CJD</text>
+      <text x="18" y="47" class="small">Current role</text>
+      <text x="18" y="64" class="small">source PDF</text>
+    </g>
+    <g transform="translate(192 128)">
+      <rect class="chip" x="0" y="0" width="146" height="72" rx="14"/>
+      <text x="18" y="26" class="label">SCJDiR</text>
+      <text x="18" y="47" class="small">Summarized CJD</text>
+      <text x="18" y="64" class="small">inside resume</text>
+    </g>
+    <g transform="translate(350 128)">
+      <rect class="chip" x="0" y="0" width="146" height="72" rx="14"/>
+      <text x="18" y="26" class="label">JOD</text>
+      <text x="18" y="47" class="small">Cleaned job</text>
+      <text x="18" y="64" class="small">description</text>
+    </g>
+
+    <path class="arrowGreen" d="M 104 204 C 114 226 164 238 248 252"/>
+    <path class="arrowGreen" d="M 266 204 C 266 226 266 236 266 252"/>
+    <path class="arrowGreen" d="M 420 204 C 406 226 352 238 286 252"/>
+
+    <g transform="translate(58 252)">
+      <rect class="panel" x="0" y="0" width="404" height="126" rx="18"/>
+      <text x="24" y="34" class="label">Prompt builder</text>
+      <text x="24" y="60" class="small">1. Choose the target section</text>
+      <text x="24" y="82" class="small">2. Attach CJD, SCJDiR, and cleaned JOD context</text>
+      <text x="24" y="104" class="small">3. Ask for concise, section-bounded output</text>
+    </g>
+
+    <path class="arrowBlue" d="M 260 378 C 260 404 260 416 260 434"/>
+
+    <g transform="translate(62 434)">
+      <rect class="modelChip" x="0" y="0" width="398" height="78" rx="18"/>
+      <text x="24" y="31" class="label">OpenRouter model call</text>
+      <text x="24" y="56" class="small">Qwen / DeepSeek / other selected model</text>
+      <text x="292" y="31" class="tiny blueText">cost-aware</text>
+    </g>
+
+    <path class="arrowBlue" d="M 260 512 C 260 534 260 544 260 558"/>
+
+    <g transform="translate(34 558)">
+      <rect class="panel" x="0" y="0" width="462" height="122" rx="18"/>
+      <text x="24" y="32" class="tiny">Targeting word cloud</text>
+      <text x="34" y="70" class="wordA">platform automation</text>
+      <text x="280" y="70" class="wordB">AI tooling</text>
+      <text x="52" y="98" class="wordB">distributed systems</text>
+      <text x="298" y="102" class="wordC">OpenSearch</text>
+      <text x="180" y="42" class="wordC">Python</text>
+      <text x="350" y="42" class="wordD">CI/CD</text>
+      <text x="198" y="116" class="wordD">context windows</text>
+      <text x="32" y="116" class="wordD">IaC</text>
+    </g>
+  </g>
+
+  <g transform="translate(66 864)">
+    <rect class="chip" x="0" y="0" width="700" height="44" rx="22"/>
+    <text x="20" y="18" class="tiny">Template contract</text>
+    <text x="20" y="32" class="small">Red = stable template text. Blue = generated per job and constrained to its section.</text>
+  </g>
+</svg>

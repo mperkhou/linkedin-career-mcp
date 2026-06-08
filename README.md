@@ -47,6 +47,28 @@ isolation, testable workflows, practical automation, and human-in-the-loop guard
 This system turns public job descriptions and private profile context into reviewable
 application artifacts while preserving a human-owned application workflow.
 
+## Section-Aware Templates
+
+Zooming in on the templating layer from the workflow above, this example shows how a
+resume or cover-letter artifact is assembled from fixed local sections and targeted
+generated sections.
+
+![Section-aware resume and cover-letter template generation](docs/assets/section-aware-template-generation.svg)
+
+Resume and cover-letter artifacts are assembled from a mix of stable local template sections
+and job-specific generated sections. Red sections stay static across jobs; blue sections are
+generated through focused prompts that compare the CJD, SCJDiR, and JOD before rendering the
+final PDF.
+
+## Local Tracker Convenience
+
+The Flask tracker turns generated artifacts into a practical application queue: search and
+filter jobs, open LinkedIn/JOD comparison/resume/cover-letter links, update application
+status, keep notes, sync from local output, and clean up selected rows without leaving the
+local workflow.
+
+![Annotated local Flask application tracker](docs/assets/flask-application-tracker-annotated.png)
+
 ## Current Workflow
 
 ```text
