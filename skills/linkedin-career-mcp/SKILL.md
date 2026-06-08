@@ -47,5 +47,8 @@ The current tools search public LinkedIn job listings and fetch public job detai
 - Use `make regenerate-resumes`, `make regenerate-cover-letters`, or `make regenerate-all`
   for jobs already stored in SQLite. Set `JOB_IDS` to `all`, one job ID, space-separated
   IDs, or a comma-separated list.
+- Long-running match/regenerate commands print per-job progress and artifact audit summaries
+  to stderr while keeping the final JSON on stdout. Set `COVER_LETTER_RETRIES=0` to disable
+  the default one-pass retry for jobs still missing cover letters after generation.
 - Application tracking is appended to `output/tracking/read_applications/linkedin_applications.xlsx`.
 - Generated tracking columns `applied_to` and `date_applied` are user-managed and are not automatically filled beyond the default `No`.

@@ -5,7 +5,7 @@ import asyncio
 import json
 import re
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import date
 from html import escape
@@ -33,6 +33,7 @@ from linkedin_career_mcp.webapp import (
 )
 from linkedin_career_mcp.webapp import (
     ApplicationJobRecord,
+    connect_database,
     fetch_application_job_ids,
     fetch_application_job_records,
     fetch_existing_cover_letter_job_ids,
@@ -50,9 +51,14 @@ TRACKING_WORKBOOK = Path("tracking/read_applications/linkedin_applications.xlsx"
 SUPPORTED_TEXT_SUFFIXES = {".csv", ".json", ".md", ".rst", ".text", ".txt"}
 SUPPORTED_PROFILE_SUFFIXES = SUPPORTED_TEXT_SUFFIXES | {".docx", ".pdf"}
 ArtifactMode = Literal["all", "resumes-only", "cover-letters-only"]
+ProgressCallback = Callable[[str], None]
 RESUME_HEADER_NAME = "Max Perkhounkov"
+LINKEDIN_PROFILE_LABEL = "linkedin.com/in/maxim-perkhounkov"
+LINKEDIN_PROFILE_URL = "https://www.linkedin.com/in/maxim-perkhounkov/"
+LINKEDIN_PROFILE_MARKDOWN = f"[{LINKEDIN_PROFILE_LABEL}]({LINKEDIN_PROFILE_URL})"
 RESUME_HEADER_CONTACT = (
-    "Iowa City, IA | 641-781-0477 | mperkhounkov1@gmail.com | linkedin.com/mperkhou"
+    "Iowa City, IA | 641-781-0477 | mperkhounkov1@gmail.com | "
+    f"{LINKEDIN_PROFILE_MARKDOWN}"
 )
 EMERALD_ACCENT = colors.HexColor("#57BA86")
 EMERALD_DARK = colors.HexColor("#047857")
@@ -438,6 +444,38 @@ class TailoredResumeArtifact(BaseModel):
     recommendations_path: str | None = None
 
 
+class MissingApplicationArtifact(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: str
+    company: str
+    title: str
+    missing: list[Literal["resume", "cover_letter"]]
+
+
+class ArtifactAudit(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    total_jobs: int = 0
+    with_resumes: int = 0
+    with_cover_letters: int = 0
+    missing_resumes: int = 0
+    missing_cover_letters: int = 0
+    missing_artifacts: list[MissingApplicationArtifact] = Field(default_factory=list)
+
+
+class CoverLetterRetryRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    attempt: int
+    job_id: str
+    company: str | None
+    title: str
+    status: Literal["created", "failed"]
+    cover_letter_path: str | None = None
+    error: str | None = None
+
+
 class MatchingJobsWorkflowResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -452,6 +490,8 @@ class MatchingJobsWorkflowResult(BaseModel):
     skipped_existing: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
     artifacts: list[TailoredResumeArtifact] = Field(default_factory=list)
+    artifact_audit: ArtifactAudit = Field(default_factory=ArtifactAudit)
+    cover_letter_retries: list[CoverLetterRetryRecord] = Field(default_factory=list)
 
 
 class CompanyBlacklist:
@@ -548,6 +588,8 @@ class MatchingJobsWorkflow:
         max_queries: int = 6,
         max_jobs: int = 10,
         artifact_mode: ArtifactMode = "all",
+        cover_letter_retry_attempts: int = 0,
+        progress_callback: ProgressCallback | None = None,
     ) -> MatchingJobsWorkflowResult:
         profile_documents = load_profile_documents(profile_dir)
         profile_context = format_profile_context(profile_documents)
@@ -643,8 +685,16 @@ class MatchingJobsWorkflow:
             if not new_query_found or search_memory.total_searches == 0:
                 break
 
-        artifacts: list[TailoredResumeArtifact] = []
-        for job in candidates:
+        artifacts_by_job_id: dict[str, TailoredResumeArtifact] = {}
+        failed_cover_letter_job_ids: set[str] = set()
+        for index, job in enumerate(candidates, start=1):
+            _emit_job_progress(
+                progress_callback,
+                action="Working on job",
+                job=job,
+                index=index,
+                total=len(candidates),
+            )
             try:
                 artifact = await self._generate_and_store_application_artifacts(
                     source_resume=source_resume,
@@ -664,8 +714,30 @@ class MatchingJobsWorkflow:
                 existing_application_job_ids.add(job.job_id)
             except LinkedInCareerMcpError as exc:
                 errors.append(f"{job.job_id}: {exc}")
+                if artifact_mode in {"all", "cover-letters-only"}:
+                    failed_cover_letter_job_ids.add(job.job_id)
                 continue
-            artifacts.append(artifact)
+            artifacts_by_job_id[job.job_id] = artifact
+
+        cover_letter_retries = await self._retry_missing_cover_letters(
+            candidates=[
+                _RegenerationCandidate(job=job, stored_job_description=job.description)
+                for job in candidates
+            ],
+            source_resume=source_resume,
+            current_job_description=current_job_description,
+            output_dir=output_dir,
+            tracking_path=tracking_path,
+            application_database_path=application_database_path,
+            artifacts_by_job_id=artifacts_by_job_id,
+            errors=errors,
+            artifact_mode=artifact_mode,
+            cover_letter_retry_attempts=cover_letter_retry_attempts,
+            force_retry_job_ids=failed_cover_letter_job_ids,
+            progress_callback=progress_callback,
+        )
+        artifacts = list(artifacts_by_job_id.values())
+        artifact_audit = audit_application_artifacts(application_database_path)
 
         return MatchingJobsWorkflowResult(
             profile_files=[str(document.path) for document in profile_documents],
@@ -681,6 +753,8 @@ class MatchingJobsWorkflow:
             skipped_existing=skipped_existing,
             errors=errors,
             artifacts=artifacts,
+            artifact_audit=artifact_audit,
+            cover_letter_retries=cover_letter_retries,
         )
 
     async def regenerate_resumes(
@@ -693,6 +767,8 @@ class MatchingJobsWorkflow:
         job_ids: list[str] | None = None,
         linkedin_delay_seconds: float = 2.0,
         artifact_mode: ArtifactMode = "resumes-only",
+        cover_letter_retry_attempts: int = 0,
+        progress_callback: ProgressCallback | None = None,
     ) -> MatchingJobsWorkflowResult:
         profile_documents = load_profile_documents(profile_dir)
         source_resume = _find_source_resume(profile_documents, source_resume_name)
@@ -740,8 +816,16 @@ class MatchingJobsWorkflow:
                 )
             )
 
-        artifacts: list[TailoredResumeArtifact] = []
-        for candidate in candidates:
+        artifacts_by_job_id: dict[str, TailoredResumeArtifact] = {}
+        failed_cover_letter_job_ids: set[str] = set()
+        for index, candidate in enumerate(candidates, start=1):
+            _emit_job_progress(
+                progress_callback,
+                action="Working on job",
+                job=candidate.job,
+                index=index,
+                total=len(candidates),
+            )
             try:
                 artifact = await self._generate_and_store_application_artifacts(
                     source_resume=source_resume,
@@ -756,8 +840,27 @@ class MatchingJobsWorkflow:
                 )
             except LinkedInCareerMcpError as exc:
                 errors.append(f"{candidate.job.job_id}: {exc}")
+                if artifact_mode in {"all", "cover-letters-only"}:
+                    failed_cover_letter_job_ids.add(candidate.job.job_id)
                 continue
-            artifacts.append(artifact)
+            artifacts_by_job_id[candidate.job.job_id] = artifact
+
+        cover_letter_retries = await self._retry_missing_cover_letters(
+            candidates=candidates,
+            source_resume=source_resume,
+            current_job_description=current_job_description,
+            output_dir=output_dir,
+            tracking_path=tracking_path,
+            application_database_path=application_database_path,
+            artifacts_by_job_id=artifacts_by_job_id,
+            errors=errors,
+            artifact_mode=artifact_mode,
+            cover_letter_retry_attempts=cover_letter_retry_attempts,
+            force_retry_job_ids=failed_cover_letter_job_ids,
+            progress_callback=progress_callback,
+        )
+        artifacts = list(artifacts_by_job_id.values())
+        artifact_audit = audit_application_artifacts(application_database_path)
 
         return MatchingJobsWorkflowResult(
             profile_files=[str(document.path) for document in profile_documents],
@@ -773,7 +876,100 @@ class MatchingJobsWorkflow:
             skipped_existing=[],
             errors=errors,
             artifacts=artifacts,
+            artifact_audit=artifact_audit,
+            cover_letter_retries=cover_letter_retries,
         )
+
+    async def _retry_missing_cover_letters(
+        self,
+        *,
+        candidates: list[_RegenerationCandidate],
+        source_resume: ProfileDocument | None,
+        current_job_description: ProfileDocument | None,
+        output_dir: Path,
+        tracking_path: Path,
+        application_database_path: Path,
+        artifacts_by_job_id: dict[str, TailoredResumeArtifact],
+        errors: list[str],
+        artifact_mode: ArtifactMode,
+        cover_letter_retry_attempts: int,
+        force_retry_job_ids: set[str] | None,
+        progress_callback: ProgressCallback | None,
+    ) -> list[CoverLetterRetryRecord]:
+        if artifact_mode not in {"all", "cover-letters-only"}:
+            return []
+        retry_attempts = max(0, cover_letter_retry_attempts)
+        if retry_attempts == 0 or not candidates:
+            return []
+
+        retry_records: list[CoverLetterRetryRecord] = []
+        remaining_force_retry_job_ids = set(force_retry_job_ids or set())
+        for attempt in range(1, retry_attempts + 1):
+            existing_cover_letter_job_ids = fetch_existing_cover_letter_job_ids(
+                application_database_path
+            )
+            missing_candidates = [
+                candidate
+                for candidate in candidates
+                if candidate.job.job_id not in existing_cover_letter_job_ids
+                or candidate.job.job_id in remaining_force_retry_job_ids
+            ]
+            if not missing_candidates:
+                break
+
+            for index, candidate in enumerate(missing_candidates, start=1):
+                _emit_job_progress(
+                    progress_callback,
+                    action="Retrying cover letter",
+                    job=candidate.job,
+                    index=index,
+                    total=len(missing_candidates),
+                    detail=f"attempt {attempt}/{retry_attempts}",
+                )
+                try:
+                    artifact = await self._generate_and_store_application_artifacts(
+                        source_resume=source_resume,
+                        current_job_description=current_job_description,
+                        job=candidate.job,
+                        output_dir=output_dir,
+                        tracking_path=tracking_path,
+                        application_database_path=application_database_path,
+                        append_tracking=False,
+                        stored_job_description=candidate.stored_job_description,
+                        artifact_mode="cover-letters-only",
+                    )
+                except LinkedInCareerMcpError as exc:
+                    error = f"{candidate.job.job_id}: cover letter retry {attempt}: {exc}"
+                    errors.append(error)
+                    retry_records.append(
+                        CoverLetterRetryRecord(
+                            attempt=attempt,
+                            job_id=candidate.job.job_id,
+                            company=candidate.job.company,
+                            title=candidate.job.title,
+                            status="failed",
+                            error=str(exc),
+                        )
+                    )
+                    continue
+
+                artifacts_by_job_id[candidate.job.job_id] = _merge_artifacts(
+                    artifacts_by_job_id.get(candidate.job.job_id),
+                    artifact,
+                )
+                remaining_force_retry_job_ids.discard(candidate.job.job_id)
+                retry_records.append(
+                    CoverLetterRetryRecord(
+                        attempt=attempt,
+                        job_id=candidate.job.job_id,
+                        company=candidate.job.company,
+                        title=candidate.job.title,
+                        status="created",
+                        cover_letter_path=artifact.cover_letter_path,
+                    )
+                )
+
+        return retry_records
 
     async def _generate_and_store_application_artifacts(
         self,
@@ -1098,7 +1294,10 @@ def _write_cover_letter_text_pdf(*, text: str, path: Path) -> None:
         style = (
             signature
             if paragraph_lines
-            and all(part in {"Sincerely,", "Maxim Perkhounkov"} for part in paragraph_lines)
+            and all(
+                part in {"Sincerely,", "Maxim Perkhounkov", LINKEDIN_PROFILE_MARKDOWN}
+                for part in paragraph_lines
+            )
             else body
         )
         story.append(Paragraph(_cover_letter_markup(line), style))
@@ -1983,6 +2182,7 @@ def _render_cover_letter_template(
         "",
         "Sincerely,",
         "Maxim Perkhounkov",
+        LINKEDIN_PROFILE_MARKDOWN,
     ]
     return _clean_cover_letter_text("\n".join(lines))
 
@@ -2296,6 +2496,99 @@ def _glob_matches(value: str, pattern: str) -> bool:
     return re.match(regex, value) is not None
 
 
+def _merge_artifacts(
+    existing: TailoredResumeArtifact | None,
+    update: TailoredResumeArtifact,
+) -> TailoredResumeArtifact:
+    if existing is None:
+        return update
+    return TailoredResumeArtifact(
+        job_id=existing.job_id,
+        company=existing.company or update.company,
+        title=existing.title or update.title,
+        linkedin_url=existing.linkedin_url or update.linkedin_url,
+        resume_path=existing.resume_path or update.resume_path,
+        cover_letter_path=existing.cover_letter_path or update.cover_letter_path,
+        artifact_kind=existing.artifact_kind
+        if existing.artifact_kind != "cover_letter"
+        else update.artifact_kind,
+        recommendations_path=existing.recommendations_path or update.recommendations_path,
+    )
+
+
+def audit_application_artifacts(database_path: Path) -> ArtifactAudit:
+    with connect_database(database_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT job_id, company, job_title,
+                   resume_content IS NOT NULL AS has_resume,
+                   cover_letter_content IS NOT NULL AS has_cover_letter
+            FROM applications
+            ORDER BY company COLLATE NOCASE ASC, job_title COLLATE NOCASE ASC
+            """
+        ).fetchall()
+
+    missing_artifacts: list[MissingApplicationArtifact] = []
+    with_resumes = 0
+    with_cover_letters = 0
+    for row in rows:
+        missing: list[Literal["resume", "cover_letter"]] = []
+        if row["has_resume"]:
+            with_resumes += 1
+        else:
+            missing.append("resume")
+        if row["has_cover_letter"]:
+            with_cover_letters += 1
+        else:
+            missing.append("cover_letter")
+        if missing:
+            missing_artifacts.append(
+                MissingApplicationArtifact(
+                    job_id=str(row["job_id"]),
+                    company=str(row["company"] or ""),
+                    title=str(row["job_title"] or ""),
+                    missing=missing,
+                )
+            )
+
+    return ArtifactAudit(
+        total_jobs=len(rows),
+        with_resumes=with_resumes,
+        with_cover_letters=with_cover_letters,
+        missing_resumes=sum(
+            1 for artifact in missing_artifacts if "resume" in artifact.missing
+        ),
+        missing_cover_letters=sum(
+            1 for artifact in missing_artifacts if "cover_letter" in artifact.missing
+        ),
+        missing_artifacts=missing_artifacts,
+    )
+
+
+def _emit_job_progress(
+    progress_callback: ProgressCallback | None,
+    *,
+    action: str,
+    job: JobDetails,
+    index: int,
+    total: int,
+    detail: str | None = None,
+) -> None:
+    if progress_callback is None:
+        return
+    prefix = f"{action} {index}/{total}"
+    if detail:
+        prefix = f"{prefix} ({detail})"
+    progress_callback(
+        f"{prefix} - job title: '{job.title}', "
+        f"company: '{job.company or 'Unknown'}', job id: '{job.job_id}'"
+    )
+
+
+def _stderr_progress(message: str) -> None:
+    print(message, file=sys.stderr, flush=True)
+
+
 def _job_label(company: str | None, title: str | None) -> str:
     return f"{company or 'Unknown company'} - {title or 'Unknown title'}"
 
@@ -2523,6 +2816,8 @@ async def run_from_cli(args: argparse.Namespace) -> MatchingJobsWorkflowResult:
             max_queries=args.max_queries,
             max_jobs=args.max_jobs,
             artifact_mode=args.artifact_mode,
+            cover_letter_retry_attempts=args.cover_letter_retries,
+            progress_callback=_stderr_progress,
         )
     finally:
         await provider.aclose()
@@ -2534,6 +2829,7 @@ async def run_regenerate_from_cli(
     *,
     settings: Settings | None = None,
     artifact_mode: ArtifactMode = "resumes-only",
+    progress_callback: ProgressCallback | None = None,
 ) -> MatchingJobsWorkflowResult:
     settings = settings or load_settings()
     provider = LinkedInPublicJobsProvider(
@@ -2552,6 +2848,8 @@ async def run_regenerate_from_cli(
             job_ids=args.job_ids,
             linkedin_delay_seconds=args.linkedin_delay_seconds,
             artifact_mode=artifact_mode,
+            cover_letter_retry_attempts=args.cover_letter_retries,
+            progress_callback=progress_callback,
         )
     finally:
         await provider.aclose()
@@ -2583,6 +2881,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--limit-per-query", type=int, default=10)
     parser.add_argument("--max-queries", type=int, default=6)
     parser.add_argument("--max-jobs", type=int, default=10)
+    parser.add_argument(
+        "--cover-letter-retries",
+        type=int,
+        default=1,
+        help="Retry jobs still missing cover letters after the first pass. Use 0 to disable.",
+    )
     return parser
 
 
@@ -2601,6 +2905,12 @@ def build_regenerate_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--source-resume-name", default=DEFAULT_SOURCE_RESUME)
     parser.add_argument("--current-job-description-name", default=DEFAULT_CURRENT_JOB_DESCRIPTION)
     parser.add_argument("--linkedin-delay-seconds", type=float, default=2.0)
+    parser.add_argument(
+        "--cover-letter-retries",
+        type=int,
+        default=1,
+        help="Retry jobs still missing cover letters after the first pass. Use 0 to disable.",
+    )
     return parser
 
 
@@ -2622,10 +2932,58 @@ def _regenerate_processed_summary(result: MatchingJobsWorkflowResult) -> str:
     )
 
 
+def _cover_letter_retry_summary(result: MatchingJobsWorkflowResult) -> str | None:
+    if not result.cover_letter_retries:
+        return None
+    created = sum(1 for retry in result.cover_letter_retries if retry.status == "created")
+    failed = sum(1 for retry in result.cover_letter_retries if retry.status == "failed")
+    return (
+        f"Cover letter retries: {created} created, {failed} failed "
+        f"across {len(result.cover_letter_retries)} attempts."
+    )
+
+
+def _artifact_audit_summary(result: MatchingJobsWorkflowResult) -> list[str]:
+    audit = result.artifact_audit
+    lines = [
+        (
+            f"Artifact audit: {audit.with_resumes}/{audit.total_jobs} resumes, "
+            f"{audit.with_cover_letters}/{audit.total_jobs} cover letters."
+        )
+    ]
+    if not audit.missing_artifacts:
+        lines.append("Missing artifacts: none.")
+        return lines
+
+    lines.append(
+        f"Missing artifacts: {len(audit.missing_artifacts)} jobs "
+        f"({audit.missing_resumes} missing resumes, "
+        f"{audit.missing_cover_letters} missing cover letters)."
+    )
+    for artifact in audit.missing_artifacts[:10]:
+        missing = ", ".join(artifact.missing)
+        lines.append(
+            f"- {artifact.job_id}: {artifact.company} - {artifact.title} "
+            f"(missing: {missing})"
+        )
+    if len(audit.missing_artifacts) > 10:
+        lines.append(f"- ...and {len(audit.missing_artifacts) - 10} more.")
+    return lines
+
+
+def _print_result_status(result: MatchingJobsWorkflowResult) -> None:
+    retry_summary = _cover_letter_retry_summary(result)
+    if retry_summary:
+        print(retry_summary, file=sys.stderr, flush=True)
+    for line in _artifact_audit_summary(result):
+        print(line, file=sys.stderr, flush=True)
+
+
 def main() -> None:
     parser = build_arg_parser()
     result = asyncio.run(run_from_cli(parser.parse_args()))
     print(json.dumps(result.model_dump(mode="json"), indent=2))
+    _print_result_status(result)
 
 
 def regenerate_main() -> None:
@@ -2634,10 +2992,16 @@ def regenerate_main() -> None:
     settings = load_settings()
     print(f"LLM: {_llm_settings_label(settings)}", file=sys.stderr, flush=True)
     result = asyncio.run(
-        run_regenerate_from_cli(args, settings=settings, artifact_mode="resumes-only")
+        run_regenerate_from_cli(
+            args,
+            settings=settings,
+            artifact_mode="resumes-only",
+            progress_callback=_stderr_progress,
+        )
     )
     print(json.dumps(result.model_dump(mode="json"), indent=2))
     print(_regenerate_processed_summary(result), file=sys.stderr, flush=True)
+    _print_result_status(result)
 
 
 def regenerate_cover_letters_main() -> None:
@@ -2646,10 +3010,16 @@ def regenerate_cover_letters_main() -> None:
     settings = load_settings()
     print(f"LLM: {_llm_settings_label(settings)}", file=sys.stderr, flush=True)
     result = asyncio.run(
-        run_regenerate_from_cli(args, settings=settings, artifact_mode="cover-letters-only")
+        run_regenerate_from_cli(
+            args,
+            settings=settings,
+            artifact_mode="cover-letters-only",
+            progress_callback=_stderr_progress,
+        )
     )
     print(json.dumps(result.model_dump(mode="json"), indent=2))
     print(_regenerate_processed_summary(result), file=sys.stderr, flush=True)
+    _print_result_status(result)
 
 
 def regenerate_all_main() -> None:
@@ -2657,9 +3027,17 @@ def regenerate_all_main() -> None:
     args = parser.parse_args()
     settings = load_settings()
     print(f"LLM: {_llm_settings_label(settings)}", file=sys.stderr, flush=True)
-    result = asyncio.run(run_regenerate_from_cli(args, settings=settings, artifact_mode="all"))
+    result = asyncio.run(
+        run_regenerate_from_cli(
+            args,
+            settings=settings,
+            artifact_mode="all",
+            progress_callback=_stderr_progress,
+        )
+    )
     print(json.dumps(result.model_dump(mode="json"), indent=2))
     print(_regenerate_processed_summary(result), file=sys.stderr, flush=True)
+    _print_result_status(result)
 
 
 if __name__ == "__main__":
