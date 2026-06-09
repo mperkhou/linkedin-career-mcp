@@ -166,6 +166,40 @@ class FakeJobService:
         )
 
 
+class SkillRepairJobService:
+    def __init__(self) -> None:
+        self.queries: list[JobSearchQuery] = []
+
+    async def search(self, query: JobSearchQuery) -> JobSearchResult:
+        self.queries.append(query)
+        return JobSearchResult(
+            query=query,
+            count=1,
+            jobs=[
+                JobPosting(
+                    job_id="777",
+                    title="Platform Automation Engineer",
+                    company="Skillful Co",
+                    job_url="https://www.linkedin.com/jobs/view/777",
+                ),
+            ],
+            provider="fake",
+        )
+
+    async def get_details(self, job_id_or_url: str) -> JobDetails:
+        return JobDetails(
+            job_id="777",
+            title="Platform Automation Engineer",
+            company="Skillful Co",
+            job_url="https://www.linkedin.com/jobs/view/777",
+            workplace_type="Remote",
+            description=(
+                "Required experience with Kubernetes, TypeScript, and GitHub Actions "
+                "for platform automation and cloud infrastructure."
+            ),
+        )
+
+
 class ExistingThenNewJobService:
     def __init__(self) -> None:
         self.queries: list[JobSearchQuery] = []
@@ -380,6 +414,76 @@ async def test_matching_workflow_writes_resume_and_tracking(tmp_path: Path):
     assert sheet.cell(row=2, column=6).hyperlink.target == cover_letter_path.resolve().as_uri()
     assert sheet.cell(row=2, column=7).value == "No"
     assert sheet.cell(row=2, column=8).value is None
+
+
+async def test_matching_workflow_repairs_ats_missing_skills_from_profile_skills(
+    tmp_path: Path,
+):
+    profile_dir = tmp_path / "profile"
+    profile_dir.mkdir()
+    (profile_dir / "MP-RESUME-AGENTIC.txt").write_text(
+        "Resume: built platform automation workflows.",
+        encoding="utf-8",
+    )
+    (profile_dir / "skills.md").write_text(
+        "\n".join(
+            [
+                "* **Languages & Frameworks:** TypeScript",
+                "* **Distributed Systems & Cloud:** Kubernetes",
+                "* **Automation & IaC (DevOps):** GitHub Actions",
+                "* **Data & Observability:** Error Budgets",
+                "* **Networking hardware:** Palo-Alto",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    blacklist_path = tmp_path / ".blacklist"
+    blacklist_path.write_text("", encoding="utf-8")
+    output_dir = tmp_path / "output"
+    progress_messages: list[str] = []
+    workflow = MatchingJobsWorkflow(
+        service=SkillRepairJobService(),
+        ollama=FakeOllama(),
+    )
+
+    result = await workflow.run(
+        profile_dir=profile_dir,
+        blacklist_path=blacklist_path,
+        output_dir=output_dir,
+        source_resume_name="MP-RESUME-AGENTIC.txt",
+        limit_per_query=5,
+        max_queries=1,
+        max_jobs=1,
+        artifact_mode="resumes-only",
+        progress_callback=progress_messages.append,
+    )
+
+    assert result.errors == []
+    resume_path = Path(result.artifacts[0].resume_path)
+    resume_text = "\n".join(page.extract_text() or "" for page in PdfReader(resume_path).pages)
+    assert "TypeScript" in resume_text
+    assert "Kubernetes" in resume_text
+    assert "GitHub Actions" in resume_text
+    assert "Automation & IaC: Terraform, Ansible, Jenkins, GitHub Actions" in resume_text
+    assert "Error Budgets" not in resume_text
+    assert "Palo-Alto" not in resume_text
+    assert any("ATS skill repair added" in message for message in progress_messages)
+
+    database_path = output_dir / DEFAULT_DATABASE
+    with connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT ats_score, ats_missing_terms
+            FROM applications
+            WHERE job_id = ?
+            """,
+            ("777",),
+        ).fetchone()
+    assert row["ats_score"] is not None
+    missing_terms = (row["ats_missing_terms"] or "").casefold()
+    assert "kubernetes" not in missing_terms
+    assert "typescript" not in missing_terms
+    assert "github actions" not in missing_terms
 
 
 async def test_matching_workflow_skips_explicit_on_site_linkedin_leaks(tmp_path: Path):

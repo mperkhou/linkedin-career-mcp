@@ -26,6 +26,9 @@ isolation, testable workflows, practical automation, and human-in-the-loop guard
   targeted LLM-written opening, Oracle-current-role, and prior-experience fragments. Prompts
   use a cleaned role-focused job description that removes obvious company boilerplate before
   LLM calls.
+- **ATS-informed skill repair**: after the local ATS proxy score identifies missing high-value
+  JOD terms, the workflow checks `profile/skills.md` and adds matching known skills to the
+  appropriate Core Technical Skills category before storing the final resume PDF.
 - **Duplicate-aware workflow**: uses SQLite job IDs to skip openings that already have the
   requested artifact type, and does not count skipped jobs toward the requested run size.
 - **Local application tracker**: Flask + SQLite web UI for search/filter, status updates,
@@ -396,6 +399,10 @@ src/linkedin_career_mcp/
 ## Inputs
 
 Place private profile material in `profile/`. The directory is intentionally ignored by Git.
+Add `profile/skills.md` to maintain an expanded category-by-category skill inventory used by
+the ATS-informed resume repair pass. Only skills that are both missing from the generated
+resume and present in this file are added back into the generated Core Technical Skills
+section.
 
 Supported profile file types:
 
