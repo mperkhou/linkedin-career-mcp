@@ -48,6 +48,7 @@ APPLICATION_EXTRA_COLUMNS = {
     "source_cover_letter_path": "TEXT NOT NULL DEFAULT ''",
     "date_matched": "TEXT",
     "date_posted": "TEXT",
+    "experience_level": "TEXT",
     "ats_score": "INTEGER",
     "ats_parsing_score": "INTEGER",
     "ats_keyword_score": "INTEGER",
@@ -76,6 +77,7 @@ class ApplicationJobRecord:
     prompt_job_description: str | None
     date_matched: str | None
     date_posted: str | None
+    experience_level: str | None
 
 
 def connect_database(database_path: Path) -> sqlite3.Connection:
@@ -106,6 +108,7 @@ def init_database(connection: sqlite3.Connection) -> None:
             source_cover_letter_path TEXT NOT NULL DEFAULT '',
             date_matched TEXT,
             date_posted TEXT,
+            experience_level TEXT,
             ats_score INTEGER,
             ats_parsing_score INTEGER,
             ats_keyword_score INTEGER,
@@ -187,7 +190,7 @@ def fetch_application_job_records(
             rows = connection.execute(
                 """
                 SELECT job_id, company, job_title, linkedin_url, job_description,
-                       prompt_job_description, date_matched, date_posted
+                       prompt_job_description, date_matched, date_posted, experience_level
                 FROM applications
                 ORDER BY company COLLATE NOCASE ASC, job_title COLLATE NOCASE ASC
                 """
@@ -199,7 +202,7 @@ def fetch_application_job_records(
             rows = connection.execute(
                 f"""
                 SELECT job_id, company, job_title, linkedin_url, job_description,
-                       prompt_job_description, date_matched, date_posted
+                       prompt_job_description, date_matched, date_posted, experience_level
                 FROM applications
                 WHERE job_id IN ({placeholders})
                 """,
@@ -217,6 +220,7 @@ def fetch_application_job_records(
             prompt_job_description=row["prompt_job_description"],
             date_matched=row["date_matched"],
             date_posted=row["date_posted"],
+            experience_level=row["experience_level"],
         )
         for row in rows
     ]
@@ -237,11 +241,13 @@ def upsert_application_artifact(
     date_applied: str | None = None,
     date_matched: str | None = None,
     date_posted: str | None = None,
+    experience_level: str | None = None,
 ) -> None:
     now = datetime.now(UTC).isoformat(timespec="seconds")
     applied_to = _normalize_applied_to(applied_to)
     date_matched = _date_value(date_matched) or now
     date_posted = _date_value(date_posted)
+    experience_level = str(experience_level or "").strip()
     resume_content = (
         resume_path.read_bytes()
         if resume_path is not None and resume_path.is_file()
@@ -264,11 +270,14 @@ def upsert_application_artifact(
                 prompt_job_description, resume_filename, resume_content, resume_mime_type,
                 source_resume_path, cover_letter_filename, cover_letter_content,
                 cover_letter_mime_type, source_cover_letter_path, date_matched, date_posted,
-                ats_score, ats_parsing_score, ats_keyword_score, ats_semantic_score,
-                ats_formatting_risk, ats_missing_terms, ats_updated_at, applied_to, date_applied,
-                imported_at, updated_at
+                experience_level, ats_score, ats_parsing_score, ats_keyword_score,
+                ats_semantic_score, ats_formatting_risk, ats_missing_terms, ats_updated_at,
+                applied_to, date_applied, imported_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?
+            )
             ON CONFLICT(job_id) DO UPDATE SET
                 company = excluded.company,
                 job_title = excluded.job_title,
@@ -320,6 +329,10 @@ def upsert_application_artifact(
                     NULLIF(excluded.date_posted, ''),
                     applications.date_posted
                 ),
+                experience_level = COALESCE(
+                    NULLIF(excluded.experience_level, ''),
+                    applications.experience_level
+                ),
                 ats_score = COALESCE(excluded.ats_score, applications.ats_score),
                 ats_parsing_score = COALESCE(
                     excluded.ats_parsing_score,
@@ -366,6 +379,7 @@ def upsert_application_artifact(
                 str(cover_letter_path) if cover_letter_path is not None else "",
                 date_matched,
                 date_posted,
+                experience_level,
                 ats_score.overall_score if ats_score is not None else None,
                 ats_score.parsing_score if ats_score is not None else None,
                 ats_score.keyword_match_score if ats_score is not None else None,
@@ -480,6 +494,11 @@ def import_output_artifacts(*, output_dir: Path, database_path: Path) -> ImportR
                 row=row,
                 column_indexes=column_indexes,
                 column="date_posted",
+            ),
+            experience_level=_optional_row_value(
+                row=row,
+                column_indexes=column_indexes,
+                column="experience_level",
             ),
         )
         rows_imported += 1
@@ -1059,6 +1078,7 @@ INDEX_TEMPLATE = """
     .job { min-width: 260px; }
     .job-id { display: block; color: var(--muted); font-size: 12px; margin-top: 3px; }
     .date-col { min-width: 104px; white-space: nowrap; }
+    .experience-col { min-width: 126px; white-space: nowrap; }
     .score-col { min-width: 104px; position: relative; }
     .score-details { position: relative; }
     .score-details summary {
@@ -1197,6 +1217,7 @@ INDEX_TEMPLATE = """
                 </span>
               </button>
             </th>
+            <th>Experience</th>
             <th id="ats-header" aria-sort="none">
               <button
                 id="ats-sort"
@@ -1218,12 +1239,16 @@ INDEX_TEMPLATE = """
         </thead>
         <tbody>
           {% for row in rows %}
+            {% set search_text %}
+              {{ row.company }} {{ row.job_title }} {{ row.job_id }}
+              {{ row.experience_level or '' }}
+            {% endset %}
             <tr class="{{ 'is-applied' if row.applied_to == 'Yes' else '' }}"
                 data-status="{{ row.applied_to }}"
                 data-company-sort="{{ row.company }}"
                 data-matched-sort="{{ row.date_matched or '' }}"
                 data-ats-sort="{{ row.ats_score if row.ats_score is not none else '' }}"
-                data-search="{{ (row.company ~ ' ' ~ row.job_title ~ ' ' ~ row.job_id)|lower }}">
+                data-search="{{ search_text|lower }}">
               <td class="select-col">
                 <input
                   class="row-selector"
@@ -1246,6 +1271,10 @@ INDEX_TEMPLATE = """
               <td class="date-col">
                 {{ row.date_matched|display_date if row.date_matched else '' }}
                 {% if not row.date_matched %}<span class="muted">-</span>{% endif %}
+              </td>
+              <td class="experience-col">
+                {{ row.experience_level or '' }}
+                {% if not row.experience_level %}<span class="muted">-</span>{% endif %}
               </td>
               <td class="score-col">
                 {% if row.ats_score is not none %}
