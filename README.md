@@ -35,8 +35,8 @@ isolation, testable workflows, practical automation, and human-in-the-loop guard
 - **Duplicate-aware workflow**: uses SQLite job IDs to skip openings that already have the
   requested artifact type, and does not count skipped jobs toward the requested run size.
 - **Local application tracker**: Flask + SQLite web UI for search/filter, status updates,
-  applied dates, notes, DB-backed PDF view/download links, sync from generated output, and
-  bulk deletion.
+  applied dates, notes, DB-backed PDF viewers, copy-to-Downloads actions, sync from generated
+  output, and bulk deletion.
 - **Local-first storage**: generated PDFs live under `output/resumes/` and
   `output/cover_letters/`; tracking lives in both `output/tracking/applications.sqlite3`
   and the compatibility workbook at
@@ -167,7 +167,8 @@ The web UI is intentionally dense and work-focused:
 - summary counters for total, applied, pending, and N/A applications
 - search by company, title, or LinkedIn job ID
 - status filter for pending/applied/N/A rows
-- direct links to LinkedIn, DB-backed PDF viewers, and DB-backed PDF downloads
+- direct links to LinkedIn, DB-backed PDF viewers, and one-click copy actions that place
+  resume and cover-letter PDFs in `~/Downloads`
 - `Posted`, `Matched`, and `Experience` columns for LinkedIn posted date, local database
   match date, and LinkedIn seniority level
 - an `ATS` column with a local proxy score and expandable parsing, keyword, semantic, and
@@ -177,12 +178,14 @@ The web UI is intentionally dense and work-focused:
 - "Sync from output" to import workbook/PDF artifacts into SQLite
 - checkbox selection plus bulk delete
 
-PDFs are available in two useful forms:
+PDFs are available in three useful forms:
 
 - `/resumes/<job_id>` serves the PDF BLOB stored in SQLite.
 - `/resumes/<job_id>/download` downloads the resume PDF BLOB stored in SQLite.
 - `/cover-letters/<job_id>` serves the cover-letter PDF BLOB stored in SQLite.
 - `/cover-letters/<job_id>/download` downloads the cover-letter PDF BLOB stored in SQLite.
+- The tracker table's `Download` controls copy the generated local PDF into `~/Downloads`
+  through Flask instead of relying on browser download behavior.
 - `/output/resumes/...pdf` serves the generated file from the local output tree.
 - `/output/cover_letters/...pdf` serves the generated cover-letter file from the local output
   tree.

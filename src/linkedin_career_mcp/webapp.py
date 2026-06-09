@@ -670,6 +670,23 @@ def create_app(*, database_path: Path, output_dir: Path):
             as_attachment=True,
         )
 
+    @app.post("/resumes/<job_id>/copy-to-downloads")
+    def resume_copy_to_downloads(job_id: str):
+        row = _fetch_application(database_path, job_id)
+        if row is None or row["resume_content"] is None:
+            abort(404)
+        try:
+            destination = copy_application_artifact_to_downloads(
+                row=row,
+                artifact_kind="resume",
+                output_dir=output_dir,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            flash(f"Resume copy failed: {exc}")
+        else:
+            flash(f"Copied resume to {_download_display_path(destination)}.")
+        return redirect(url_for("index"))
+
     @app.get("/cover-letters/<job_id>")
     def cover_letter(job_id: str):
         row = _fetch_application(database_path, job_id)
@@ -693,6 +710,23 @@ def create_app(*, database_path: Path, output_dir: Path):
             download_name=row["cover_letter_filename"],
             as_attachment=True,
         )
+
+    @app.post("/cover-letters/<job_id>/copy-to-downloads")
+    def cover_letter_copy_to_downloads(job_id: str):
+        row = _fetch_application(database_path, job_id)
+        if row is None or row["cover_letter_content"] is None:
+            abort(404)
+        try:
+            destination = copy_application_artifact_to_downloads(
+                row=row,
+                artifact_kind="cover_letter",
+                output_dir=output_dir,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            flash(f"Cover letter copy failed: {exc}")
+        else:
+            flash(f"Copied cover letter to {_download_display_path(destination)}.")
+        return redirect(url_for("index"))
 
     @app.get("/descriptions/<job_id>")
     def compare_descriptions(job_id: str):
@@ -831,6 +865,60 @@ def cleanup_downloaded_application_pdfs(download_dir: Path | None = None) -> int
             continue
         deleted_count += 1
     return deleted_count
+
+
+def copy_application_artifact_to_downloads(
+    *,
+    row: sqlite3.Row,
+    artifact_kind: str,
+    output_dir: Path,
+    download_dir: Path | None = None,
+) -> Path:
+    if artifact_kind == "resume":
+        source_column = "source_resume_path"
+        filename_column = "resume_filename"
+        content_column = "resume_content"
+        default_prefix = "mp_resume"
+    elif artifact_kind == "cover_letter":
+        source_column = "source_cover_letter_path"
+        filename_column = "cover_letter_filename"
+        content_column = "cover_letter_content"
+        default_prefix = "mp_cover_letter"
+    else:
+        raise ValueError(f"Unsupported artifact kind: {artifact_kind}")
+
+    target_dir = download_dir or Path.home() / "Downloads"
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = Path(str(row[filename_column] or "")).name
+    if not filename:
+        filename = f"{default_prefix}_{row['job_id']}.pdf"
+    destination = target_dir / filename
+
+    source_path_text = str(row[source_column] or "").strip()
+    if source_path_text:
+        source_path = _resolve_output_path(output_dir=output_dir, path_text=source_path_text)
+        if source_path.is_file():
+            subprocess.run(
+                ["cp", str(source_path), str(destination)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            return destination
+
+    content = row[content_column]
+    if content is None:
+        raise FileNotFoundError(f"No local {artifact_kind.replace('_', ' ')} artifact was found.")
+    destination.write_bytes(content)
+    return destination
+
+
+def _download_display_path(path: Path) -> str:
+    downloads_dir = Path.home() / "Downloads"
+    if path.parent == downloads_dir:
+        return f"~/Downloads/{path.name}"
+    return str(path)
 
 
 def _display_date(value: Any) -> str:
@@ -1128,6 +1216,21 @@ INDEX_TEMPLATE = """
     }
     .score-row strong { font-weight: 700; }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; min-width: 170px; }
+    .actions form { margin: 0; }
+    .text-link-button {
+      background: transparent;
+      border: 0;
+      border-radius: 0;
+      color: var(--accent);
+      font: inherit;
+      font-weight: 600;
+      padding: 0;
+      text-decoration: underline;
+    }
+    .text-link-button:hover {
+      background: transparent;
+      color: var(--accent-strong);
+    }
     .muted { color: var(--muted); }
     .apply-form {
       display: grid;
@@ -1331,14 +1434,9 @@ INDEX_TEMPLATE = """
                     <a href="/resumes/{{ row.job_id }}" target="_blank" rel="noreferrer">
                       Resume
                     </a>
-                    <a
-                      class="same-page-download"
-                      href="/resumes/{{ row.job_id }}/download"
-                      download="{{ row.resume_filename }}"
-                      data-download-filename="{{ row.resume_filename }}"
-                    >
-                      Download
-                    </a>
+                    <form method="post" action="/resumes/{{ row.job_id }}/copy-to-downloads">
+                      <button class="text-link-button" type="submit">Download</button>
+                    </form>
                   {% else %}
                     <span class="muted">Missing</span>
                   {% endif %}
@@ -1350,14 +1448,12 @@ INDEX_TEMPLATE = """
                     <a href="/cover-letters/{{ row.job_id }}" target="_blank" rel="noreferrer">
                       Cover Letter
                     </a>
-                    <a
-                      class="same-page-download"
-                      href="/cover-letters/{{ row.job_id }}/download"
-                      download="{{ row.cover_letter_filename }}"
-                      data-download-filename="{{ row.cover_letter_filename }}"
+                    <form
+                      method="post"
+                      action="/cover-letters/{{ row.job_id }}/copy-to-downloads"
                     >
-                      Download
-                    </a>
+                      <button class="text-link-button" type="submit">Download</button>
+                    </form>
                   {% else %}
                     <span class="muted">Missing</span>
                   {% endif %}
@@ -1411,32 +1507,9 @@ INDEX_TEMPLATE = """
     const tableBody = document.querySelector("#applications tbody");
     const rows = [...document.querySelectorAll("#applications tbody tr")];
     const rowSelectors = [...document.querySelectorAll(".row-selector")];
-    const samePageDownloads = [...document.querySelectorAll(".same-page-download")];
     let companySortDirection = null;
     let matchedSortDirection = null;
     let atsSortDirection = null;
-    async function downloadInCurrentPage(event) {
-      event.preventDefault();
-      const link = event.currentTarget;
-      try {
-        const response = await fetch(link.href, { credentials: "same-origin" });
-        if (!response.ok) {
-          throw new Error(`Download failed with status ${response.status}`);
-        }
-        const blob = await response.blob();
-        const objectUrl = URL.createObjectURL(blob);
-        const downloadLink = document.createElement("a");
-        downloadLink.href = objectUrl;
-        downloadLink.download = link.dataset.downloadFilename || link.download || "download.pdf";
-        downloadLink.style.display = "none";
-        document.body.appendChild(downloadLink);
-        downloadLink.click();
-        downloadLink.remove();
-        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-      } catch (error) {
-        window.location.assign(link.href);
-      }
-    }
     function applyFilters() {
       const term = search.value.trim().toLowerCase();
       const status = statusFilter.value;
@@ -1603,9 +1676,6 @@ INDEX_TEMPLATE = """
     if (atsSortButton) {
       atsSortButton.addEventListener("click", sortRowsByAts);
     }
-    samePageDownloads.forEach((link) => {
-      link.addEventListener("click", downloadInCurrentPage);
-    });
     if (selectAll) {
       selectAll.addEventListener("change", () => {
         visibleSelectors().forEach((checkbox) => {

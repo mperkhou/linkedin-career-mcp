@@ -1,4 +1,3 @@
-import re
 import sqlite3
 from pathlib import Path
 
@@ -178,22 +177,13 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     assert b"Compare descriptions" in index.data
     assert b"Cover Letter" in index.data
     assert b"/cover-letters/123" in index.data
-    assert b"/cover-letters/123/download" in index.data
-    assert b"/resumes/123/download" in index.data
-    assert 'class="same-page-download"' in html
-    assert "downloadInCurrentPage" in html
-    assert "samePageDownloads.forEach" in html
-    assert 'href="/resumes/123/download"' in html
-    assert 'download="mp_resume_senior_engineer.pdf"' in html
-    assert 'data-download-filename="mp_resume_senior_engineer.pdf"' in html
-    assert re.search(r'href="/resumes/123/download"[^>]*target="_blank"', html, re.S) is None
-    assert 'href="/cover-letters/123/download"' in html
-    assert 'download="mp_cover_letter_senior_engineer.pdf"' in html
-    assert 'data-download-filename="mp_cover_letter_senior_engineer.pdf"' in html
-    assert (
-        re.search(r'href="/cover-letters/123/download"[^>]*target="_blank"', html, re.S)
-        is None
-    )
+    assert 'action="/resumes/123/copy-to-downloads"' in html
+    assert 'action="/cover-letters/123/copy-to-downloads"' in html
+    assert 'class="same-page-download"' not in html
+    assert "downloadInCurrentPage" not in html
+    assert "samePageDownloads.forEach" not in html
+    assert 'href="/resumes/123/download"' not in html
+    assert 'href="/cover-letters/123/download"' not in html
     assert b"N/A" in index.data
     assert b"<th>Posted</th>" in index.data
     assert b"<th>Experience</th>" in index.data
@@ -240,10 +230,24 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     downloaded_resume = downloads_dir / "mp_resume_senior_engineer.pdf"
     downloaded_cover_letter = downloads_dir / "mp_cover_letter_senior_engineer.pdf"
     unrelated_pdf = downloads_dir / "other_resume.pdf"
-    downloaded_resume.write_bytes(b"resume")
-    downloaded_cover_letter.write_bytes(b"cover")
-    unrelated_pdf.write_bytes(b"other")
     monkeypatch.setenv("HOME", str(tmp_path))
+
+    resume_copy = client.post("/resumes/123/copy-to-downloads")
+    assert resume_copy.status_code == 302
+    assert downloaded_resume.read_bytes() == b"%PDF-1.4 fake pdf"
+
+    cover_letter_copy = client.post("/cover-letters/123/copy-to-downloads")
+    assert cover_letter_copy.status_code == 302
+    assert downloaded_cover_letter.read_bytes() == b"%PDF-1.4 fake cover"
+
+    copy_index = client.get("/")
+    assert b"Copied resume to ~/Downloads/mp_resume_senior_engineer.pdf." in copy_index.data
+    assert (
+        b"Copied cover letter to ~/Downloads/mp_cover_letter_senior_engineer.pdf."
+        in copy_index.data
+    )
+
+    unrelated_pdf.write_bytes(b"other")
 
     yes_response = client.post(
         "/applications/123",
