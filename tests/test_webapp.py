@@ -1,3 +1,4 @@
+import re
 import sqlite3
 from pathlib import Path
 
@@ -57,6 +58,7 @@ def test_connect_database_migrates_job_description_columns(tmp_path: Path):
     assert "source_cover_letter_path" in columns
     assert "date_matched" in columns
     assert "date_posted" in columns
+    assert "experience_level" in columns
     assert "ats_score" in columns
     assert "ats_parsing_score" in columns
     assert "ats_keyword_score" in columns
@@ -149,12 +151,14 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
         job_description="Full parsed JOD with mission boilerplate and role requirements.",
         prompt_job_description="Clean prompt JOD with role requirements.",
         date_posted="2026-06-07T12:00:00Z",
+        experience_level="Mid-Senior level",
     )
     with webapp.connect_database(database_path) as connection:
         score_row = connection.execute(
             """
             SELECT ats_score, ats_parsing_score, ats_keyword_score,
-                   ats_semantic_score, ats_formatting_risk, ats_missing_terms
+                   ats_semantic_score, ats_formatting_risk, ats_missing_terms,
+                   experience_level
             FROM applications
             WHERE job_id = '123'
             """
@@ -162,20 +166,38 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     assert score_row["ats_score"] is not None
     assert score_row["ats_formatting_risk"] in {"Low", "Medium", "High"}
     assert score_row["ats_missing_terms"] is not None
+    assert score_row["experience_level"] == "Mid-Senior level"
 
     app = create_app(database_path=database_path, output_dir=output_dir)
     client = app.test_client()
 
     index = client.get("/")
     assert index.status_code == 200
+    html = index.data.decode()
     assert b"/descriptions/123" in index.data
     assert b"Compare descriptions" in index.data
     assert b"Cover Letter" in index.data
     assert b"/cover-letters/123" in index.data
     assert b"/cover-letters/123/download" in index.data
     assert b"/resumes/123/download" in index.data
+    assert 'class="same-page-download"' in html
+    assert "downloadInCurrentPage" in html
+    assert "samePageDownloads.forEach" in html
+    assert 'href="/resumes/123/download"' in html
+    assert 'download="mp_resume_senior_engineer.pdf"' in html
+    assert 'data-download-filename="mp_resume_senior_engineer.pdf"' in html
+    assert re.search(r'href="/resumes/123/download"[^>]*target="_blank"', html, re.S) is None
+    assert 'href="/cover-letters/123/download"' in html
+    assert 'download="mp_cover_letter_senior_engineer.pdf"' in html
+    assert 'data-download-filename="mp_cover_letter_senior_engineer.pdf"' in html
+    assert (
+        re.search(r'href="/cover-letters/123/download"[^>]*target="_blank"', html, re.S)
+        is None
+    )
     assert b"N/A" in index.data
     assert b"<th>Posted</th>" in index.data
+    assert b"<th>Experience</th>" in index.data
+    assert b"Mid-Senior level" in index.data
     assert b'id="company-sort"' in index.data
     assert b'id="matched-sort"' in index.data
     assert b'id="ats-sort"' in index.data

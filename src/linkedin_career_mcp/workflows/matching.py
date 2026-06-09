@@ -54,6 +54,8 @@ SUPPORTED_TEXT_SUFFIXES = {".csv", ".json", ".md", ".rst", ".text", ".txt"}
 SUPPORTED_PROFILE_SUFFIXES = SUPPORTED_TEXT_SUFFIXES | {".docx", ".pdf"}
 ArtifactMode = Literal["all", "resumes-only", "cover-letters-only"]
 ProgressCallback = Callable[[str], None]
+DISALLOWED_EXPERIENCE_LEVELS = {"internship", "entry_level"}
+SEARCH_EXPERIENCE_LEVELS = ("associate", "mid_senior", "director", "executive")
 RESUME_HEADER_NAME = "Max Perkhounkov"
 LINKEDIN_PROFILE_LABEL = "linkedin.com/in/maxim-perkhounkov"
 LINKEDIN_PROFILE_URL = "https://www.linkedin.com/in/maxim-perkhounkov/"
@@ -496,6 +498,7 @@ class MatchingJobsWorkflowResult(BaseModel):
     skipped_blacklisted: list[str] = Field(default_factory=list)
     skipped_existing: list[str] = Field(default_factory=list)
     skipped_workplace_type: list[str] = Field(default_factory=list)
+    skipped_experience_level: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
     artifacts: list[TailoredResumeArtifact] = Field(default_factory=list)
     artifact_audit: ArtifactAudit = Field(default_factory=ArtifactAudit)
@@ -613,6 +616,7 @@ class MatchingJobsWorkflow:
         skipped_blacklisted: list[str] = []
         skipped_existing: list[str] = []
         skipped_workplace_type: list[str] = []
+        skipped_experience_level: list[str] = []
         errors: list[str] = []
         seen_job_ids: set[str] = set()
         tracking_path = output_dir / TRACKING_WORKBOOK
@@ -688,6 +692,11 @@ class MatchingJobsWorkflow:
                         continue
                     if not _is_remote_or_hybrid_job(details, query):
                         skipped_workplace_type.append(_job_label(details.company, details.title))
+                        continue
+                    if _is_disallowed_experience_level(details):
+                        skipped_experience_level.append(
+                            _job_label(details.company, details.title)
+                        )
                         continue
                     candidates.append(details)
                 if (
@@ -769,6 +778,7 @@ class MatchingJobsWorkflow:
             skipped_blacklisted=skipped_blacklisted,
             skipped_existing=skipped_existing,
             skipped_workplace_type=skipped_workplace_type,
+            skipped_experience_level=skipped_experience_level,
             errors=errors,
             artifacts=artifacts,
             artifact_audit=artifact_audit,
@@ -897,6 +907,7 @@ class MatchingJobsWorkflow:
             skipped_blacklisted=[],
             skipped_existing=[],
             skipped_workplace_type=[],
+            skipped_experience_level=[],
             errors=errors,
             artifacts=artifacts,
             artifact_audit=artifact_audit,
@@ -1093,6 +1104,7 @@ class MatchingJobsWorkflow:
             job_description=stored_job_description,
             prompt_job_description=prompt_job_description,
             date_posted=_job_date_posted(job),
+            experience_level=job.seniority_level,
         )
         return TailoredResumeArtifact(
             job_id=job.job_id,
@@ -1857,6 +1869,7 @@ def _regeneration_candidate_from_record(record: ApplicationJobRecord) -> _Regene
             job_url=record.linkedin_url or None,
             listed_at=record.date_posted,
             description=record.job_description or record.prompt_job_description,
+            seniority_level=record.experience_level,
         ),
         stored_job_description=record.job_description,
     )
@@ -1878,7 +1891,7 @@ def _merge_record_with_fetched_details(
         workplace_type=details.workplace_type,
         source=details.source,
         description=details.description or record.job_description or record.prompt_job_description,
-        seniority_level=details.seniority_level,
+        seniority_level=details.seniority_level or record.experience_level,
         employment_type=details.employment_type,
         job_function=details.job_function,
         industries=details.industries,
@@ -1914,6 +1927,22 @@ def _is_remote_or_hybrid_job(job: JobDetails, query: JobSearchQuery) -> bool:
     if "remote" in workplace_context or "hybrid" in workplace_context:
         return True
     return query.workplace_type in {"remote", "hybrid"}
+
+
+def _is_disallowed_experience_level(job: JobDetails) -> bool:
+    normalized = _normalize_experience_level(job.seniority_level)
+    return normalized in DISALLOWED_EXPERIENCE_LEVELS
+
+
+def _normalize_experience_level(value: Any) -> str:
+    normalized = re.sub(r"[^a-z0-9]+", "_", str(value or "").casefold()).strip("_")
+    if normalized in {"intern", "internship"}:
+        return "internship"
+    if normalized in {"entry", "entry_level", "entrylevel"}:
+        return "entry_level"
+    if normalized.startswith("entry_level"):
+        return "entry_level"
+    return normalized
 
 
 def _job_date_posted(job: JobDetails) -> str | None:
@@ -2077,7 +2106,7 @@ def _coerce_search_query(
         "date_posted": value.get("date_posted") or date_posted,
         "job_type": value.get("job_type"),
         "workplace_type": value.get("workplace_type"),
-        "experience_level": value.get("experience_level"),
+        "experience_level": _coerce_search_experience_level(value.get("experience_level")),
         "sort_by": value.get("sort_by") or "recent",
         "distance": value.get("distance"),
         "limit": min(max(int(value.get("limit") or max_limit), 1), max_limit),
@@ -2095,6 +2124,13 @@ def _coerce_search_query(
         data["sort_by"] = "recent"
         data["distance"] = None
         return JobSearchQuery(**data)
+
+
+def _coerce_search_experience_level(value: Any) -> str | None:
+    normalized = _normalize_experience_level(value)
+    if not normalized or normalized in DISALLOWED_EXPERIENCE_LEVELS:
+        return None
+    return normalized
 
 
 def _supplement_search_queries(
@@ -2190,6 +2226,7 @@ Rules:
 - Generate up to {max_queries} keyword-focused query objects.
 - Use combinations of role titles, seniority, domain keywords, and core skills.
 - The workflow will force remote and hybrid LinkedIn workplace filters.
+- Do not use internship or entry_level experience filters.
 - Prefer concise keyword strings that LinkedIn search can use directly.
 - Include AI, agentic AI, and LLM keyword variants when they overlap with the candidate profile.
 - Do not invent facts about the candidate.
@@ -2211,7 +2248,7 @@ Allowed values:
 - date_posted: any_time, past_24_hours, past_week, past_month
 - job_type: full_time, part_time, contract, temporary, volunteer, internship, other
 - workplace_type: remote, hybrid
-- experience_level: internship, entry_level, associate, mid_senior, director, executive
+- experience_level: {", ".join(SEARCH_EXPERIENCE_LEVELS)}
 - sort_by: relevance, recent
 
 Candidate profile files:
@@ -3279,6 +3316,22 @@ def _workplace_skip_summary(result: MatchingJobsWorkflowResult) -> list[str]:
     return lines
 
 
+def _experience_skip_summary(result: MatchingJobsWorkflowResult) -> list[str]:
+    if not result.skipped_experience_level:
+        return []
+    lines = [
+        (
+            f"Experience filter skipped {len(result.skipped_experience_level)} "
+            "internship or entry-level job(s)."
+        )
+    ]
+    for label in result.skipped_experience_level[:10]:
+        lines.append(f"- {label}")
+    if len(result.skipped_experience_level) > 10:
+        lines.append(f"- ...and {len(result.skipped_experience_level) - 10} more.")
+    return lines
+
+
 def _artifact_audit_summary(result: MatchingJobsWorkflowResult) -> list[str]:
     audit = result.artifact_audit
     lines = [
@@ -3312,6 +3365,8 @@ def _print_result_status(result: MatchingJobsWorkflowResult) -> None:
     if retry_summary:
         print(retry_summary, file=sys.stderr, flush=True)
     for line in _workplace_skip_summary(result):
+        print(line, file=sys.stderr, flush=True)
+    for line in _experience_skip_summary(result):
         print(line, file=sys.stderr, flush=True)
     for line in _artifact_audit_summary(result):
         print(line, file=sys.stderr, flush=True)

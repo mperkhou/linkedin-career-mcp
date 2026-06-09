@@ -22,6 +22,7 @@ from linkedin_career_mcp.workflows.matching import (
     MatchingJobsWorkflow,
     MatchingJobsWorkflowResult,
     TailoredResumeArtifact,
+    _coerce_search_query,
     _expand_remote_and_hybrid_queries,
     _normalize_regeneration_job_ids,
     _supplement_search_queries,
@@ -288,6 +289,74 @@ class OnSiteLeakJobService:
         )
 
 
+class ExperienceLeakJobService:
+    def __init__(self) -> None:
+        self.queries: list[JobSearchQuery] = []
+
+    async def search(self, query: JobSearchQuery) -> JobSearchResult:
+        self.queries.append(query)
+        return JobSearchResult(
+            query=query,
+            count=3,
+            jobs=[
+                JobPosting(
+                    job_id="666",
+                    title="Software Engineering Intern",
+                    company="Intern Co",
+                    workplace_type="Remote",
+                    job_url="https://www.linkedin.com/jobs/view/666",
+                ),
+                JobPosting(
+                    job_id="777",
+                    title="Entry Level Software Engineer",
+                    company="Entry Co",
+                    workplace_type="Remote",
+                    job_url="https://www.linkedin.com/jobs/view/777",
+                ),
+                JobPosting(
+                    job_id="888",
+                    title="Senior Platform Engineer",
+                    company="Senior Co",
+                    workplace_type="Remote",
+                    job_url="https://www.linkedin.com/jobs/view/888",
+                ),
+            ],
+            provider="fake",
+        )
+
+    async def get_details(self, job_id_or_url: str) -> JobDetails:
+        job_id = job_id_or_url.rstrip("/").rsplit("/", 1)[-1]
+        if job_id == "666":
+            return JobDetails(
+                job_id="666",
+                title="Software Engineering Intern",
+                company="Intern Co",
+                job_url="https://www.linkedin.com/jobs/view/666",
+                workplace_type="Remote",
+                seniority_level="Internship",
+                description="Internship role that should be skipped.",
+            )
+        if job_id == "777":
+            return JobDetails(
+                job_id="777",
+                title="Entry Level Software Engineer",
+                company="Entry Co",
+                job_url="https://www.linkedin.com/jobs/view/777",
+                workplace_type="Remote",
+                seniority_level="Entry level",
+                description="Entry-level role that should be skipped.",
+            )
+        return JobDetails(
+            job_id="888",
+            title="Senior Platform Engineer",
+            company="Senior Co",
+            job_url="https://www.linkedin.com/jobs/view/888",
+            workplace_type="Remote",
+            seniority_level="Mid-Senior level",
+            description="Senior platform role that should be accepted.",
+        )
+
+
 def test_company_blacklist_matches_globs_case_insensitively(tmp_path: Path):
     blacklist_path = tmp_path / ".blacklist"
     blacklist_path.write_text("# comment\nRaytheon*\n", encoding="utf-8")
@@ -324,6 +393,21 @@ def test_search_queries_are_supplemented_with_trending_keyword_fallbacks():
     assert DEFAULT_SUPPLEMENTAL_SEARCH_KEYWORDS[0] in keywords
     assert any("AI" in keyword or "LLM" in keyword or "agentic" in keyword for keyword in keywords)
     assert {query.workplace_type for query in expanded[:2]} == {"remote", "hybrid"}
+
+
+def test_coerce_search_query_drops_internship_and_entry_level_filters():
+    for experience_level in ("internship", "entry_level", "Entry level"):
+        query = _coerce_search_query(
+            {
+                "keywords": "software engineer",
+                "experience_level": experience_level,
+            },
+            location="United States",
+            date_posted="past_week",
+            limit_per_query=5,
+        )
+
+        assert query.experience_level is None
 
 
 def test_normalize_regeneration_job_ids_accepts_csv_and_positional_ids():
@@ -512,6 +596,50 @@ async def test_matching_workflow_skips_explicit_on_site_linkedin_leaks(tmp_path:
     assert result.jobs_found == 1
     assert result.artifacts[0].job_id == "555"
     assert "Office Co - Onsite Platform Engineer" in result.skipped_workplace_type
+
+
+async def test_matching_workflow_skips_internship_and_entry_level_jobs(tmp_path: Path):
+    profile_dir = tmp_path / "profile"
+    profile_dir.mkdir()
+    (profile_dir / "MP-RESUME-AGENTIC.txt").write_text(
+        "Resume: built platform automation systems.",
+        encoding="utf-8",
+    )
+    blacklist_path = tmp_path / ".blacklist"
+    blacklist_path.write_text("", encoding="utf-8")
+    output_dir = tmp_path / "output"
+    workflow = MatchingJobsWorkflow(
+        service=ExperienceLeakJobService(),
+        ollama=FakeOllama(),
+    )
+
+    result = await workflow.run(
+        profile_dir=profile_dir,
+        blacklist_path=blacklist_path,
+        output_dir=output_dir,
+        source_resume_name="MP-RESUME-AGENTIC.txt",
+        limit_per_query=5,
+        max_queries=1,
+        max_jobs=1,
+        artifact_mode="resumes-only",
+    )
+
+    assert result.jobs_found == 1
+    assert result.artifacts[0].job_id == "888"
+    assert "Intern Co - Software Engineering Intern" in result.skipped_experience_level
+    assert "Entry Co - Entry Level Software Engineer" in result.skipped_experience_level
+
+    database_path = output_dir / DEFAULT_DATABASE
+    with connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT experience_level
+            FROM applications
+            WHERE job_id = ?
+            """,
+            ("888",),
+        ).fetchone()
+    assert row["experience_level"] == "Mid-Senior level"
 
 
 async def test_matching_workflow_skips_existing_database_jobs_without_counting_them(

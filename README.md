@@ -100,6 +100,7 @@ profile/* + .blacklist
   -> MCP/service search layer
   -> LinkedIn public job pages
   -> duplicate/company filters
+  -> explicit internship/entry-level and on-site filters
   -> public job detail fetch
   -> LLM resume and cover-letter generation
   -> ReportLab PDF renderer
@@ -139,7 +140,8 @@ The web UI is intentionally dense and work-focused:
 - search by company, title, or LinkedIn job ID
 - status filter for pending/applied/N/A rows
 - direct links to LinkedIn, DB-backed PDF viewers, and DB-backed PDF downloads
-- `Posted` and `Matched` columns for LinkedIn posted date and local database match date
+- `Posted`, `Matched`, and `Experience` columns for LinkedIn posted date, local database
+  match date, and LinkedIn seniority level
 - an `ATS` column with a local proxy score and expandable parsing, keyword, semantic, and
   formatting-risk details, plus missing high-value JOD terms
 - per-row updates for `applied_to`, `date_applied`, and notes
