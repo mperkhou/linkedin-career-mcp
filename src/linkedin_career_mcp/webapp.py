@@ -29,7 +29,7 @@ TRACKING_COLUMNS = (
     "applied_to",
     "date_applied",
 )
-APPLICATION_STATUSES = {"No", "Yes", "N/A"}
+APPLICATION_STATUSES = {"No", "Yes", "N/A", "Rejected", "Accepted for interview"}
 REQUIRED_TRACKING_COLUMNS = (
     "job_id",
     "company",
@@ -590,6 +590,10 @@ def create_app(*, database_path: Path, output_dir: Path):
             "applied": sum(1 for row in rows if row["applied_to"] == "Yes"),
             "pending": sum(1 for row in rows if row["applied_to"] == "No"),
             "not_applicable": sum(1 for row in rows if row["applied_to"] == "N/A"),
+            "rejected": sum(1 for row in rows if row["applied_to"] == "Rejected"),
+            "interview": sum(
+                1 for row in rows if row["applied_to"] == "Accepted for interview"
+            ),
         }
         return render_template_string(INDEX_TEMPLATE, rows=rows, stats=stats)
 
@@ -779,9 +783,11 @@ def _fetch_applications(database_path: Path) -> list[sqlite3.Row]:
                 ORDER BY
                     CASE applied_to
                         WHEN 'No' THEN 0
-                        WHEN 'N/A' THEN 1
-                        WHEN 'Yes' THEN 2
-                        ELSE 3
+                        WHEN 'Accepted for interview' THEN 1
+                        WHEN 'N/A' THEN 2
+                        WHEN 'Rejected' THEN 3
+                        WHEN 'Yes' THEN 4
+                        ELSE 5
                     END,
                     company COLLATE NOCASE ASC,
                     job_title COLLATE NOCASE ASC
@@ -1256,6 +1262,8 @@ INDEX_TEMPLATE = """
       <span>Total: {{ stats.total }}</span>
       <span>Applied: {{ stats.applied }}</span>
       <span>Pending: {{ stats.pending }}</span>
+      <span>Interview: {{ stats.interview }}</span>
+      <span>Rejected: {{ stats.rejected }}</span>
       <span>N/A: {{ stats.not_applicable }}</span>
     </div>
   </header>
@@ -1265,6 +1273,8 @@ INDEX_TEMPLATE = """
       <option value="all">All statuses</option>
       <option value="No">Pending</option>
       <option value="Yes">Applied</option>
+      <option value="Accepted for interview">Accepted for interview</option>
+      <option value="Rejected">Rejected</option>
       <option value="N/A">N/A</option>
     </select>
     <form method="post" action="/sync">
@@ -1474,6 +1484,14 @@ INDEX_TEMPLATE = """
                       value="N/A"
                       {{ 'selected' if row.applied_to == 'N/A' else '' }}
                     >N/A</option>
+                    <option
+                      value="Rejected"
+                      {{ 'selected' if row.applied_to == 'Rejected' else '' }}
+                    >Rejected</option>
+                    <option
+                      value="Accepted for interview"
+                      {{ 'selected' if row.applied_to == 'Accepted for interview' else '' }}
+                    >Accepted for interview</option>
                   </select>
                   <input type="date" name="date_applied" value="{{ row.date_applied or '' }}">
                   <textarea name="notes" placeholder="Notes">{{ row.notes }}</textarea>

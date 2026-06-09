@@ -185,6 +185,8 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     assert 'href="/resumes/123/download"' not in html
     assert 'href="/cover-letters/123/download"' not in html
     assert b"N/A" in index.data
+    assert b"Rejected" in index.data
+    assert b"Accepted for interview" in index.data
     assert b"<th>Posted</th>" in index.data
     assert b"<th>Experience</th>" in index.data
     assert b"Mid-Senior level" in index.data
@@ -265,6 +267,28 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     assert update_response.status_code == 302
     refreshed_index = client.get("/")
     assert b'N/A: 1' in refreshed_index.data
+
+    interview_response = client.post(
+        "/applications/123",
+        data={
+            "applied_to": "Accepted for interview",
+            "date_applied": "",
+            "notes": "Recruiter screen scheduled",
+        },
+    )
+    assert interview_response.status_code == 302
+    interview_index = client.get("/")
+    assert b"Interview: 1" in interview_index.data
+    assert b'data-status="Accepted for interview"' in interview_index.data
+
+    rejected_response = client.post(
+        "/applications/123",
+        data={"applied_to": "Rejected", "date_applied": "", "notes": "Closed out"},
+    )
+    assert rejected_response.status_code == 302
+    rejected_index = client.get("/")
+    assert b"Rejected: 1" in rejected_index.data
+    assert b'data-status="Rejected"' in rejected_index.data
 
     output_resume = client.get(
         "/output/resumes/Example_Co/123_senior_engineer/mp_resume_senior_engineer.pdf"

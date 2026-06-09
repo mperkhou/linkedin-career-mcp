@@ -164,9 +164,9 @@ http://127.0.0.1:8765
 
 The web UI is intentionally dense and work-focused:
 
-- summary counters for total, applied, pending, and N/A applications
+- summary counters for total, applied, pending, interview, rejected, and N/A applications
 - search by company, title, or LinkedIn job ID
-- status filter for pending/applied/N/A rows
+- status filter for pending/applied/interview/rejected/N/A rows
 - direct links to LinkedIn, DB-backed PDF viewers, and one-click copy actions that place
   resume and cover-letter PDFs in `~/Downloads`
 - `Posted`, `Matched`, and `Experience` columns for LinkedIn posted date, local database
