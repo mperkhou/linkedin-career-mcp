@@ -29,12 +29,14 @@ isolation, testable workflows, practical automation, and human-in-the-loop guard
 - **Duplicate-aware workflow**: uses SQLite job IDs to skip openings that already have the
   requested artifact type, and does not count skipped jobs toward the requested run size.
 - **Local application tracker**: Flask + SQLite web UI for search/filter, status updates,
-  applied dates, notes, PDF links, sync from generated output, and bulk deletion.
+  applied dates, notes, DB-backed PDF view/download links, sync from generated output, and
+  bulk deletion.
 - **Local-first storage**: generated PDFs live under `output/resumes/` and
   `output/cover_letters/`; tracking lives in both `output/tracking/applications.sqlite3`
   and the compatibility workbook at
   `output/tracking/read_applications/linkedin_applications.xlsx`. SQLite rows also keep the
-  parsed LinkedIn job description and the cleaned prompt JOD used for generation.
+  parsed LinkedIn job description, the cleaned prompt JOD used for generation, the date the
+  job was matched into the database, and the LinkedIn posted date when available.
 - **Provider-oriented architecture**: LinkedIn public scraping is isolated behind a
   provider boundary, with service and workflow layers kept testable.
 - **No LinkedIn credentials required**: the current implementation uses public LinkedIn
@@ -112,18 +114,24 @@ http://127.0.0.1:8765
 
 The web UI is intentionally dense and work-focused:
 
-- summary counters for total, applied, and pending applications
+- summary counters for total, applied, pending, and N/A applications
 - search by company, title, or LinkedIn job ID
-- status filter for pending/applied rows
-- direct links to LinkedIn, DB-backed PDFs, and filesystem-backed output PDFs
+- status filter for pending/applied/N/A rows
+- direct links to LinkedIn, DB-backed PDF viewers, and DB-backed PDF downloads
+- `Posted` and `Matched` columns for LinkedIn posted date and local database match date
+- an `ATS` column with a local proxy score and expandable parsing, keyword, semantic, and
+  formatting-risk details, plus missing high-value JOD terms
 - per-row updates for `applied_to`, `date_applied`, and notes
+- automatic cleanup of `~/Downloads/mp_*.pdf` when an application is saved as applied
 - "Sync from output" to import workbook/PDF artifacts into SQLite
 - checkbox selection plus bulk delete
 
 PDFs are available in two useful forms:
 
 - `/resumes/<job_id>` serves the PDF BLOB stored in SQLite.
+- `/resumes/<job_id>/download` downloads the resume PDF BLOB stored in SQLite.
 - `/cover-letters/<job_id>` serves the cover-letter PDF BLOB stored in SQLite.
+- `/cover-letters/<job_id>/download` downloads the cover-letter PDF BLOB stored in SQLite.
 - `/output/resumes/...pdf` serves the generated file from the local output tree.
 - `/output/cover_letters/...pdf` serves the generated cover-letter file from the local output
   tree.
@@ -213,7 +221,14 @@ make match-jobs
 ```
 
 By default, `match-jobs` generates both a tailored resume and cover letter for each fresh
-job. To generate only one artifact type:
+job, up to `MAX_JOBS=10`. To cap a run:
+
+```bash
+make match-jobs MAX_JOBS=2
+```
+
+You can also tune `DATE_POSTED`, `LIMIT_PER_QUERY`, and `MAX_QUERIES` from Make. To
+generate only one artifact type:
 
 ```bash
 make match-jobs ARTIFACT_MODE=resumes-only
@@ -351,11 +366,12 @@ Run the end-to-end profile-aware matching workflow:
 1. Read supported files from `profile/`.
 2. Generate LinkedIn search queries from the profile context.
 3. Expand promising searches across remote and hybrid workplace filters.
-4. Filter blacklisted companies.
-5. Skip LinkedIn job IDs that already exist in SQLite with requested artifacts.
-6. Fetch public details for fresh jobs.
-7. Generate and render tailored resume and cover-letter PDFs.
-8. Append workbook rows and upsert SQLite tracker records.
+4. Re-check fetched job metadata and skip explicit on-site search leaks.
+5. Filter blacklisted companies.
+6. Skip LinkedIn job IDs that already exist in SQLite with requested artifacts.
+7. Fetch public details for fresh jobs.
+8. Generate and render tailored resume and cover-letter PDFs.
+9. Append workbook rows and upsert SQLite tracker records.
 
 The optional `artifact_mode` argument accepts `all`, `resumes-only`, or
 `cover-letters-only`; `all` is the default.

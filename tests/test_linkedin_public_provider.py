@@ -45,6 +45,10 @@ DETAIL_HTML = """
     <h3 class="description__job-criteria-subheader">Employment type</h3>
     <span class="description__job-criteria-text">Full-time</span>
   </li>
+  <li class="description__job-criteria-item">
+    <h3 class="description__job-criteria-subheader">Workplace type</h3>
+    <span class="description__job-criteria-text">Remote</span>
+  </li>
 </section>
 """
 
@@ -99,6 +103,7 @@ async def test_get_job_details_parses_public_detail_page():
     assert details.description == "Build practical tools with Python."
     assert details.seniority_level == "Mid-Senior level"
     assert details.employment_type == "Full-time"
+    assert details.workplace_type == "Remote"
 
 
 @pytest.mark.asyncio

@@ -13,6 +13,8 @@ from typing import Any
 
 from openpyxl import load_workbook
 
+from linkedin_career_mcp.ats import AtsProxyScore, calculate_ats_proxy_score
+
 DEFAULT_OUTPUT_DIR = Path("output")
 TRACKING_WORKBOOK = Path("tracking/read_applications/linkedin_applications.xlsx")
 DEFAULT_DATABASE = Path("tracking/applications.sqlite3")
@@ -27,6 +29,7 @@ TRACKING_COLUMNS = (
     "applied_to",
     "date_applied",
 )
+APPLICATION_STATUSES = {"No", "Yes", "N/A"}
 REQUIRED_TRACKING_COLUMNS = (
     "job_id",
     "company",
@@ -43,6 +46,15 @@ APPLICATION_EXTRA_COLUMNS = {
     "cover_letter_content": "BLOB",
     "cover_letter_mime_type": "TEXT NOT NULL DEFAULT 'application/pdf'",
     "source_cover_letter_path": "TEXT NOT NULL DEFAULT ''",
+    "date_matched": "TEXT",
+    "date_posted": "TEXT",
+    "ats_score": "INTEGER",
+    "ats_parsing_score": "INTEGER",
+    "ats_keyword_score": "INTEGER",
+    "ats_semantic_score": "INTEGER",
+    "ats_formatting_risk": "TEXT",
+    "ats_missing_terms": "TEXT",
+    "ats_updated_at": "TEXT",
 }
 
 
@@ -62,6 +74,8 @@ class ApplicationJobRecord:
     linkedin_url: str
     job_description: str | None
     prompt_job_description: str | None
+    date_matched: str | None
+    date_posted: str | None
 
 
 def connect_database(database_path: Path) -> sqlite3.Connection:
@@ -90,6 +104,15 @@ def init_database(connection: sqlite3.Connection) -> None:
             cover_letter_content BLOB,
             cover_letter_mime_type TEXT NOT NULL DEFAULT 'application/pdf',
             source_cover_letter_path TEXT NOT NULL DEFAULT '',
+            date_matched TEXT,
+            date_posted TEXT,
+            ats_score INTEGER,
+            ats_parsing_score INTEGER,
+            ats_keyword_score INTEGER,
+            ats_semantic_score INTEGER,
+            ats_formatting_risk TEXT,
+            ats_missing_terms TEXT,
+            ats_updated_at TEXT,
             applied_to TEXT NOT NULL DEFAULT 'No',
             date_applied TEXT,
             notes TEXT NOT NULL DEFAULT '',
@@ -114,6 +137,14 @@ def _ensure_application_columns(connection: sqlite3.Connection) -> None:
     for column, column_type in APPLICATION_EXTRA_COLUMNS.items():
         if column not in existing_columns:
             connection.execute(f"ALTER TABLE applications ADD COLUMN {column} {column_type}")
+    connection.execute(
+        """
+        UPDATE applications
+        SET date_matched = imported_at
+        WHERE (date_matched IS NULL OR TRIM(date_matched) = '')
+          AND imported_at IS NOT NULL
+        """
+    )
 
 
 def fetch_existing_resume_job_ids(database_path: Path) -> set[str]:
@@ -156,7 +187,7 @@ def fetch_application_job_records(
             rows = connection.execute(
                 """
                 SELECT job_id, company, job_title, linkedin_url, job_description,
-                       prompt_job_description
+                       prompt_job_description, date_matched, date_posted
                 FROM applications
                 ORDER BY company COLLATE NOCASE ASC, job_title COLLATE NOCASE ASC
                 """
@@ -168,7 +199,7 @@ def fetch_application_job_records(
             rows = connection.execute(
                 f"""
                 SELECT job_id, company, job_title, linkedin_url, job_description,
-                       prompt_job_description
+                       prompt_job_description, date_matched, date_posted
                 FROM applications
                 WHERE job_id IN ({placeholders})
                 """,
@@ -184,6 +215,8 @@ def fetch_application_job_records(
             linkedin_url=str(row["linkedin_url"] or ""),
             job_description=row["job_description"],
             prompt_job_description=row["prompt_job_description"],
+            date_matched=row["date_matched"],
+            date_posted=row["date_posted"],
         )
         for row in rows
     ]
@@ -202,8 +235,13 @@ def upsert_application_artifact(
     prompt_job_description: str | None = None,
     applied_to: str = "No",
     date_applied: str | None = None,
+    date_matched: str | None = None,
+    date_posted: str | None = None,
 ) -> None:
     now = datetime.now(UTC).isoformat(timespec="seconds")
+    applied_to = _normalize_applied_to(applied_to)
+    date_matched = _date_value(date_matched) or now
+    date_posted = _date_value(date_posted)
     resume_content = (
         resume_path.read_bytes()
         if resume_path is not None and resume_path.is_file()
@@ -214,6 +252,10 @@ def upsert_application_artifact(
         if cover_letter_path is not None and cover_letter_path.is_file()
         else None
     )
+    ats_score = _calculate_ats_score(
+        resume_content=resume_content,
+        job_description=prompt_job_description or job_description,
+    )
     with connect_database(database_path) as connection:
         connection.execute(
             """
@@ -221,10 +263,12 @@ def upsert_application_artifact(
                 job_id, company, job_title, linkedin_url, job_description,
                 prompt_job_description, resume_filename, resume_content, resume_mime_type,
                 source_resume_path, cover_letter_filename, cover_letter_content,
-                cover_letter_mime_type, source_cover_letter_path, applied_to, date_applied,
+                cover_letter_mime_type, source_cover_letter_path, date_matched, date_posted,
+                ats_score, ats_parsing_score, ats_keyword_score, ats_semantic_score,
+                ats_formatting_risk, ats_missing_terms, ats_updated_at, applied_to, date_applied,
                 imported_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(job_id) DO UPDATE SET
                 company = excluded.company,
                 job_title = excluded.job_title,
@@ -268,6 +312,36 @@ def upsert_application_artifact(
                     THEN excluded.source_cover_letter_path
                     ELSE applications.source_cover_letter_path
                 END,
+                date_matched = COALESCE(
+                    NULLIF(applications.date_matched, ''),
+                    excluded.date_matched
+                ),
+                date_posted = COALESCE(
+                    NULLIF(excluded.date_posted, ''),
+                    applications.date_posted
+                ),
+                ats_score = COALESCE(excluded.ats_score, applications.ats_score),
+                ats_parsing_score = COALESCE(
+                    excluded.ats_parsing_score,
+                    applications.ats_parsing_score
+                ),
+                ats_keyword_score = COALESCE(
+                    excluded.ats_keyword_score,
+                    applications.ats_keyword_score
+                ),
+                ats_semantic_score = COALESCE(
+                    excluded.ats_semantic_score,
+                    applications.ats_semantic_score
+                ),
+                ats_formatting_risk = COALESCE(
+                    excluded.ats_formatting_risk,
+                    applications.ats_formatting_risk
+                ),
+                ats_missing_terms = COALESCE(
+                    excluded.ats_missing_terms,
+                    applications.ats_missing_terms
+                ),
+                ats_updated_at = COALESCE(excluded.ats_updated_at, applications.ats_updated_at),
                 applied_to = CASE
                     WHEN applications.applied_to != 'No' THEN applications.applied_to
                     ELSE excluded.applied_to
@@ -290,6 +364,15 @@ def upsert_application_artifact(
                 cover_letter_content,
                 "application/pdf",
                 str(cover_letter_path) if cover_letter_path is not None else "",
+                date_matched,
+                date_posted,
+                ats_score.overall_score if ats_score is not None else None,
+                ats_score.parsing_score if ats_score is not None else None,
+                ats_score.keyword_match_score if ats_score is not None else None,
+                ats_score.semantic_match_score if ats_score is not None else None,
+                ats_score.formatting_risk if ats_score is not None else None,
+                _format_missing_terms(ats_score) if ats_score is not None else None,
+                now if ats_score is not None else None,
                 applied_to,
                 date_applied,
                 now,
@@ -388,6 +471,16 @@ def import_output_artifacts(*, output_dir: Path, database_path: Path) -> ImportR
             cover_letter_path=cover_letter_path,
             applied_to=str(values["applied_to"] or "No"),
             date_applied=_date_value(values["date_applied"]),
+            date_matched=_optional_row_value(
+                row=row,
+                column_indexes=column_indexes,
+                column="date_matched",
+            ),
+            date_posted=_optional_row_value(
+                row=row,
+                column_indexes=column_indexes,
+                column="date_posted",
+            ),
         )
         rows_imported += 1
 
@@ -397,6 +490,57 @@ def import_output_artifacts(*, output_dir: Path, database_path: Path) -> ImportR
         missing_resumes=missing_resumes,
         missing_cover_letters=missing_cover_letters,
     )
+
+
+def refresh_missing_ats_scores(database_path: Path) -> int:
+    with connect_database(database_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT job_id, resume_content, prompt_job_description, job_description
+            FROM applications
+            WHERE (ats_score IS NULL OR ats_missing_terms IS NULL)
+              AND resume_content IS NOT NULL
+              AND (
+                prompt_job_description IS NOT NULL
+                OR job_description IS NOT NULL
+              )
+            """
+        ).fetchall()
+        updated_count = 0
+        for row in rows:
+            now = datetime.now(UTC).isoformat(timespec="seconds")
+            score = _calculate_ats_score(
+                resume_content=row["resume_content"],
+                job_description=row["prompt_job_description"] or row["job_description"],
+            )
+            if score is None:
+                continue
+            connection.execute(
+                """
+                UPDATE applications
+                SET ats_score = ?,
+                    ats_parsing_score = ?,
+                    ats_keyword_score = ?,
+                    ats_semantic_score = ?,
+                    ats_formatting_risk = ?,
+                    ats_missing_terms = ?,
+                    ats_updated_at = ?
+                WHERE job_id = ?
+                """,
+                (
+                    score.overall_score,
+                    score.parsing_score,
+                    score.keyword_match_score,
+                    score.semantic_match_score,
+                    score.formatting_risk,
+                    _format_missing_terms(score),
+                    now,
+                    row["job_id"],
+                ),
+            )
+            updated_count += 1
+        connection.commit()
+    return updated_count
 
 
 def create_app(*, database_path: Path, output_dir: Path):
@@ -416,20 +560,23 @@ def create_app(*, database_path: Path, output_dir: Path):
     app.config["SECRET_KEY"] = "linkedin-career-local-only"
     app.config["DATABASE_PATH"] = database_path
     app.config["OUTPUT_DIR"] = output_dir
+    app.jinja_env.filters["display_date"] = _display_date
 
     @app.get("/")
     def index():
+        refresh_missing_ats_scores(database_path)
         rows = _fetch_applications(database_path)
         stats = {
             "total": len(rows),
             "applied": sum(1 for row in rows if row["applied_to"] == "Yes"),
-            "pending": sum(1 for row in rows if row["applied_to"] != "Yes"),
+            "pending": sum(1 for row in rows if row["applied_to"] == "No"),
+            "not_applicable": sum(1 for row in rows if row["applied_to"] == "N/A"),
         }
         return render_template_string(INDEX_TEMPLATE, rows=rows, stats=stats)
 
     @app.post("/applications/<job_id>")
     def update_application(job_id: str):
-        applied_to = "Yes" if request.form.get("applied_to") == "Yes" else "No"
+        applied_to = _normalize_applied_to(request.form.get("applied_to"))
         date_applied = request.form.get("date_applied") or None
         notes = request.form.get("notes", "")
         now = datetime.now(UTC).isoformat(timespec="seconds")
@@ -443,7 +590,11 @@ def create_app(*, database_path: Path, output_dir: Path):
                 (applied_to, date_applied, notes, now, job_id),
             )
             connection.commit()
-        flash("Application updated.")
+        if applied_to == "Yes":
+            deleted_count = cleanup_downloaded_application_pdfs()
+            flash(f"Application updated. Cleared {deleted_count} downloaded PDF file(s).")
+        else:
+            flash("Application updated.")
         return redirect(url_for("index"))
 
     @app.post("/sync")
@@ -488,6 +639,18 @@ def create_app(*, database_path: Path, output_dir: Path):
             as_attachment=False,
         )
 
+    @app.get("/resumes/<job_id>/download")
+    def resume_download(job_id: str):
+        row = _fetch_application(database_path, job_id)
+        if row is None or row["resume_content"] is None:
+            return Response("Resume was not found in the database.", status=404)
+        return send_file(
+            BytesIO(row["resume_content"]),
+            mimetype=row["resume_mime_type"],
+            download_name=row["resume_filename"],
+            as_attachment=True,
+        )
+
     @app.get("/cover-letters/<job_id>")
     def cover_letter(job_id: str):
         row = _fetch_application(database_path, job_id)
@@ -498,6 +661,18 @@ def create_app(*, database_path: Path, output_dir: Path):
             mimetype=row["cover_letter_mime_type"],
             download_name=row["cover_letter_filename"],
             as_attachment=False,
+        )
+
+    @app.get("/cover-letters/<job_id>/download")
+    def cover_letter_download(job_id: str):
+        row = _fetch_application(database_path, job_id)
+        if row is None or row["cover_letter_content"] is None:
+            return Response("Cover letter was not found in the database.", status=404)
+        return send_file(
+            BytesIO(row["cover_letter_content"]),
+            mimetype=row["cover_letter_mime_type"],
+            download_name=row["cover_letter_filename"],
+            as_attachment=True,
         )
 
     @app.get("/descriptions/<job_id>")
@@ -548,7 +723,15 @@ def _fetch_applications(database_path: Path) -> list[sqlite3.Row]:
                 """
                 SELECT *
                 FROM applications
-                ORDER BY applied_to ASC, company COLLATE NOCASE ASC, job_title COLLATE NOCASE ASC
+                ORDER BY
+                    CASE applied_to
+                        WHEN 'No' THEN 0
+                        WHEN 'N/A' THEN 1
+                        WHEN 'Yes' THEN 2
+                        ELSE 3
+                    END,
+                    company COLLATE NOCASE ASC,
+                    job_title COLLATE NOCASE ASC
                 """
             )
         )
@@ -571,6 +754,35 @@ def _resolve_output_path(*, output_dir: Path, path_text: str) -> Path:
     return output_dir / artifact_path
 
 
+def _optional_row_value(
+    *,
+    row: tuple[Any, ...],
+    column_indexes: dict[str, int],
+    column: str,
+) -> Any:
+    index = column_indexes.get(column)
+    if index is None:
+        return None
+    return row[index]
+
+
+def _calculate_ats_score(
+    *,
+    resume_content: bytes | None,
+    job_description: str | None,
+) -> AtsProxyScore | None:
+    if not resume_content or not job_description:
+        return None
+    return calculate_ats_proxy_score(
+        resume_pdf=resume_content,
+        job_description=job_description,
+    )
+
+
+def _format_missing_terms(score: AtsProxyScore) -> str:
+    return ", ".join(score.missing_high_value_terms)
+
+
 def _date_value(value: Any) -> str | None:
     if value is None:
         return None
@@ -578,6 +790,37 @@ def _date_value(value: Any) -> str | None:
         return value.date().isoformat()
     text = str(value).strip()
     return text or None
+
+
+def _normalize_applied_to(value: Any) -> str:
+    text = str(value or "").strip()
+    return text if text in APPLICATION_STATUSES else "No"
+
+
+def cleanup_downloaded_application_pdfs(download_dir: Path | None = None) -> int:
+    target_dir = download_dir or Path.home() / "Downloads"
+    if not target_dir.is_dir():
+        return 0
+
+    deleted_count = 0
+    for path in target_dir.glob("mp_*.pdf"):
+        if not path.is_file():
+            continue
+        try:
+            path.unlink()
+        except OSError:
+            continue
+        deleted_count += 1
+    return deleted_count
+
+
+def _display_date(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if "T" in text:
+        return text.split("T", 1)[0]
+    return text
 
 
 def _delete_tracking_rows(*, tracking_path: Path, job_ids: set[str]) -> None:
@@ -738,6 +981,28 @@ INDEX_TEMPLATE = """
       white-space: nowrap;
     }
     button:hover, .link-button:hover { background: var(--accent-strong); }
+    .sort-button {
+      align-items: center;
+      background: transparent;
+      border: 0;
+      color: inherit;
+      display: inline-flex;
+      font: inherit;
+      font-weight: 700;
+      gap: 4px;
+      padding: 0;
+      text-transform: uppercase;
+    }
+    .sort-button:hover, .sort-button:focus {
+      background: transparent;
+      color: var(--accent);
+      outline: none;
+    }
+    .sort-indicator {
+      color: var(--accent);
+      font-size: 11px;
+      min-width: 14px;
+    }
     .ghost {
       background: #fff;
       color: var(--accent);
@@ -793,6 +1058,55 @@ INDEX_TEMPLATE = """
     .company { min-width: 160px; font-weight: 650; }
     .job { min-width: 260px; }
     .job-id { display: block; color: var(--muted); font-size: 12px; margin-top: 3px; }
+    .date-col { min-width: 104px; white-space: nowrap; }
+    .score-col { min-width: 104px; position: relative; }
+    .score-details { position: relative; }
+    .score-details summary {
+      cursor: pointer;
+      list-style: none;
+      outline: none;
+    }
+    .score-details summary::-webkit-details-marker { display: none; }
+    .score-badge {
+      border: 1px solid #b9d8d3;
+      border-radius: 999px;
+      color: var(--accent-strong);
+      display: inline-flex;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 3px 8px;
+      white-space: nowrap;
+    }
+    .score-popover {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      box-shadow: 0 8px 24px rgba(20, 33, 45, .14);
+      color: var(--ink);
+      left: 0;
+      line-height: 1.5;
+      min-width: 230px;
+      padding: 10px 12px;
+      position: absolute;
+      top: 28px;
+      z-index: 4;
+    }
+    .score-row {
+      display: flex;
+      gap: 16px;
+      justify-content: space-between;
+      white-space: nowrap;
+    }
+    .score-row.is-stacked {
+      display: block;
+      margin-top: 6px;
+      white-space: normal;
+    }
+    .score-row.is-stacked strong {
+      display: block;
+      margin-top: 2px;
+    }
+    .score-row strong { font-weight: 700; }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; min-width: 170px; }
     .muted { color: var(--muted); }
     .apply-form {
@@ -819,6 +1133,7 @@ INDEX_TEMPLATE = """
       <span>Total: {{ stats.total }}</span>
       <span>Applied: {{ stats.applied }}</span>
       <span>Pending: {{ stats.pending }}</span>
+      <span>N/A: {{ stats.not_applicable }}</span>
     </div>
   </header>
   <div class="toolbar">
@@ -827,6 +1142,7 @@ INDEX_TEMPLATE = """
       <option value="all">All statuses</option>
       <option value="No">Pending</option>
       <option value="Yes">Applied</option>
+      <option value="N/A">N/A</option>
     </select>
     <form method="post" action="/sync">
       <button type="submit" class="ghost">Sync from output</button>
@@ -853,8 +1169,47 @@ INDEX_TEMPLATE = """
             <th class="select-col">
               <input id="select-all" type="checkbox" aria-label="Select visible rows">
             </th>
-            <th>Company</th>
+            <th id="company-header" aria-sort="none">
+              <button
+                id="company-sort"
+                class="sort-button"
+                type="button"
+                aria-label="Sort by company"
+              >
+                Company
+                <span id="company-sort-indicator" class="sort-indicator" aria-hidden="true">
+                  ↑↓
+                </span>
+              </button>
+            </th>
             <th>Job</th>
+            <th>Posted</th>
+            <th id="matched-header" aria-sort="none">
+              <button
+                id="matched-sort"
+                class="sort-button"
+                type="button"
+                aria-label="Sort by matched date"
+              >
+                Matched
+                <span id="matched-sort-indicator" class="sort-indicator" aria-hidden="true">
+                  ↑↓
+                </span>
+              </button>
+            </th>
+            <th id="ats-header" aria-sort="none">
+              <button
+                id="ats-sort"
+                class="sort-button"
+                type="button"
+                aria-label="Sort by ATS proxy score"
+              >
+                ATS
+                <span id="ats-sort-indicator" class="sort-indicator" aria-hidden="true">
+                  ↑↓
+                </span>
+              </button>
+            </th>
             <th>Job Links</th>
             <th>Resume</th>
             <th>Cover Letter</th>
@@ -865,6 +1220,9 @@ INDEX_TEMPLATE = """
           {% for row in rows %}
             <tr class="{{ 'is-applied' if row.applied_to == 'Yes' else '' }}"
                 data-status="{{ row.applied_to }}"
+                data-company-sort="{{ row.company }}"
+                data-matched-sort="{{ row.date_matched or '' }}"
+                data-ats-sort="{{ row.ats_score if row.ats_score is not none else '' }}"
                 data-search="{{ (row.company ~ ' ' ~ row.job_title ~ ' ' ~ row.job_id)|lower }}">
               <td class="select-col">
                 <input
@@ -881,6 +1239,51 @@ INDEX_TEMPLATE = """
                 {{ row.job_title }}
                 <span class="job-id">{{ row.job_id }}</span>
               </td>
+              <td class="date-col">
+                {{ row.date_posted|display_date if row.date_posted else '' }}
+                {% if not row.date_posted %}<span class="muted">-</span>{% endif %}
+              </td>
+              <td class="date-col">
+                {{ row.date_matched|display_date if row.date_matched else '' }}
+                {% if not row.date_matched %}<span class="muted">-</span>{% endif %}
+              </td>
+              <td class="score-col">
+                {% if row.ats_score is not none %}
+                  <details class="score-details">
+                    <summary aria-label="Show ATS proxy score details">
+                      <span class="score-badge">{{ row.ats_score }}/100</span>
+                    </summary>
+                    <div class="score-popover">
+                      <div class="score-row">
+                        <span>ATS proxy score:</span>
+                        <strong>{{ row.ats_score }}/100</strong>
+                      </div>
+                      <div class="score-row">
+                        <span>Parsing:</span>
+                        <strong>{{ row.ats_parsing_score }}/100</strong>
+                      </div>
+                      <div class="score-row">
+                        <span>Keyword match:</span>
+                        <strong>{{ row.ats_keyword_score }}/100</strong>
+                      </div>
+                      <div class="score-row">
+                        <span>Semantic match:</span>
+                        <strong>{{ row.ats_semantic_score }}/100</strong>
+                      </div>
+                      <div class="score-row">
+                        <span>Formatting risk:</span>
+                        <strong>{{ row.ats_formatting_risk }}</strong>
+                      </div>
+                      <div class="score-row is-stacked">
+                        <span>Missing/high-value terms:</span>
+                        <strong>{{ row.ats_missing_terms or "None detected" }}</strong>
+                      </div>
+                    </div>
+                  </details>
+                {% else %}
+                  <span class="muted">-</span>
+                {% endif %}
+              </td>
               <td>
                 <div class="actions">
                   <a href="/linkedin/{{ row.job_id }}">LinkedIn</a>
@@ -895,17 +1298,15 @@ INDEX_TEMPLATE = """
               </td>
               <td>
                 <div class="actions">
-                  <a href="/resumes/{{ row.job_id }}" target="_blank" rel="noreferrer">
-                    DB Resume
-                  </a>
-                  {% if row.source_resume_path %}
-                    <a
-                      href="/{{ row.source_resume_path }}"
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Output Resume
+                  {% if row.resume_content %}
+                    <a href="/resumes/{{ row.job_id }}" target="_blank" rel="noreferrer">
+                      Resume
                     </a>
+                    <a href="/resumes/{{ row.job_id }}/download">
+                      Download
+                    </a>
+                  {% else %}
+                    <span class="muted">Missing</span>
                   {% endif %}
                 </div>
               </td>
@@ -913,19 +1314,12 @@ INDEX_TEMPLATE = """
                 <div class="actions">
                   {% if row.cover_letter_content %}
                     <a href="/cover-letters/{{ row.job_id }}" target="_blank" rel="noreferrer">
-                      DB Cover
+                      Cover Letter
                     </a>
-                  {% endif %}
-                  {% if row.source_cover_letter_path %}
-                    <a
-                      href="/{{ row.source_cover_letter_path }}"
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Output Cover
+                    <a href="/cover-letters/{{ row.job_id }}/download">
+                      Download
                     </a>
-                  {% endif %}
-                  {% if not row.cover_letter_content and not row.source_cover_letter_path %}
+                  {% else %}
                     <span class="muted">Missing</span>
                   {% endif %}
                 </div>
@@ -935,12 +1329,16 @@ INDEX_TEMPLATE = """
                   <select name="applied_to" aria-label="Applied status">
                     <option
                       value="No"
-                      {{ 'selected' if row.applied_to != 'Yes' else '' }}
+                      {{ 'selected' if row.applied_to == 'No' else '' }}
                     >No</option>
                     <option
                       value="Yes"
                       {{ 'selected' if row.applied_to == 'Yes' else '' }}
                     >Yes</option>
+                    <option
+                      value="N/A"
+                      {{ 'selected' if row.applied_to == 'N/A' else '' }}
+                    >N/A</option>
                   </select>
                   <input type="date" name="date_applied" value="{{ row.date_applied or '' }}">
                   <textarea name="notes" placeholder="Notes">{{ row.notes }}</textarea>
@@ -962,8 +1360,21 @@ INDEX_TEMPLATE = """
     const deleteButton = document.querySelector("#delete-selected");
     const selectedCount = document.querySelector("#selected-count");
     const bulkDeleteForm = document.querySelector("#bulk-delete-form");
+    const companySortButton = document.querySelector("#company-sort");
+    const companySortIndicator = document.querySelector("#company-sort-indicator");
+    const companyHeader = document.querySelector("#company-header");
+    const matchedSortButton = document.querySelector("#matched-sort");
+    const matchedSortIndicator = document.querySelector("#matched-sort-indicator");
+    const matchedHeader = document.querySelector("#matched-header");
+    const atsSortButton = document.querySelector("#ats-sort");
+    const atsSortIndicator = document.querySelector("#ats-sort-indicator");
+    const atsHeader = document.querySelector("#ats-header");
+    const tableBody = document.querySelector("#applications tbody");
     const rows = [...document.querySelectorAll("#applications tbody tr")];
     const rowSelectors = [...document.querySelectorAll(".row-selector")];
+    let companySortDirection = null;
+    let matchedSortDirection = null;
+    let atsSortDirection = null;
     function applyFilters() {
       const term = search.value.trim().toLowerCase();
       const status = statusFilter.value;
@@ -973,6 +1384,136 @@ INDEX_TEMPLATE = """
         row.hidden = !(matchesText && matchesStatus);
       });
       updateSelectionState();
+    }
+    function matchedTimestamp(row) {
+      const value = row.dataset.matchedSort;
+      if (!value) {
+        return null;
+      }
+      const parsed = Date.parse(value);
+      return Number.isNaN(parsed) ? null : parsed;
+    }
+    function atsScore(row) {
+      const value = Number.parseInt(row.dataset.atsSort, 10);
+      return Number.isNaN(value) ? null : value;
+    }
+    function resetSortIndicator(header, indicator) {
+      if (header) {
+        header.setAttribute("aria-sort", "none");
+      }
+      if (indicator) {
+        indicator.textContent = "↑↓";
+      }
+    }
+    function sortRowsByCompany() {
+      if (!tableBody) {
+        return;
+      }
+      companySortDirection = companySortDirection === "asc" ? "desc" : "asc";
+      matchedSortDirection = null;
+      atsSortDirection = null;
+      resetSortIndicator(matchedHeader, matchedSortIndicator);
+      resetSortIndicator(atsHeader, atsSortIndicator);
+      const direction = companySortDirection === "asc" ? 1 : -1;
+      const originalIndex = new Map(rows.map((row, index) => [row, index]));
+      const sortedRows = [...rows].sort((left, right) => {
+        const leftValue = (left.dataset.companySort || "").trim();
+        const rightValue = (right.dataset.companySort || "").trim();
+        const comparison = leftValue.localeCompare(
+          rightValue,
+          undefined,
+          { sensitivity: "base" },
+        );
+        if (comparison === 0) {
+          return originalIndex.get(left) - originalIndex.get(right);
+        }
+        return comparison * direction;
+      });
+      sortedRows.forEach((row) => tableBody.appendChild(row));
+      if (companyHeader) {
+        companyHeader.setAttribute(
+          "aria-sort",
+          companySortDirection === "asc" ? "ascending" : "descending",
+        );
+      }
+      companySortIndicator.textContent = companySortDirection === "asc" ? "↑" : "↓";
+      applyFilters();
+    }
+    function sortRowsByMatched() {
+      if (!tableBody) {
+        return;
+      }
+      matchedSortDirection = matchedSortDirection === "asc" ? "desc" : "asc";
+      companySortDirection = null;
+      atsSortDirection = null;
+      resetSortIndicator(companyHeader, companySortIndicator);
+      resetSortIndicator(atsHeader, atsSortIndicator);
+      const direction = matchedSortDirection === "asc" ? 1 : -1;
+      const originalIndex = new Map(rows.map((row, index) => [row, index]));
+      const sortedRows = [...rows].sort((left, right) => {
+        const leftValue = matchedTimestamp(left);
+        const rightValue = matchedTimestamp(right);
+        if (leftValue === null && rightValue === null) {
+          return originalIndex.get(left) - originalIndex.get(right);
+        }
+        if (leftValue === null) {
+          return 1;
+        }
+        if (rightValue === null) {
+          return -1;
+        }
+        if (leftValue === rightValue) {
+          return originalIndex.get(left) - originalIndex.get(right);
+        }
+        return (leftValue - rightValue) * direction;
+      });
+      sortedRows.forEach((row) => tableBody.appendChild(row));
+      if (matchedHeader) {
+        matchedHeader.setAttribute(
+          "aria-sort",
+          matchedSortDirection === "asc" ? "ascending" : "descending",
+        );
+      }
+      matchedSortIndicator.textContent = matchedSortDirection === "asc" ? "↑" : "↓";
+      applyFilters();
+    }
+    function sortRowsByAts() {
+      if (!tableBody) {
+        return;
+      }
+      atsSortDirection = atsSortDirection === "asc" ? "desc" : "asc";
+      companySortDirection = null;
+      matchedSortDirection = null;
+      resetSortIndicator(companyHeader, companySortIndicator);
+      resetSortIndicator(matchedHeader, matchedSortIndicator);
+      const direction = atsSortDirection === "asc" ? 1 : -1;
+      const originalIndex = new Map(rows.map((row, index) => [row, index]));
+      const sortedRows = [...rows].sort((left, right) => {
+        const leftValue = atsScore(left);
+        const rightValue = atsScore(right);
+        if (leftValue === null && rightValue === null) {
+          return originalIndex.get(left) - originalIndex.get(right);
+        }
+        if (leftValue === null) {
+          return 1;
+        }
+        if (rightValue === null) {
+          return -1;
+        }
+        if (leftValue === rightValue) {
+          return originalIndex.get(left) - originalIndex.get(right);
+        }
+        return (leftValue - rightValue) * direction;
+      });
+      sortedRows.forEach((row) => tableBody.appendChild(row));
+      if (atsHeader) {
+        atsHeader.setAttribute(
+          "aria-sort",
+          atsSortDirection === "asc" ? "ascending" : "descending",
+        );
+      }
+      atsSortIndicator.textContent = atsSortDirection === "asc" ? "↑" : "↓";
+      applyFilters();
     }
     function visibleSelectors() {
       return rowSelectors.filter((checkbox) => !checkbox.closest("tr").hidden);
@@ -991,6 +1532,15 @@ INDEX_TEMPLATE = """
     }
     search.addEventListener("input", applyFilters);
     statusFilter.addEventListener("change", applyFilters);
+    if (companySortButton) {
+      companySortButton.addEventListener("click", sortRowsByCompany);
+    }
+    if (matchedSortButton) {
+      matchedSortButton.addEventListener("click", sortRowsByMatched);
+    }
+    if (atsSortButton) {
+      atsSortButton.addEventListener("click", sortRowsByAts);
+    }
     if (selectAll) {
       selectAll.addEventListener("change", () => {
         visibleSelectors().forEach((checkbox) => {

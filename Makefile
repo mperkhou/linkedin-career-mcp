@@ -13,6 +13,10 @@ JOB_IDS ?= all
 LINKEDIN_DELAY_SECONDS ?= 2
 ARTIFACT_MODE ?= all
 COVER_LETTER_RETRIES ?= 1
+DATE_POSTED ?= past_week
+LIMIT_PER_QUERY ?= 10
+MAX_QUERIES ?= 6
+MAX_JOBS ?= 10
 
 .PHONY: install install-python install-ollama ollama-model venv skill-link match-jobs regenerate-resumes regenerate-cover-letters regenerate-all refresh-static-artifacts launch-website stop-website restart-website test lint clean
 
@@ -54,7 +58,7 @@ ollama-model:
 	ollama pull "$(OLLAMA_MODEL)"
 
 match-jobs: venv
-	$(VENV)/bin/linkedin-career-match-jobs $(ARTIFACT_MODE) --cover-letter-retries "$(COVER_LETTER_RETRIES)"
+	$(VENV)/bin/linkedin-career-match-jobs $(ARTIFACT_MODE) --date-posted "$(DATE_POSTED)" --limit-per-query "$(LIMIT_PER_QUERY)" --max-queries "$(MAX_QUERIES)" --max-jobs "$(MAX_JOBS)" --cover-letter-retries "$(COVER_LETTER_RETRIES)"
 
 regenerate-resumes: venv
 	$(VENV)/bin/linkedin-career-regenerate-resumes $(JOB_IDS) --linkedin-delay-seconds "$(LINKEDIN_DELAY_SECONDS)" --cover-letter-retries "$(COVER_LETTER_RETRIES)"

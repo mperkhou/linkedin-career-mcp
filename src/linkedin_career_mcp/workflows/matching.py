@@ -24,7 +24,7 @@ from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer
 from linkedin_career_mcp.api_client import ApiLlmClient
 from linkedin_career_mcp.config import Settings, load_settings
 from linkedin_career_mcp.errors import LinkedInCareerMcpError, WorkflowError
-from linkedin_career_mcp.models import DatePosted, JobDetails, JobSearchQuery
+from linkedin_career_mcp.models import DatePosted, JobDetails, JobPosting, JobSearchQuery
 from linkedin_career_mcp.ollama import OllamaClient
 from linkedin_career_mcp.providers import LinkedInPublicJobsProvider
 from linkedin_career_mcp.services import JobSearchService
@@ -488,6 +488,7 @@ class MatchingJobsWorkflowResult(BaseModel):
     tracking_spreadsheet: str
     skipped_blacklisted: list[str] = Field(default_factory=list)
     skipped_existing: list[str] = Field(default_factory=list)
+    skipped_workplace_type: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
     artifacts: list[TailoredResumeArtifact] = Field(default_factory=list)
     artifact_audit: ArtifactAudit = Field(default_factory=ArtifactAudit)
@@ -603,6 +604,7 @@ class MatchingJobsWorkflow:
         candidates: list[JobDetails] = []
         skipped_blacklisted: list[str] = []
         skipped_existing: list[str] = []
+        skipped_workplace_type: list[str] = []
         errors: list[str] = []
         seen_job_ids: set[str] = set()
         tracking_path = output_dir / TRACKING_WORKBOOK
@@ -672,8 +674,12 @@ class MatchingJobsWorkflow:
                     except LinkedInCareerMcpError as exc:
                         errors.append(f"{posting.job_id}: {exc}")
                         details = JobDetails(**posting.model_dump())
+                    details = _merge_posting_with_fetched_details(posting, details)
                     if blacklist.matches(details.company):
                         skipped_blacklisted.append(_job_label(details.company, details.title))
+                        continue
+                    if not _is_remote_or_hybrid_job(details, query):
+                        skipped_workplace_type.append(_job_label(details.company, details.title))
                         continue
                     candidates.append(details)
                 if (
@@ -751,6 +757,7 @@ class MatchingJobsWorkflow:
             tracking_spreadsheet=str(tracking_path),
             skipped_blacklisted=skipped_blacklisted,
             skipped_existing=skipped_existing,
+            skipped_workplace_type=skipped_workplace_type,
             errors=errors,
             artifacts=artifacts,
             artifact_audit=artifact_audit,
@@ -874,6 +881,7 @@ class MatchingJobsWorkflow:
             tracking_spreadsheet=str(tracking_path),
             skipped_blacklisted=[],
             skipped_existing=[],
+            skipped_workplace_type=[],
             errors=errors,
             artifacts=artifacts,
             artifact_audit=artifact_audit,
@@ -1047,6 +1055,7 @@ class MatchingJobsWorkflow:
             cover_letter_path=cover_letter_path,
             job_description=stored_job_description,
             prompt_job_description=prompt_job_description,
+            date_posted=_job_date_posted(job),
         )
         return TailoredResumeArtifact(
             job_id=job.job_id,
@@ -1581,6 +1590,7 @@ def _regeneration_candidate_from_record(record: ApplicationJobRecord) -> _Regene
             title=record.job_title or "Unknown title",
             company=record.company or None,
             job_url=record.linkedin_url or None,
+            listed_at=record.date_posted,
             description=record.job_description or record.prompt_job_description,
         ),
         stored_job_description=record.job_description,
@@ -1608,6 +1618,51 @@ def _merge_record_with_fetched_details(
         job_function=details.job_function,
         industries=details.industries,
     )
+
+
+def _merge_posting_with_fetched_details(
+    posting: JobPosting,
+    details: JobDetails,
+) -> JobDetails:
+    return details.model_copy(
+        update={
+            "title": details.title if details.title != "Unknown title" else posting.title,
+            "company": details.company or posting.company,
+            "location": details.location or posting.location,
+            "listed_at": details.listed_at or posting.listed_at,
+            "posted_text": details.posted_text or posting.posted_text,
+            "job_url": details.job_url or posting.job_url,
+            "company_url": details.company_url or posting.company_url,
+            "workplace_type": details.workplace_type or posting.workplace_type,
+            "source": details.source or posting.source,
+        },
+    )
+
+
+def _is_remote_or_hybrid_job(job: JobDetails, query: JobSearchQuery) -> bool:
+    workplace_context = " ".join(
+        value for value in (job.workplace_type, job.location) if value
+    ).casefold()
+    compact_context = re.sub(r"[\s-]+", "", workplace_context)
+    if "onsite" in compact_context:
+        return False
+    if "remote" in workplace_context or "hybrid" in workplace_context:
+        return True
+    return query.workplace_type in {"remote", "hybrid"}
+
+
+def _job_date_posted(job: JobDetails) -> str | None:
+    return _posted_date_value(job.listed_at) or _posted_date_value(job.posted_text)
+
+
+def _posted_date_value(value: Any) -> str | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    date_match = re.match(r"^\d{4}-\d{2}-\d{2}", text)
+    if date_match:
+        return date_match.group(0)
+    return text
 
 
 def _job_description_context(job: JobDetails) -> str:
@@ -2943,6 +2998,22 @@ def _cover_letter_retry_summary(result: MatchingJobsWorkflowResult) -> str | Non
     )
 
 
+def _workplace_skip_summary(result: MatchingJobsWorkflowResult) -> list[str]:
+    if not result.skipped_workplace_type:
+        return []
+    lines = [
+        (
+            f"Workplace filter skipped {len(result.skipped_workplace_type)} "
+            "explicit on-site job(s)."
+        )
+    ]
+    for label in result.skipped_workplace_type[:10]:
+        lines.append(f"- {label}")
+    if len(result.skipped_workplace_type) > 10:
+        lines.append(f"- ...and {len(result.skipped_workplace_type) - 10} more.")
+    return lines
+
+
 def _artifact_audit_summary(result: MatchingJobsWorkflowResult) -> list[str]:
     audit = result.artifact_audit
     lines = [
@@ -2975,6 +3046,8 @@ def _print_result_status(result: MatchingJobsWorkflowResult) -> None:
     retry_summary = _cover_letter_retry_summary(result)
     if retry_summary:
         print(retry_summary, file=sys.stderr, flush=True)
+    for line in _workplace_skip_summary(result):
+        print(line, file=sys.stderr, flush=True)
     for line in _artifact_audit_summary(result):
         print(line, file=sys.stderr, flush=True)
 

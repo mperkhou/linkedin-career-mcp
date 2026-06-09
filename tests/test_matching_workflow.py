@@ -159,6 +159,9 @@ class FakeJobService:
             title="Agentic AI Engineer",
             company="Acme AI",
             job_url="https://www.linkedin.com/jobs/view/111",
+            listed_at="2026-06-07T09:30:00Z",
+            posted_text="1 day ago",
+            workplace_type="Remote",
             description="Build local AI workflows and MCP integrations.",
         )
 
@@ -199,6 +202,55 @@ class ExistingThenNewJobService:
             company="Fresh Co",
             job_url=f"https://www.linkedin.com/jobs/view/{job_id}",
             description="Fresh role that should count toward max_jobs.",
+        )
+
+
+class OnSiteLeakJobService:
+    def __init__(self) -> None:
+        self.queries: list[JobSearchQuery] = []
+
+    async def search(self, query: JobSearchQuery) -> JobSearchResult:
+        self.queries.append(query)
+        return JobSearchResult(
+            query=query,
+            count=2,
+            jobs=[
+                JobPosting(
+                    job_id="444",
+                    title="Onsite Platform Engineer",
+                    company="Office Co",
+                    location="Austin, TX (On-site)",
+                    workplace_type="On-site",
+                    job_url="https://www.linkedin.com/jobs/view/444",
+                ),
+                JobPosting(
+                    job_id="555",
+                    title="Remote Platform Engineer",
+                    company="Remote Co",
+                    location="United States",
+                    workplace_type="Remote",
+                    job_url="https://www.linkedin.com/jobs/view/555",
+                ),
+            ],
+            provider="fake",
+        )
+
+    async def get_details(self, job_id_or_url: str) -> JobDetails:
+        job_id = job_id_or_url.rstrip("/").rsplit("/", 1)[-1]
+        if job_id == "444":
+            return JobDetails(
+                job_id="444",
+                title="Onsite Platform Engineer",
+                company="Office Co",
+                job_url="https://www.linkedin.com/jobs/view/444",
+                description="On-site role that leaked through LinkedIn search.",
+            )
+        return JobDetails(
+            job_id="555",
+            title="Remote Platform Engineer",
+            company="Remote Co",
+            job_url="https://www.linkedin.com/jobs/view/555",
+            description="Remote role that should be accepted.",
         )
 
 
@@ -305,7 +357,7 @@ async def test_matching_workflow_writes_resume_and_tracking(tmp_path: Path):
         row = connection.execute(
             """
             SELECT job_description, prompt_job_description, cover_letter_content,
-                   source_cover_letter_path
+                   source_cover_letter_path, date_matched, date_posted
             FROM applications
             WHERE job_id = ?
             """,
@@ -315,6 +367,8 @@ async def test_matching_workflow_writes_resume_and_tracking(tmp_path: Path):
     assert row["prompt_job_description"] == "Build local AI workflows and MCP integrations."
     assert row["cover_letter_content"] is not None
     assert row["source_cover_letter_path"] == str(cover_letter_path)
+    assert row["date_matched"]
+    assert row["date_posted"] == "2026-06-07"
 
     workbook_path = output_dir / "tracking/read_applications/linkedin_applications.xlsx"
     assert workbook_path.exists()
@@ -326,6 +380,34 @@ async def test_matching_workflow_writes_resume_and_tracking(tmp_path: Path):
     assert sheet.cell(row=2, column=6).hyperlink.target == cover_letter_path.resolve().as_uri()
     assert sheet.cell(row=2, column=7).value == "No"
     assert sheet.cell(row=2, column=8).value is None
+
+
+async def test_matching_workflow_skips_explicit_on_site_linkedin_leaks(tmp_path: Path):
+    profile_dir = tmp_path / "profile"
+    profile_dir.mkdir()
+    (profile_dir / "MP-RESUME-AGENTIC.txt").write_text(
+        "Resume: built MCP servers and local LLM workflows.",
+        encoding="utf-8",
+    )
+    blacklist_path = tmp_path / ".blacklist"
+    blacklist_path.write_text("", encoding="utf-8")
+    output_dir = tmp_path / "output"
+    service = OnSiteLeakJobService()
+    workflow = MatchingJobsWorkflow(service=service, ollama=FakeOllama())
+
+    result = await workflow.run(
+        profile_dir=profile_dir,
+        blacklist_path=blacklist_path,
+        output_dir=output_dir,
+        source_resume_name="MP-RESUME-AGENTIC.txt",
+        limit_per_query=5,
+        max_queries=2,
+        max_jobs=1,
+    )
+
+    assert result.jobs_found == 1
+    assert result.artifacts[0].job_id == "555"
+    assert "Office Co - Onsite Platform Engineer" in result.skipped_workplace_type
 
 
 async def test_matching_workflow_skips_existing_database_jobs_without_counting_them(
