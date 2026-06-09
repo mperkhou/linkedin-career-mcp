@@ -1,3 +1,4 @@
+import re
 import sqlite3
 from pathlib import Path
 
@@ -168,12 +169,27 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
 
     index = client.get("/")
     assert index.status_code == 200
+    html = index.data.decode()
     assert b"/descriptions/123" in index.data
     assert b"Compare descriptions" in index.data
     assert b"Cover Letter" in index.data
     assert b"/cover-letters/123" in index.data
     assert b"/cover-letters/123/download" in index.data
     assert b"/resumes/123/download" in index.data
+    assert 'class="same-page-download"' in html
+    assert "downloadInCurrentPage" in html
+    assert "samePageDownloads.forEach" in html
+    assert 'href="/resumes/123/download"' in html
+    assert 'download="mp_resume_senior_engineer.pdf"' in html
+    assert 'data-download-filename="mp_resume_senior_engineer.pdf"' in html
+    assert re.search(r'href="/resumes/123/download"[^>]*target="_blank"', html, re.S) is None
+    assert 'href="/cover-letters/123/download"' in html
+    assert 'download="mp_cover_letter_senior_engineer.pdf"' in html
+    assert 'data-download-filename="mp_cover_letter_senior_engineer.pdf"' in html
+    assert (
+        re.search(r'href="/cover-letters/123/download"[^>]*target="_blank"', html, re.S)
+        is None
+    )
     assert b"N/A" in index.data
     assert b"<th>Posted</th>" in index.data
     assert b'id="company-sort"' in index.data

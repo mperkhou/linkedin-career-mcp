@@ -1302,7 +1302,12 @@ INDEX_TEMPLATE = """
                     <a href="/resumes/{{ row.job_id }}" target="_blank" rel="noreferrer">
                       Resume
                     </a>
-                    <a href="/resumes/{{ row.job_id }}/download">
+                    <a
+                      class="same-page-download"
+                      href="/resumes/{{ row.job_id }}/download"
+                      download="{{ row.resume_filename }}"
+                      data-download-filename="{{ row.resume_filename }}"
+                    >
                       Download
                     </a>
                   {% else %}
@@ -1316,7 +1321,12 @@ INDEX_TEMPLATE = """
                     <a href="/cover-letters/{{ row.job_id }}" target="_blank" rel="noreferrer">
                       Cover Letter
                     </a>
-                    <a href="/cover-letters/{{ row.job_id }}/download">
+                    <a
+                      class="same-page-download"
+                      href="/cover-letters/{{ row.job_id }}/download"
+                      download="{{ row.cover_letter_filename }}"
+                      data-download-filename="{{ row.cover_letter_filename }}"
+                    >
                       Download
                     </a>
                   {% else %}
@@ -1372,9 +1382,32 @@ INDEX_TEMPLATE = """
     const tableBody = document.querySelector("#applications tbody");
     const rows = [...document.querySelectorAll("#applications tbody tr")];
     const rowSelectors = [...document.querySelectorAll(".row-selector")];
+    const samePageDownloads = [...document.querySelectorAll(".same-page-download")];
     let companySortDirection = null;
     let matchedSortDirection = null;
     let atsSortDirection = null;
+    async function downloadInCurrentPage(event) {
+      event.preventDefault();
+      const link = event.currentTarget;
+      try {
+        const response = await fetch(link.href, { credentials: "same-origin" });
+        if (!response.ok) {
+          throw new Error(`Download failed with status ${response.status}`);
+        }
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const downloadLink = document.createElement("a");
+        downloadLink.href = objectUrl;
+        downloadLink.download = link.dataset.downloadFilename || link.download || "download.pdf";
+        downloadLink.style.display = "none";
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        downloadLink.remove();
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+      } catch (error) {
+        window.location.assign(link.href);
+      }
+    }
     function applyFilters() {
       const term = search.value.trim().toLowerCase();
       const status = statusFilter.value;
@@ -1541,6 +1574,9 @@ INDEX_TEMPLATE = """
     if (atsSortButton) {
       atsSortButton.addEventListener("click", sortRowsByAts);
     }
+    samePageDownloads.forEach((link) => {
+      link.addEventListener("click", downloadInCurrentPage);
+    });
     if (selectAll) {
       selectAll.addEventListener("change", () => {
         visibleSelectors().forEach((checkbox) => {
