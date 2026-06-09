@@ -195,6 +195,7 @@ def _parse_job_details(html: str, job_id: str) -> JobDetails:
         description=_text(description_node),
         seniority_level=criteria.get("Seniority level"),
         employment_type=criteria.get("Employment type"),
+        workplace_type=criteria.get("Workplace type") or criteria.get("Workplace"),
         job_function=criteria.get("Job function"),
         industries=criteria.get("Industries"),
     )

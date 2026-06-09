@@ -29,6 +29,21 @@ def test_connect_database_migrates_job_description_columns(tmp_path: Path):
             )
             """
         )
+        connection.execute(
+            """
+            INSERT INTO applications (
+                job_id, company, job_title, linkedin_url, resume_filename,
+                source_resume_path, applied_to, imported_at, updated_at
+            )
+            VALUES (
+                '123', 'Example Co', 'Senior Engineer',
+                'https://www.linkedin.com/jobs/view/123', 'resume.pdf',
+                'output/resumes/resume.pdf', 'No',
+                '2026-06-08T10:00:00+00:00',
+                '2026-06-08T10:00:00+00:00'
+            )
+            """
+        )
         connection.commit()
 
     with webapp.connect_database(database_path) as connection:
@@ -40,6 +55,18 @@ def test_connect_database_migrates_job_description_columns(tmp_path: Path):
     assert "cover_letter_filename" in columns
     assert "cover_letter_content" in columns
     assert "source_cover_letter_path" in columns
+    assert "date_matched" in columns
+    assert "date_posted" in columns
+    with webapp.connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT date_matched, date_posted
+            FROM applications
+            WHERE job_id = '123'
+            """
+        ).fetchone()
+    assert row["date_matched"] == "2026-06-08T10:00:00+00:00"
+    assert row["date_posted"] is None
 
 
 def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
@@ -115,6 +142,7 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
         cover_letter_path=cover_letter_path,
         job_description="Full parsed JOD with mission boilerplate and role requirements.",
         prompt_job_description="Clean prompt JOD with role requirements.",
+        date_posted="2026-06-07T12:00:00Z",
     )
 
     app = create_app(database_path=database_path, output_dir=output_dir)
@@ -126,7 +154,12 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     assert b"Compare descriptions" in index.data
     assert b"Cover Letter" in index.data
     assert b"/cover-letters/123" in index.data
-    assert b"DB Cover" in index.data
+    assert b"/cover-letters/123/download" in index.data
+    assert b"/resumes/123/download" in index.data
+    assert b"N/A" in index.data
+    assert b"<th>Posted</th>" in index.data
+    assert b"<th>Matched</th>" in index.data
+    assert b"2026-06-07" in index.data
 
     descriptions = client.get("/descriptions/123")
     assert descriptions.status_code == 200
@@ -139,9 +172,46 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     assert db_resume.status_code == 200
     assert db_resume.data == b"%PDF-1.4 fake pdf"
 
+    resume_download = client.get("/resumes/123/download")
+    assert resume_download.status_code == 200
+    assert resume_download.data == b"%PDF-1.4 fake pdf"
+    assert "attachment" in resume_download.headers["Content-Disposition"]
+
     db_cover_letter = client.get("/cover-letters/123")
     assert db_cover_letter.status_code == 200
     assert db_cover_letter.data == b"%PDF-1.4 fake cover"
+
+    cover_letter_download = client.get("/cover-letters/123/download")
+    assert cover_letter_download.status_code == 200
+    assert cover_letter_download.data == b"%PDF-1.4 fake cover"
+    assert "attachment" in cover_letter_download.headers["Content-Disposition"]
+
+    downloads_dir = tmp_path / "Downloads"
+    downloads_dir.mkdir()
+    downloaded_resume = downloads_dir / "mp_resume_senior_engineer.pdf"
+    downloaded_cover_letter = downloads_dir / "mp_cover_letter_senior_engineer.pdf"
+    unrelated_pdf = downloads_dir / "other_resume.pdf"
+    downloaded_resume.write_bytes(b"resume")
+    downloaded_cover_letter.write_bytes(b"cover")
+    unrelated_pdf.write_bytes(b"other")
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    yes_response = client.post(
+        "/applications/123",
+        data={"applied_to": "Yes", "date_applied": "2026-06-08", "notes": ""},
+    )
+    assert yes_response.status_code == 302
+    assert not downloaded_resume.exists()
+    assert not downloaded_cover_letter.exists()
+    assert unrelated_pdf.exists()
+
+    update_response = client.post(
+        "/applications/123",
+        data={"applied_to": "N/A", "date_applied": "", "notes": "Skip this one"},
+    )
+    assert update_response.status_code == 302
+    refreshed_index = client.get("/")
+    assert b'N/A: 1' in refreshed_index.data
 
     output_resume = client.get(
         "/output/resumes/Example_Co/123_senior_engineer/mp_resume_senior_engineer.pdf"

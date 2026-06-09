@@ -42,6 +42,7 @@ The current tools search public LinkedIn job listings and fetch public job detai
 - Company patterns in `.blacklist` are matched case-insensitively against company names. `Raytheon*` excludes companies whose names start with `Raytheon`.
 - Tailored resumes are written under `output/resumes/[company]/[job_id]_[job_title]/`.
 - Cover letters are written under `output/cover_letters/[company]/[job_id]_[job_title]/`.
+- Set `MAX_JOBS` for capped test runs, for example `make match-jobs MAX_JOBS=2`.
 - Use `make match-jobs ARTIFACT_MODE=resumes-only` or
   `make match-jobs ARTIFACT_MODE=cover-letters-only` for one artifact type.
 - Use `make regenerate-resumes`, `make regenerate-cover-letters`, or `make regenerate-all`

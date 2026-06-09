@@ -27,6 +27,7 @@ TRACKING_COLUMNS = (
     "applied_to",
     "date_applied",
 )
+APPLICATION_STATUSES = {"No", "Yes", "N/A"}
 REQUIRED_TRACKING_COLUMNS = (
     "job_id",
     "company",
@@ -43,6 +44,8 @@ APPLICATION_EXTRA_COLUMNS = {
     "cover_letter_content": "BLOB",
     "cover_letter_mime_type": "TEXT NOT NULL DEFAULT 'application/pdf'",
     "source_cover_letter_path": "TEXT NOT NULL DEFAULT ''",
+    "date_matched": "TEXT",
+    "date_posted": "TEXT",
 }
 
 
@@ -62,6 +65,8 @@ class ApplicationJobRecord:
     linkedin_url: str
     job_description: str | None
     prompt_job_description: str | None
+    date_matched: str | None
+    date_posted: str | None
 
 
 def connect_database(database_path: Path) -> sqlite3.Connection:
@@ -90,6 +95,8 @@ def init_database(connection: sqlite3.Connection) -> None:
             cover_letter_content BLOB,
             cover_letter_mime_type TEXT NOT NULL DEFAULT 'application/pdf',
             source_cover_letter_path TEXT NOT NULL DEFAULT '',
+            date_matched TEXT,
+            date_posted TEXT,
             applied_to TEXT NOT NULL DEFAULT 'No',
             date_applied TEXT,
             notes TEXT NOT NULL DEFAULT '',
@@ -114,6 +121,14 @@ def _ensure_application_columns(connection: sqlite3.Connection) -> None:
     for column, column_type in APPLICATION_EXTRA_COLUMNS.items():
         if column not in existing_columns:
             connection.execute(f"ALTER TABLE applications ADD COLUMN {column} {column_type}")
+    connection.execute(
+        """
+        UPDATE applications
+        SET date_matched = imported_at
+        WHERE (date_matched IS NULL OR TRIM(date_matched) = '')
+          AND imported_at IS NOT NULL
+        """
+    )
 
 
 def fetch_existing_resume_job_ids(database_path: Path) -> set[str]:
@@ -156,7 +171,7 @@ def fetch_application_job_records(
             rows = connection.execute(
                 """
                 SELECT job_id, company, job_title, linkedin_url, job_description,
-                       prompt_job_description
+                       prompt_job_description, date_matched, date_posted
                 FROM applications
                 ORDER BY company COLLATE NOCASE ASC, job_title COLLATE NOCASE ASC
                 """
@@ -168,7 +183,7 @@ def fetch_application_job_records(
             rows = connection.execute(
                 f"""
                 SELECT job_id, company, job_title, linkedin_url, job_description,
-                       prompt_job_description
+                       prompt_job_description, date_matched, date_posted
                 FROM applications
                 WHERE job_id IN ({placeholders})
                 """,
@@ -184,6 +199,8 @@ def fetch_application_job_records(
             linkedin_url=str(row["linkedin_url"] or ""),
             job_description=row["job_description"],
             prompt_job_description=row["prompt_job_description"],
+            date_matched=row["date_matched"],
+            date_posted=row["date_posted"],
         )
         for row in rows
     ]
@@ -202,8 +219,13 @@ def upsert_application_artifact(
     prompt_job_description: str | None = None,
     applied_to: str = "No",
     date_applied: str | None = None,
+    date_matched: str | None = None,
+    date_posted: str | None = None,
 ) -> None:
     now = datetime.now(UTC).isoformat(timespec="seconds")
+    applied_to = _normalize_applied_to(applied_to)
+    date_matched = _date_value(date_matched) or now
+    date_posted = _date_value(date_posted)
     resume_content = (
         resume_path.read_bytes()
         if resume_path is not None and resume_path.is_file()
@@ -221,10 +243,10 @@ def upsert_application_artifact(
                 job_id, company, job_title, linkedin_url, job_description,
                 prompt_job_description, resume_filename, resume_content, resume_mime_type,
                 source_resume_path, cover_letter_filename, cover_letter_content,
-                cover_letter_mime_type, source_cover_letter_path, applied_to, date_applied,
-                imported_at, updated_at
+                cover_letter_mime_type, source_cover_letter_path, date_matched, date_posted,
+                applied_to, date_applied, imported_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(job_id) DO UPDATE SET
                 company = excluded.company,
                 job_title = excluded.job_title,
@@ -268,6 +290,14 @@ def upsert_application_artifact(
                     THEN excluded.source_cover_letter_path
                     ELSE applications.source_cover_letter_path
                 END,
+                date_matched = COALESCE(
+                    NULLIF(applications.date_matched, ''),
+                    excluded.date_matched
+                ),
+                date_posted = COALESCE(
+                    NULLIF(excluded.date_posted, ''),
+                    applications.date_posted
+                ),
                 applied_to = CASE
                     WHEN applications.applied_to != 'No' THEN applications.applied_to
                     ELSE excluded.applied_to
@@ -290,6 +320,8 @@ def upsert_application_artifact(
                 cover_letter_content,
                 "application/pdf",
                 str(cover_letter_path) if cover_letter_path is not None else "",
+                date_matched,
+                date_posted,
                 applied_to,
                 date_applied,
                 now,
@@ -388,6 +420,16 @@ def import_output_artifacts(*, output_dir: Path, database_path: Path) -> ImportR
             cover_letter_path=cover_letter_path,
             applied_to=str(values["applied_to"] or "No"),
             date_applied=_date_value(values["date_applied"]),
+            date_matched=_optional_row_value(
+                row=row,
+                column_indexes=column_indexes,
+                column="date_matched",
+            ),
+            date_posted=_optional_row_value(
+                row=row,
+                column_indexes=column_indexes,
+                column="date_posted",
+            ),
         )
         rows_imported += 1
 
@@ -416,6 +458,7 @@ def create_app(*, database_path: Path, output_dir: Path):
     app.config["SECRET_KEY"] = "linkedin-career-local-only"
     app.config["DATABASE_PATH"] = database_path
     app.config["OUTPUT_DIR"] = output_dir
+    app.jinja_env.filters["display_date"] = _display_date
 
     @app.get("/")
     def index():
@@ -423,13 +466,14 @@ def create_app(*, database_path: Path, output_dir: Path):
         stats = {
             "total": len(rows),
             "applied": sum(1 for row in rows if row["applied_to"] == "Yes"),
-            "pending": sum(1 for row in rows if row["applied_to"] != "Yes"),
+            "pending": sum(1 for row in rows if row["applied_to"] == "No"),
+            "not_applicable": sum(1 for row in rows if row["applied_to"] == "N/A"),
         }
         return render_template_string(INDEX_TEMPLATE, rows=rows, stats=stats)
 
     @app.post("/applications/<job_id>")
     def update_application(job_id: str):
-        applied_to = "Yes" if request.form.get("applied_to") == "Yes" else "No"
+        applied_to = _normalize_applied_to(request.form.get("applied_to"))
         date_applied = request.form.get("date_applied") or None
         notes = request.form.get("notes", "")
         now = datetime.now(UTC).isoformat(timespec="seconds")
@@ -443,7 +487,11 @@ def create_app(*, database_path: Path, output_dir: Path):
                 (applied_to, date_applied, notes, now, job_id),
             )
             connection.commit()
-        flash("Application updated.")
+        if applied_to == "Yes":
+            deleted_count = cleanup_downloaded_application_pdfs()
+            flash(f"Application updated. Cleared {deleted_count} downloaded PDF file(s).")
+        else:
+            flash("Application updated.")
         return redirect(url_for("index"))
 
     @app.post("/sync")
@@ -488,6 +536,18 @@ def create_app(*, database_path: Path, output_dir: Path):
             as_attachment=False,
         )
 
+    @app.get("/resumes/<job_id>/download")
+    def resume_download(job_id: str):
+        row = _fetch_application(database_path, job_id)
+        if row is None or row["resume_content"] is None:
+            return Response("Resume was not found in the database.", status=404)
+        return send_file(
+            BytesIO(row["resume_content"]),
+            mimetype=row["resume_mime_type"],
+            download_name=row["resume_filename"],
+            as_attachment=True,
+        )
+
     @app.get("/cover-letters/<job_id>")
     def cover_letter(job_id: str):
         row = _fetch_application(database_path, job_id)
@@ -498,6 +558,18 @@ def create_app(*, database_path: Path, output_dir: Path):
             mimetype=row["cover_letter_mime_type"],
             download_name=row["cover_letter_filename"],
             as_attachment=False,
+        )
+
+    @app.get("/cover-letters/<job_id>/download")
+    def cover_letter_download(job_id: str):
+        row = _fetch_application(database_path, job_id)
+        if row is None or row["cover_letter_content"] is None:
+            return Response("Cover letter was not found in the database.", status=404)
+        return send_file(
+            BytesIO(row["cover_letter_content"]),
+            mimetype=row["cover_letter_mime_type"],
+            download_name=row["cover_letter_filename"],
+            as_attachment=True,
         )
 
     @app.get("/descriptions/<job_id>")
@@ -548,7 +620,15 @@ def _fetch_applications(database_path: Path) -> list[sqlite3.Row]:
                 """
                 SELECT *
                 FROM applications
-                ORDER BY applied_to ASC, company COLLATE NOCASE ASC, job_title COLLATE NOCASE ASC
+                ORDER BY
+                    CASE applied_to
+                        WHEN 'No' THEN 0
+                        WHEN 'N/A' THEN 1
+                        WHEN 'Yes' THEN 2
+                        ELSE 3
+                    END,
+                    company COLLATE NOCASE ASC,
+                    job_title COLLATE NOCASE ASC
                 """
             )
         )
@@ -571,6 +651,18 @@ def _resolve_output_path(*, output_dir: Path, path_text: str) -> Path:
     return output_dir / artifact_path
 
 
+def _optional_row_value(
+    *,
+    row: tuple[Any, ...],
+    column_indexes: dict[str, int],
+    column: str,
+) -> Any:
+    index = column_indexes.get(column)
+    if index is None:
+        return None
+    return row[index]
+
+
 def _date_value(value: Any) -> str | None:
     if value is None:
         return None
@@ -578,6 +670,37 @@ def _date_value(value: Any) -> str | None:
         return value.date().isoformat()
     text = str(value).strip()
     return text or None
+
+
+def _normalize_applied_to(value: Any) -> str:
+    text = str(value or "").strip()
+    return text if text in APPLICATION_STATUSES else "No"
+
+
+def cleanup_downloaded_application_pdfs(download_dir: Path | None = None) -> int:
+    target_dir = download_dir or Path.home() / "Downloads"
+    if not target_dir.is_dir():
+        return 0
+
+    deleted_count = 0
+    for path in target_dir.glob("mp_*.pdf"):
+        if not path.is_file():
+            continue
+        try:
+            path.unlink()
+        except OSError:
+            continue
+        deleted_count += 1
+    return deleted_count
+
+
+def _display_date(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if "T" in text:
+        return text.split("T", 1)[0]
+    return text
 
 
 def _delete_tracking_rows(*, tracking_path: Path, job_ids: set[str]) -> None:
@@ -793,6 +916,7 @@ INDEX_TEMPLATE = """
     .company { min-width: 160px; font-weight: 650; }
     .job { min-width: 260px; }
     .job-id { display: block; color: var(--muted); font-size: 12px; margin-top: 3px; }
+    .date-col { min-width: 104px; white-space: nowrap; }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; min-width: 170px; }
     .muted { color: var(--muted); }
     .apply-form {
@@ -819,6 +943,7 @@ INDEX_TEMPLATE = """
       <span>Total: {{ stats.total }}</span>
       <span>Applied: {{ stats.applied }}</span>
       <span>Pending: {{ stats.pending }}</span>
+      <span>N/A: {{ stats.not_applicable }}</span>
     </div>
   </header>
   <div class="toolbar">
@@ -827,6 +952,7 @@ INDEX_TEMPLATE = """
       <option value="all">All statuses</option>
       <option value="No">Pending</option>
       <option value="Yes">Applied</option>
+      <option value="N/A">N/A</option>
     </select>
     <form method="post" action="/sync">
       <button type="submit" class="ghost">Sync from output</button>
@@ -855,6 +981,8 @@ INDEX_TEMPLATE = """
             </th>
             <th>Company</th>
             <th>Job</th>
+            <th>Posted</th>
+            <th>Matched</th>
             <th>Job Links</th>
             <th>Resume</th>
             <th>Cover Letter</th>
@@ -881,6 +1009,14 @@ INDEX_TEMPLATE = """
                 {{ row.job_title }}
                 <span class="job-id">{{ row.job_id }}</span>
               </td>
+              <td class="date-col">
+                {{ row.date_posted|display_date if row.date_posted else '' }}
+                {% if not row.date_posted %}<span class="muted">-</span>{% endif %}
+              </td>
+              <td class="date-col">
+                {{ row.date_matched|display_date if row.date_matched else '' }}
+                {% if not row.date_matched %}<span class="muted">-</span>{% endif %}
+              </td>
               <td>
                 <div class="actions">
                   <a href="/linkedin/{{ row.job_id }}">LinkedIn</a>
@@ -895,17 +1031,15 @@ INDEX_TEMPLATE = """
               </td>
               <td>
                 <div class="actions">
-                  <a href="/resumes/{{ row.job_id }}" target="_blank" rel="noreferrer">
-                    DB Resume
-                  </a>
-                  {% if row.source_resume_path %}
-                    <a
-                      href="/{{ row.source_resume_path }}"
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Output Resume
+                  {% if row.resume_content %}
+                    <a href="/resumes/{{ row.job_id }}" target="_blank" rel="noreferrer">
+                      Resume
                     </a>
+                    <a href="/resumes/{{ row.job_id }}/download">
+                      Download
+                    </a>
+                  {% else %}
+                    <span class="muted">Missing</span>
                   {% endif %}
                 </div>
               </td>
@@ -913,19 +1047,12 @@ INDEX_TEMPLATE = """
                 <div class="actions">
                   {% if row.cover_letter_content %}
                     <a href="/cover-letters/{{ row.job_id }}" target="_blank" rel="noreferrer">
-                      DB Cover
+                      Cover Letter
                     </a>
-                  {% endif %}
-                  {% if row.source_cover_letter_path %}
-                    <a
-                      href="/{{ row.source_cover_letter_path }}"
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Output Cover
+                    <a href="/cover-letters/{{ row.job_id }}/download">
+                      Download
                     </a>
-                  {% endif %}
-                  {% if not row.cover_letter_content and not row.source_cover_letter_path %}
+                  {% else %}
                     <span class="muted">Missing</span>
                   {% endif %}
                 </div>
@@ -935,12 +1062,16 @@ INDEX_TEMPLATE = """
                   <select name="applied_to" aria-label="Applied status">
                     <option
                       value="No"
-                      {{ 'selected' if row.applied_to != 'Yes' else '' }}
+                      {{ 'selected' if row.applied_to == 'No' else '' }}
                     >No</option>
                     <option
                       value="Yes"
                       {{ 'selected' if row.applied_to == 'Yes' else '' }}
                     >Yes</option>
+                    <option
+                      value="N/A"
+                      {{ 'selected' if row.applied_to == 'N/A' else '' }}
+                    >N/A</option>
                   </select>
                   <input type="date" name="date_applied" value="{{ row.date_applied or '' }}">
                   <textarea name="notes" placeholder="Notes">{{ row.notes }}</textarea>
