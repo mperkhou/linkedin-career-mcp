@@ -158,7 +158,10 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     assert b"/resumes/123/download" in index.data
     assert b"N/A" in index.data
     assert b"<th>Posted</th>" in index.data
-    assert b"<th>Matched</th>" in index.data
+    assert b'id="company-sort"' in index.data
+    assert b'id="matched-sort"' in index.data
+    assert b'data-company-sort="Example Co"' in index.data
+    assert b'data-matched-sort=' in index.data
     assert b"2026-06-07" in index.data
 
     descriptions = client.get("/descriptions/123")

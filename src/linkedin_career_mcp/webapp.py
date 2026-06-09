@@ -861,6 +861,28 @@ INDEX_TEMPLATE = """
       white-space: nowrap;
     }
     button:hover, .link-button:hover { background: var(--accent-strong); }
+    .sort-button {
+      align-items: center;
+      background: transparent;
+      border: 0;
+      color: inherit;
+      display: inline-flex;
+      font: inherit;
+      font-weight: 700;
+      gap: 4px;
+      padding: 0;
+      text-transform: uppercase;
+    }
+    .sort-button:hover, .sort-button:focus {
+      background: transparent;
+      color: var(--accent);
+      outline: none;
+    }
+    .sort-indicator {
+      color: var(--accent);
+      font-size: 11px;
+      min-width: 14px;
+    }
     .ghost {
       background: #fff;
       color: var(--accent);
@@ -979,10 +1001,34 @@ INDEX_TEMPLATE = """
             <th class="select-col">
               <input id="select-all" type="checkbox" aria-label="Select visible rows">
             </th>
-            <th>Company</th>
+            <th id="company-header" aria-sort="none">
+              <button
+                id="company-sort"
+                class="sort-button"
+                type="button"
+                aria-label="Sort by company"
+              >
+                Company
+                <span id="company-sort-indicator" class="sort-indicator" aria-hidden="true">
+                  ↑↓
+                </span>
+              </button>
+            </th>
             <th>Job</th>
             <th>Posted</th>
-            <th>Matched</th>
+            <th id="matched-header" aria-sort="none">
+              <button
+                id="matched-sort"
+                class="sort-button"
+                type="button"
+                aria-label="Sort by matched date"
+              >
+                Matched
+                <span id="matched-sort-indicator" class="sort-indicator" aria-hidden="true">
+                  ↑↓
+                </span>
+              </button>
+            </th>
             <th>Job Links</th>
             <th>Resume</th>
             <th>Cover Letter</th>
@@ -993,6 +1039,8 @@ INDEX_TEMPLATE = """
           {% for row in rows %}
             <tr class="{{ 'is-applied' if row.applied_to == 'Yes' else '' }}"
                 data-status="{{ row.applied_to }}"
+                data-company-sort="{{ row.company }}"
+                data-matched-sort="{{ row.date_matched or '' }}"
                 data-search="{{ (row.company ~ ' ' ~ row.job_title ~ ' ' ~ row.job_id)|lower }}">
               <td class="select-col">
                 <input
@@ -1093,8 +1141,17 @@ INDEX_TEMPLATE = """
     const deleteButton = document.querySelector("#delete-selected");
     const selectedCount = document.querySelector("#selected-count");
     const bulkDeleteForm = document.querySelector("#bulk-delete-form");
+    const companySortButton = document.querySelector("#company-sort");
+    const companySortIndicator = document.querySelector("#company-sort-indicator");
+    const companyHeader = document.querySelector("#company-header");
+    const matchedSortButton = document.querySelector("#matched-sort");
+    const matchedSortIndicator = document.querySelector("#matched-sort-indicator");
+    const matchedHeader = document.querySelector("#matched-header");
+    const tableBody = document.querySelector("#applications tbody");
     const rows = [...document.querySelectorAll("#applications tbody tr")];
     const rowSelectors = [...document.querySelectorAll(".row-selector")];
+    let companySortDirection = null;
+    let matchedSortDirection = null;
     function applyFilters() {
       const term = search.value.trim().toLowerCase();
       const status = statusFilter.value;
@@ -1104,6 +1161,90 @@ INDEX_TEMPLATE = """
         row.hidden = !(matchesText && matchesStatus);
       });
       updateSelectionState();
+    }
+    function matchedTimestamp(row) {
+      const value = row.dataset.matchedSort;
+      if (!value) {
+        return null;
+      }
+      const parsed = Date.parse(value);
+      return Number.isNaN(parsed) ? null : parsed;
+    }
+    function resetSortIndicator(header, indicator) {
+      if (header) {
+        header.setAttribute("aria-sort", "none");
+      }
+      if (indicator) {
+        indicator.textContent = "↑↓";
+      }
+    }
+    function sortRowsByCompany() {
+      if (!tableBody) {
+        return;
+      }
+      companySortDirection = companySortDirection === "asc" ? "desc" : "asc";
+      matchedSortDirection = null;
+      resetSortIndicator(matchedHeader, matchedSortIndicator);
+      const direction = companySortDirection === "asc" ? 1 : -1;
+      const originalIndex = new Map(rows.map((row, index) => [row, index]));
+      const sortedRows = [...rows].sort((left, right) => {
+        const leftValue = (left.dataset.companySort || "").trim();
+        const rightValue = (right.dataset.companySort || "").trim();
+        const comparison = leftValue.localeCompare(
+          rightValue,
+          undefined,
+          { sensitivity: "base" },
+        );
+        if (comparison === 0) {
+          return originalIndex.get(left) - originalIndex.get(right);
+        }
+        return comparison * direction;
+      });
+      sortedRows.forEach((row) => tableBody.appendChild(row));
+      if (companyHeader) {
+        companyHeader.setAttribute(
+          "aria-sort",
+          companySortDirection === "asc" ? "ascending" : "descending",
+        );
+      }
+      companySortIndicator.textContent = companySortDirection === "asc" ? "↑" : "↓";
+      applyFilters();
+    }
+    function sortRowsByMatched() {
+      if (!tableBody) {
+        return;
+      }
+      matchedSortDirection = matchedSortDirection === "asc" ? "desc" : "asc";
+      companySortDirection = null;
+      resetSortIndicator(companyHeader, companySortIndicator);
+      const direction = matchedSortDirection === "asc" ? 1 : -1;
+      const originalIndex = new Map(rows.map((row, index) => [row, index]));
+      const sortedRows = [...rows].sort((left, right) => {
+        const leftValue = matchedTimestamp(left);
+        const rightValue = matchedTimestamp(right);
+        if (leftValue === null && rightValue === null) {
+          return originalIndex.get(left) - originalIndex.get(right);
+        }
+        if (leftValue === null) {
+          return 1;
+        }
+        if (rightValue === null) {
+          return -1;
+        }
+        if (leftValue === rightValue) {
+          return originalIndex.get(left) - originalIndex.get(right);
+        }
+        return (leftValue - rightValue) * direction;
+      });
+      sortedRows.forEach((row) => tableBody.appendChild(row));
+      if (matchedHeader) {
+        matchedHeader.setAttribute(
+          "aria-sort",
+          matchedSortDirection === "asc" ? "ascending" : "descending",
+        );
+      }
+      matchedSortIndicator.textContent = matchedSortDirection === "asc" ? "↑" : "↓";
+      applyFilters();
     }
     function visibleSelectors() {
       return rowSelectors.filter((checkbox) => !checkbox.closest("tr").hidden);
@@ -1122,6 +1263,12 @@ INDEX_TEMPLATE = """
     }
     search.addEventListener("input", applyFilters);
     statusFilter.addEventListener("change", applyFilters);
+    if (companySortButton) {
+      companySortButton.addEventListener("click", sortRowsByCompany);
+    }
+    if (matchedSortButton) {
+      matchedSortButton.addEventListener("click", sortRowsByMatched);
+    }
     if (selectAll) {
       selectAll.addEventListener("change", () => {
         visibleSelectors().forEach((checkbox) => {
