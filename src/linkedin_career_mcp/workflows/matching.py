@@ -22,6 +22,7 @@ from reportlab.lib.units import inch
 from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer
 
 from linkedin_career_mcp.api_client import ApiLlmClient
+from linkedin_career_mcp.ats import calculate_ats_proxy_score
 from linkedin_career_mcp.config import Settings, load_settings
 from linkedin_career_mcp.errors import LinkedInCareerMcpError, WorkflowError
 from linkedin_career_mcp.models import DatePosted, JobDetails, JobPosting, JobSearchQuery
@@ -47,6 +48,7 @@ DEFAULT_BLACKLIST_PATH = Path(".blacklist")
 DEFAULT_OUTPUT_DIR = Path("output")
 DEFAULT_SOURCE_RESUME = "MP-RESUME-AGENTIC.pdf"
 DEFAULT_CURRENT_JOB_DESCRIPTION = "Senior_Platform_Software_Engineer(IC3).pdf"
+DEFAULT_PROFILE_SKILLS = "skills.md"
 TRACKING_WORKBOOK = Path("tracking/read_applications/linkedin_applications.xlsx")
 SUPPORTED_TEXT_SUFFIXES = {".csv", ".json", ".md", ".rst", ".text", ".txt"}
 SUPPORTED_PROFILE_SUFFIXES = SUPPORTED_TEXT_SUFFIXES | {".docx", ".pdf"}
@@ -129,10 +131,15 @@ RESUME_SECTION_HEADINGS = {
     "Education & Certifications",
 }
 JOB_DESCRIPTION_PROMPT_MAX_CHARS = 12_000
+CORE_SKILL_REPAIR_MAX_PER_CATEGORY = 14
 DISALLOWED_CORE_SKILLS = {
     "error budget",
     "error budgets",
     "error budget analysis",
+}
+PROFILE_SKILL_CATEGORY_ALIASES = {
+    "networking": "Distributed Systems & Cloud",
+    "networkinghardware": "Distributed Systems & Cloud",
 }
 LEADING_BULLET_RE = re.compile(
     r"^(?:[-*]|\u2022|\u2023|\u25e6|\u2043|\u2219|\u25cf|\u25cb)\s+"
@@ -599,6 +606,7 @@ class MatchingJobsWorkflow:
             profile_documents,
             current_job_description_name,
         )
+        profile_skill_sections = load_profile_skill_sections(profile_dir)
         blacklist = CompanyBlacklist.from_file(blacklist_path)
 
         candidates: list[JobDetails] = []
@@ -712,6 +720,8 @@ class MatchingJobsWorkflow:
                     append_tracking=job.job_id not in existing_application_job_ids,
                     stored_job_description=job.description,
                     artifact_mode=artifact_mode,
+                    profile_skill_sections=profile_skill_sections,
+                    progress_callback=progress_callback,
                 )
                 if artifact.resume_path and artifact.artifact_kind == "resume":
                     existing_resume_job_ids.add(job.job_id)
@@ -740,6 +750,7 @@ class MatchingJobsWorkflow:
             artifact_mode=artifact_mode,
             cover_letter_retry_attempts=cover_letter_retry_attempts,
             force_retry_job_ids=failed_cover_letter_job_ids,
+            profile_skill_sections=profile_skill_sections,
             progress_callback=progress_callback,
         )
         artifacts = list(artifacts_by_job_id.values())
@@ -783,6 +794,7 @@ class MatchingJobsWorkflow:
             profile_documents,
             current_job_description_name,
         )
+        profile_skill_sections = load_profile_skill_sections(profile_dir)
         tracking_path = output_dir / TRACKING_WORKBOOK
         application_database_path = output_dir / APPLICATION_DATABASE
         if tracking_path.exists():
@@ -844,6 +856,8 @@ class MatchingJobsWorkflow:
                     append_tracking=False,
                     stored_job_description=candidate.stored_job_description,
                     artifact_mode=artifact_mode,
+                    profile_skill_sections=profile_skill_sections,
+                    progress_callback=progress_callback,
                 )
             except LinkedInCareerMcpError as exc:
                 errors.append(f"{candidate.job.job_id}: {exc}")
@@ -864,6 +878,7 @@ class MatchingJobsWorkflow:
             artifact_mode=artifact_mode,
             cover_letter_retry_attempts=cover_letter_retry_attempts,
             force_retry_job_ids=failed_cover_letter_job_ids,
+            profile_skill_sections=profile_skill_sections,
             progress_callback=progress_callback,
         )
         artifacts = list(artifacts_by_job_id.values())
@@ -902,6 +917,7 @@ class MatchingJobsWorkflow:
         artifact_mode: ArtifactMode,
         cover_letter_retry_attempts: int,
         force_retry_job_ids: set[str] | None,
+        profile_skill_sections: list[tuple[str, list[str]]],
         progress_callback: ProgressCallback | None,
     ) -> list[CoverLetterRetryRecord]:
         if artifact_mode not in {"all", "cover-letters-only"}:
@@ -945,6 +961,8 @@ class MatchingJobsWorkflow:
                         append_tracking=False,
                         stored_job_description=candidate.stored_job_description,
                         artifact_mode="cover-letters-only",
+                        profile_skill_sections=profile_skill_sections,
+                        progress_callback=progress_callback,
                     )
                 except LinkedInCareerMcpError as exc:
                     error = f"{candidate.job.job_id}: cover letter retry {attempt}: {exc}"
@@ -991,6 +1009,8 @@ class MatchingJobsWorkflow:
         append_tracking: bool,
         stored_job_description: str | None = None,
         artifact_mode: ArtifactMode,
+        profile_skill_sections: list[tuple[str, list[str]]],
+        progress_callback: ProgressCallback | None = None,
     ) -> TailoredResumeArtifact:
         artifact_kind: Literal["resume", "recommendations", "cover_letter"] = "cover_letter"
         resume_path: Path | None = None
@@ -1024,6 +1044,23 @@ class MatchingJobsWorkflow:
                     output_dir=output_dir,
                     job=job,
                 )
+                repaired_resume_text, added_skills = _repair_resume_skills_from_ats(
+                    resume_text=resume_text,
+                    resume_path=resume_path,
+                    job_description=_job_description_context(job),
+                    profile_skill_sections=profile_skill_sections,
+                )
+                if added_skills:
+                    write_resume_pdf(
+                        resume_text=repaired_resume_text,
+                        output_dir=output_dir,
+                        job=job,
+                    )
+                    if progress_callback is not None:
+                        progress_callback(
+                            "ATS skill repair added "
+                            f"{', '.join(added_skills)} for job id '{job.job_id}'."
+                        )
 
         if artifact_mode in {"all", "cover-letters-only"}:
             cover_letter_text = await self._generate_cover_letter_text(
@@ -1209,6 +1246,234 @@ def load_profile_documents(profile_dir: Path) -> list[ProfileDocument]:
         supported = ", ".join(sorted(SUPPORTED_PROFILE_SUFFIXES))
         raise WorkflowError(f"No supported profile files found in {profile_dir} ({supported}).")
     return documents
+
+
+def load_profile_skill_sections(
+    profile_dir: Path,
+    *,
+    skills_name: str = DEFAULT_PROFILE_SKILLS,
+) -> list[tuple[str, list[str]]]:
+    skills_path = profile_dir / skills_name
+    if not skills_path.is_file():
+        return []
+    return _parse_profile_skill_sections(
+        skills_path.read_text(encoding="utf-8", errors="replace")
+    )
+
+
+def _parse_profile_skill_sections(text: str) -> list[tuple[str, list[str]]]:
+    default_categories = {
+        _normalize_label(category): category
+        for category, _ in DEFAULT_CORE_TECHNICAL_SKILLS
+    }
+    sections_by_category: dict[str, list[str]] = {}
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        line = re.sub(r"^(?:[-*+]|\d+\.)\s+", "", line).strip()
+        line = line.replace("**", "")
+        if ":" not in line:
+            continue
+        raw_category, raw_skills = line.split(":", 1)
+        category = _match_core_skill_category(
+            raw_category.strip(),
+            default_categories=default_categories,
+        )
+        if category is None:
+            continue
+        skills = [
+            skill
+            for item in re.split(r",|;", raw_skills)
+            if (
+                skill := _clean_profile_skill_item(item)
+            )
+            and _is_allowed_core_skill(skill)
+        ]
+        if not skills:
+            continue
+        sections_by_category.setdefault(category, []).extend(skills)
+
+    return [
+        (category, _dedupe_preserve_order(sections_by_category[category]))
+        for category, _ in DEFAULT_CORE_TECHNICAL_SKILLS
+        if category in sections_by_category
+    ]
+
+
+def _match_core_skill_category(
+    category: str,
+    *,
+    default_categories: Mapping[str, str],
+) -> str | None:
+    normalized = _normalize_label(re.sub(r"\([^)]*\)", "", category))
+    if normalized in default_categories:
+        return default_categories[normalized]
+    if normalized in PROFILE_SKILL_CATEGORY_ALIASES:
+        return PROFILE_SKILL_CATEGORY_ALIASES[normalized]
+    for default_key, default_category in default_categories.items():
+        if normalized.startswith(default_key) or default_key.startswith(normalized):
+            return default_category
+    return None
+
+
+def _clean_profile_skill_item(text: str) -> str:
+    skill = _clean_list_item_text(text)
+    skill = re.sub(r"\s+", " ", skill).strip(" \t\r\n.")
+    return skill
+
+
+def _repair_resume_skills_from_ats(
+    *,
+    resume_text: str,
+    resume_path: Path,
+    job_description: str,
+    profile_skill_sections: list[tuple[str, list[str]]],
+) -> tuple[str, tuple[str, ...]]:
+    if not profile_skill_sections or not resume_path.is_file() or not job_description.strip():
+        return resume_text, ()
+    score = calculate_ats_proxy_score(
+        resume_pdf=resume_path.read_bytes(),
+        job_description=job_description,
+    )
+    additions = _profile_skill_additions_for_missing_terms(
+        missing_terms=score.missing_high_value_terms,
+        profile_skill_sections=profile_skill_sections,
+    )
+    if not additions:
+        return resume_text, ()
+    repaired_text, added_skills = _add_core_skills_to_resume_text(
+        resume_text=resume_text,
+        additions=additions,
+    )
+    return repaired_text, added_skills
+
+
+def _profile_skill_additions_for_missing_terms(
+    *,
+    missing_terms: tuple[str, ...],
+    profile_skill_sections: list[tuple[str, list[str]]],
+) -> dict[str, list[str]]:
+    if not missing_terms:
+        return {}
+    skill_index = _profile_skill_match_index(profile_skill_sections)
+    additions: dict[str, list[str]] = {}
+    added_terms: set[str] = set()
+    for term in missing_terms:
+        term_key = _normalize_skill_match_key(term)
+        if not term_key or term_key in added_terms:
+            continue
+        match = skill_index.get(term_key)
+        if match is None:
+            match = _find_embedded_profile_skill_match(
+                term=term,
+                profile_skill_sections=profile_skill_sections,
+            )
+        if match is None:
+            continue
+        category, skill = match
+        additions.setdefault(category, []).append(skill)
+        added_terms.add(term_key)
+    return {
+        category: _dedupe_preserve_order(skills)
+        for category, skills in additions.items()
+    }
+
+
+def _profile_skill_match_index(
+    profile_skill_sections: list[tuple[str, list[str]]],
+) -> dict[str, tuple[str, str]]:
+    index: dict[str, tuple[str, str]] = {}
+    for category, skills in profile_skill_sections:
+        for skill in skills:
+            for key in _profile_skill_match_keys(skill):
+                index.setdefault(key, (category, skill))
+    return index
+
+
+def _profile_skill_match_keys(skill: str) -> set[str]:
+    keys = {_normalize_skill_match_key(skill)}
+    keys.update(
+        _normalize_skill_match_key(value)
+        for value in re.findall(r"\(([A-Za-z0-9.+#/-]{2,})\)", skill)
+    )
+    if re.search(r"\bLLM\b", skill, flags=re.IGNORECASE):
+        keys.add("llm")
+    normalized = _normalize_skill_match_key(skill)
+    if "restful" in normalized and "api" in normalized:
+        keys.update({"rest", "restapi"})
+    if "rolebasedaccesscontrol" in normalized:
+        keys.add("rbac")
+    return {key for key in keys if key}
+
+
+def _find_embedded_profile_skill_match(
+    *,
+    term: str,
+    profile_skill_sections: list[tuple[str, list[str]]],
+) -> tuple[str, str] | None:
+    normalized_term = _normalize_skill_match_key(term)
+    if not normalized_term or normalized_term in {"ai", "api", "cloud"}:
+        return None
+    if len(normalized_term) < 4 and normalized_term not in {"llm", "oci", "rbac"}:
+        return None
+    for category, skills in profile_skill_sections:
+        for skill in skills:
+            skill_key = _normalize_skill_match_key(skill)
+            if normalized_term in skill_key:
+                return category, skill
+    return None
+
+
+def _add_core_skills_to_resume_text(
+    *,
+    resume_text: str,
+    additions: dict[str, list[str]],
+) -> tuple[str, tuple[str, ...]]:
+    lines = resume_text.splitlines()
+    repaired_lines: list[str] = []
+    added_skills: list[str] = []
+    in_core_skills = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped == "Core Technical Skills":
+            in_core_skills = True
+            repaired_lines.append(line)
+            continue
+        if in_core_skills and stripped in RESUME_SECTION_HEADINGS - {"Core Technical Skills"}:
+            in_core_skills = False
+        if in_core_skills and stripped.startswith("- ") and ":" in stripped:
+            prefix, raw_skills = stripped[2:].split(":", 1)
+            category = prefix.strip()
+            skills = [
+                skill
+                for item in raw_skills.split(",")
+                if (skill := _clean_profile_skill_item(item))
+            ]
+            for skill in additions.get(category, []):
+                if len(skills) >= CORE_SKILL_REPAIR_MAX_PER_CATEGORY:
+                    break
+                if _skill_already_listed(skill, skills):
+                    continue
+                skills.append(skill)
+                added_skills.append(skill)
+            line = f"- {category}: {', '.join(_dedupe_preserve_order(skills))}"
+        repaired_lines.append(line)
+    if not added_skills:
+        return resume_text, ()
+    return "\n".join(repaired_lines).strip(), tuple(added_skills)
+
+
+def _skill_already_listed(skill: str, listed_skills: list[str]) -> bool:
+    skill_keys = _profile_skill_match_keys(skill)
+    return any(
+        skill_keys & _profile_skill_match_keys(listed_skill)
+        for listed_skill in listed_skills
+    )
+
+
+def _normalize_skill_match_key(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", text.casefold())
 
 
 def format_profile_context(documents: list[ProfileDocument], *, max_chars: int = 120_000) -> str:

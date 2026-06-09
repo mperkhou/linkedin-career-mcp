@@ -26,6 +26,9 @@ isolation, testable workflows, practical automation, and human-in-the-loop guard
   targeted LLM-written opening, Oracle-current-role, and prior-experience fragments. Prompts
   use a cleaned role-focused job description that removes obvious company boilerplate before
   LLM calls.
+- **ATS-informed skill repair**: after the local ATS proxy score identifies missing high-value
+  JOD terms, the workflow checks `profile/skills.md` and adds matching known skills to the
+  appropriate Core Technical Skills category before storing the final resume PDF.
 - **Duplicate-aware workflow**: uses SQLite job IDs to skip openings that already have the
   requested artifact type, and does not count skipped jobs toward the requested run size.
 - **Local application tracker**: Flask + SQLite web UI for search/filter, status updates,
@@ -53,21 +56,39 @@ application artifacts while preserving a human-owned application workflow.
 
 Zooming in on the templating layer from the workflow above, this example shows how a
 resume or cover-letter artifact is assembled from fixed local sections and targeted
-generated sections.
+generated sections. This is also where the resume workflow keeps the document easy for ATS
+parsers to read: the template owns the structure, while each generated section is bounded to
+the part of the document it is allowed to change.
 
 ![Section-aware resume and cover-letter template generation](docs/assets/section-aware-template-generation.svg)
 
 Resume and cover-letter artifacts are assembled from a mix of stable local template sections
 and job-specific generated sections. Red sections stay static across jobs; blue sections are
 generated through focused prompts that compare the CJD, SCJDiR, and JOD before rendering the
-final PDF.
+final PDF. After a resume PDF is rendered, a local ATS proxy can identify missing high-value
+terms and, when those terms are present in `profile/skills.md`, repair the Core Technical
+Skills section before the artifact is stored.
+
+## ATS Feedback Loop
+
+The ATS feature is a local quality signal, not a claim to reproduce any one vendor's ranking
+system. It gives the workflow a repeatable way to inspect generated resumes before they land
+in the tracker:
+
+- extract text from the generated PDF and compare it against the cleaned JOD
+- calculate an overall proxy score plus parsing, keyword, semantic, and formatting-risk
+  sub-scores
+- surface missing high-value terms in the Flask tracker so the gap is visible during review
+- check missing terms against `profile/skills.md` during resume generation, then add factual
+  matches to the appropriate Core Technical Skills category without another LLM call
+- store the final repaired PDF and updated ATS breakdown in SQLite
 
 ## Local Tracker Convenience
 
 The Flask tracker turns generated artifacts into a practical application queue: search and
 filter jobs, open LinkedIn/JOD comparison/resume/cover-letter links, update application
-status, keep notes, sync from local output, and clean up selected rows without leaving the
-local workflow.
+status, inspect ATS score details, keep notes, sync from local output, and clean up selected
+rows without leaving the local workflow.
 
 ![Annotated local Flask application tracker](docs/assets/flask-application-tracker-annotated.png)
 
@@ -396,6 +417,10 @@ src/linkedin_career_mcp/
 ## Inputs
 
 Place private profile material in `profile/`. The directory is intentionally ignored by Git.
+Add `profile/skills.md` to maintain an expanded category-by-category skill inventory used by
+the ATS-informed resume repair pass. Only skills that are both missing from the generated
+resume and present in this file are added back into the generated Core Technical Skills
+section.
 
 Supported profile file types:
 
