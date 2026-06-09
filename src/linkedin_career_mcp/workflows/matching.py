@@ -28,6 +28,15 @@ from linkedin_career_mcp.errors import LinkedInCareerMcpError, WorkflowError
 from linkedin_career_mcp.models import DatePosted, JobDetails, JobPosting, JobSearchQuery
 from linkedin_career_mcp.ollama import OllamaClient
 from linkedin_career_mcp.providers import LinkedInPublicJobsProvider
+from linkedin_career_mcp.query_optimizer import (
+    QueryOutcome,
+    ScoredQuery,
+    StoredQueryOutcome,
+    historical_query_candidates,
+    load_query_outcomes,
+    rank_search_queries,
+    record_query_outcome,
+)
 from linkedin_career_mcp.services import JobSearchService
 from linkedin_career_mcp.webapp import (
     DEFAULT_DATABASE as APPLICATION_DATABASE,
@@ -576,6 +585,44 @@ class _RegenerationCandidate:
     stored_job_description: str | None
 
 
+@dataclass
+class _QueryRunOutcome:
+    scored_query: ScoredQuery
+    results_returned: int = 0
+    fresh_jobs_accepted: int = 0
+    skipped_existing: int = 0
+    skipped_blacklisted: int = 0
+    skipped_workplace_type: int = 0
+    skipped_experience_level: int = 0
+    resumes_generated: int = 0
+    ats_scores: list[int] = field(default_factory=list)
+
+    @property
+    def query(self) -> JobSearchQuery:
+        return self.scored_query.query
+
+    def to_query_outcome(self, *, artifact_mode: ArtifactMode) -> QueryOutcome:
+        average_ats_score = (
+            sum(self.ats_scores) / len(self.ats_scores)
+            if self.ats_scores
+            else None
+        )
+        return QueryOutcome(
+            query=self.query,
+            profile_match=self.scored_query.profile_match,
+            query_score=self.scored_query.score,
+            results_returned=self.results_returned,
+            fresh_jobs_accepted=self.fresh_jobs_accepted,
+            skipped_existing=self.skipped_existing,
+            skipped_blacklisted=self.skipped_blacklisted,
+            skipped_workplace_type=self.skipped_workplace_type,
+            skipped_experience_level=self.skipped_experience_level,
+            resumes_generated=self.resumes_generated,
+            average_ats_score=average_ats_score,
+            artifact_mode=artifact_mode,
+        )
+
+
 MAX_ITERATIVE_SEARCHES = 1000
 MIN_SEARCHES_BEFORE_STOP = 4
 
@@ -633,31 +680,38 @@ class MatchingJobsWorkflow:
             if artifact_mode == "cover-letters-only"
             else existing_resume_job_ids
         )
+        query_history = load_query_outcomes(application_database_path)
         search_memory = _SearchMemory()
         all_search_queries: list[JobSearchQuery] = []
+        query_run_outcomes: list[_QueryRunOutcome] = []
+        accepted_job_outcomes: dict[str, _QueryRunOutcome] = {}
         min_searches_before_stop = min(max(max_queries, 1), MIN_SEARCHES_BEFORE_STOP)
 
         while (
             len(candidates) < max_jobs
             or search_memory.total_searches < min_searches_before_stop
         ) and search_memory.total_searches < MAX_ITERATIVE_SEARCHES:
-            search_queries = await self._generate_search_queries(
+            scored_search_queries = await self._generate_search_queries(
                 profile_context=profile_context,
                 location=location,
                 date_posted=date_posted,
                 limit_per_query=limit_per_query,
                 max_queries=max_queries,
+                query_history=query_history,
                 search_memory=search_memory,
             )
 
             new_query_found = False
-            for query in search_queries:
+            for scored_query in scored_search_queries:
+                query = scored_query.query
                 if search_memory.total_searches >= MAX_ITERATIVE_SEARCHES:
                     break
                 if search_memory.has_query(query):
                     continue
                 new_query_found = True
                 all_search_queries.append(query)
+                query_outcome = _QueryRunOutcome(scored_query=scored_query)
+                query_run_outcomes.append(query_outcome)
                 excluded_job_ids = existing_artifact_job_ids | seen_job_ids
                 search_query = query.model_copy(update={"exclude_job_ids": excluded_job_ids})
                 try:
@@ -667,6 +721,7 @@ class MatchingJobsWorkflow:
                     search_memory.register_result(query, 0)
                     continue
                 search_memory.register_result(query, len(result.jobs))
+                query_outcome.results_returned = len(result.jobs)
                 for posting in result.jobs:
                     if len(candidates) >= max_jobs:
                         break
@@ -675,9 +730,11 @@ class MatchingJobsWorkflow:
                     seen_job_ids.add(posting.job_id)
                     if posting.job_id in existing_artifact_job_ids:
                         skipped_existing.append(_job_label(posting.company, posting.title))
+                        query_outcome.skipped_existing += 1
                         continue
                     if blacklist.matches(posting.company):
                         skipped_blacklisted.append(_job_label(posting.company, posting.title))
+                        query_outcome.skipped_blacklisted += 1
                         continue
                     try:
                         details = await self._service.get_details(
@@ -689,16 +746,21 @@ class MatchingJobsWorkflow:
                     details = _merge_posting_with_fetched_details(posting, details)
                     if blacklist.matches(details.company):
                         skipped_blacklisted.append(_job_label(details.company, details.title))
+                        query_outcome.skipped_blacklisted += 1
                         continue
                     if not _is_remote_or_hybrid_job(details, query):
                         skipped_workplace_type.append(_job_label(details.company, details.title))
+                        query_outcome.skipped_workplace_type += 1
                         continue
                     if _is_disallowed_experience_level(details):
                         skipped_experience_level.append(
                             _job_label(details.company, details.title)
                         )
+                        query_outcome.skipped_experience_level += 1
                         continue
                     candidates.append(details)
+                    query_outcome.fresh_jobs_accepted += 1
+                    accepted_job_outcomes[details.job_id] = query_outcome
                 if (
                     len(candidates) >= max_jobs
                     and search_memory.total_searches >= min_searches_before_stop
@@ -737,6 +799,12 @@ class MatchingJobsWorkflow:
                 if artifact.cover_letter_path:
                     existing_cover_letter_job_ids.add(job.job_id)
                 existing_application_job_ids.add(job.job_id)
+                if outcome := accepted_job_outcomes.get(job.job_id):
+                    _update_query_outcome_from_artifact(
+                        outcome=outcome,
+                        artifact=artifact,
+                        job=job,
+                    )
             except LinkedInCareerMcpError as exc:
                 errors.append(f"{job.job_id}: {exc}")
                 if artifact_mode in {"all", "cover-letters-only"}:
@@ -764,6 +832,11 @@ class MatchingJobsWorkflow:
         )
         artifacts = list(artifacts_by_job_id.values())
         artifact_audit = audit_application_artifacts(application_database_path)
+        _record_query_run_outcomes(
+            database_path=application_database_path,
+            outcomes=query_run_outcomes,
+            artifact_mode=artifact_mode,
+        )
 
         return MatchingJobsWorkflowResult(
             profile_files=[str(document.path) for document in profile_documents],
@@ -1125,8 +1198,9 @@ class MatchingJobsWorkflow:
         date_posted: DatePosted,
         limit_per_query: int,
         max_queries: int,
+        query_history: list[StoredQueryOutcome],
         search_memory: _SearchMemory | None = None,
-    ) -> list[JobSearchQuery]:
+    ) -> list[ScoredQuery]:
         plan = await self._ollama.generate_json(
             _search_query_prompt(
                 profile_context=_limit_context(profile_context, max_chars=8_000),
@@ -1160,15 +1234,29 @@ class MatchingJobsWorkflow:
                 continue
 
         supplemented_queries = _supplement_search_queries(
-            base_queries,
+            [
+                *base_queries,
+                *historical_query_candidates(
+                    query_history,
+                    location=location,
+                    date_posted=date_posted,
+                    limit_per_query=limit_per_query,
+                ),
+            ],
             location=location,
             date_posted=date_posted,
             limit_per_query=limit_per_query,
         )
         if not supplemented_queries:
             raise WorkflowError("The LLM did not return usable LinkedIn search queries.")
-        return _expand_remote_and_hybrid_queries(
+        candidate_pool = _expand_remote_and_hybrid_queries(
             supplemented_queries,
+            max_queries=max(max_queries * 3, max_queries),
+        )
+        return rank_search_queries(
+            candidate_pool,
+            profile_context=profile_context,
+            history=query_history,
             max_queries=max_queries,
         )
 
@@ -1873,6 +1961,39 @@ def _regeneration_candidate_from_record(record: ApplicationJobRecord) -> _Regene
         ),
         stored_job_description=record.job_description,
     )
+
+
+def _update_query_outcome_from_artifact(
+    *,
+    outcome: _QueryRunOutcome,
+    artifact: TailoredResumeArtifact,
+    job: JobDetails,
+) -> None:
+    if artifact.artifact_kind == "resume":
+        outcome.resumes_generated += 1
+    if not artifact.resume_path or artifact.artifact_kind != "resume":
+        return
+    resume_path = Path(artifact.resume_path)
+    if not resume_path.is_file():
+        return
+    score = calculate_ats_proxy_score(
+        resume_pdf=resume_path.read_bytes(),
+        job_description=_job_description_context(job),
+    )
+    outcome.ats_scores.append(score.overall_score)
+
+
+def _record_query_run_outcomes(
+    *,
+    database_path: Path,
+    outcomes: list[_QueryRunOutcome],
+    artifact_mode: ArtifactMode,
+) -> None:
+    for outcome in outcomes:
+        record_query_outcome(
+            database_path,
+            outcome.to_query_outcome(artifact_mode=artifact_mode),
+        )
 
 
 def _merge_record_with_fetched_details(

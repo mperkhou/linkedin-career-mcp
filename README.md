@@ -21,6 +21,9 @@ isolation, testable workflows, practical automation, and human-in-the-loop guard
   sort order.
 - **Profile-aware search planning**: reads local profile files and asks an LLM to propose
   targeted LinkedIn queries.
+- **Contextual query optimization**: scores planned and historically successful LinkedIn
+  queries with a lightweight local bandit-style ranking pass, balancing profile fit, expected
+  fresh yield, acceptance history, ATS quality, and exploration.
 - **Tailored resume and cover-letter generation**: renders job-specific PDF resumes from a
   structured local template, then generates cover letters from static template sections plus
   targeted LLM-written opening, Oracle-current-role, and prior-experience fragments. Prompts
@@ -97,6 +100,7 @@ rows without leaving the local workflow.
 ```text
 profile/* + .blacklist
   -> LLM search planner
+  -> contextual query optimizer + SQLite outcome history
   -> MCP/service search layer
   -> LinkedIn public job pages
   -> duplicate/company filters
@@ -119,6 +123,30 @@ and `resumes-only` runs, cover letters for `cover-letters-only` runs.
 LinkedIn's public guest endpoint does not expose a supported "exclude these job IDs"
 search parameter, so exclusion is applied inside this project after a public search page
 is returned. That still prevents duplicate detail requests and duplicate resume work.
+
+## Query Optimizer
+
+The matching workflow now treats the LLM's search plan as a candidate set rather than a fixed
+order. Before LinkedIn is queried, a local contextual optimizer expands the plan with prior
+successful keyword groups from SQLite, scores each candidate, then runs the highest-value
+queries while reserving a small slice for exploration.
+
+The first-pass score is deliberately cheap and explainable:
+
+```text
+query_score =
+  0.35 * profile_match
++ 0.25 * expected_fresh_results
++ 0.20 * historical_acceptance_rate
++ 0.15 * historical_ats_score
+- 0.05 * duplicate_or_skip_rate
+```
+
+Each executed query writes an outcome row to `search_query_outcomes` with the keywords, date
+filter, workplace type, experience level, returned results, fresh accepted jobs, existing or
+filtered skips, generated resumes, and average ATS score. Future runs use that local history to
+favor query shapes that produce fresh, relevant, high-quality applications without giving up
+controlled exploration.
 
 ## Local Web UI
 
@@ -388,13 +416,14 @@ Run the end-to-end profile-aware matching workflow:
 
 1. Read supported files from `profile/`.
 2. Generate LinkedIn search queries from the profile context.
-3. Expand promising searches across remote and hybrid workplace filters.
-4. Re-check fetched job metadata and skip explicit on-site search leaks.
-5. Filter blacklisted companies.
-6. Skip LinkedIn job IDs that already exist in SQLite with requested artifacts.
-7. Fetch public details for fresh jobs.
-8. Generate and render tailored resume and cover-letter PDFs.
-9. Append workbook rows and upsert SQLite tracker records.
+3. Add historical/supplemental query candidates and expand remote/hybrid variants.
+4. Rank candidate queries with the local query optimizer and SQLite outcome history.
+5. Re-check fetched job metadata and skip explicit on-site search leaks.
+6. Filter blacklisted companies.
+7. Skip LinkedIn job IDs that already exist in SQLite with requested artifacts.
+8. Fetch public details for fresh jobs.
+9. Generate and render tailored resume and cover-letter PDFs.
+10. Append workbook rows and upsert SQLite tracker records.
 
 The optional `artifact_mode` argument accepts `all`, `resumes-only`, or
 `cover-letters-only`; `all` is the default.
@@ -407,6 +436,7 @@ src/linkedin_career_mcp/
   config.py                  environment-driven settings
   models.py                  typed domain models
   ollama.py                  local Ollama client
+  query_optimizer.py         contextual LinkedIn query ranking and outcome history
   providers/
     linkedin_public.py       public LinkedIn guest-page adapter
   services.py                caps, filtering, and provider orchestration

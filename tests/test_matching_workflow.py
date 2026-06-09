@@ -488,6 +488,23 @@ async def test_matching_workflow_writes_resume_and_tracking(tmp_path: Path):
     assert row["date_matched"]
     assert row["date_posted"] == "2026-06-07"
 
+    with connect_database(database_path) as connection:
+        query_rows = connection.execute(
+            """
+            SELECT keywords, workplace_type, results_returned, fresh_jobs_accepted,
+                   skipped_blacklisted, resumes_generated, average_ats_score
+            FROM search_query_outcomes
+            ORDER BY id
+            """
+        ).fetchall()
+    assert query_rows
+    assert {row["workplace_type"] for row in query_rows} == {"remote", "hybrid"}
+    assert all(row["results_returned"] == 2 for row in query_rows)
+    assert sum(row["fresh_jobs_accepted"] for row in query_rows) == 1
+    assert sum(row["skipped_blacklisted"] for row in query_rows) == 1
+    assert sum(row["resumes_generated"] for row in query_rows) == 1
+    assert any(row["average_ats_score"] is not None for row in query_rows)
+
     workbook_path = output_dir / "tracking/read_applications/linkedin_applications.xlsx"
     assert workbook_path.exists()
     workbook = load_workbook(workbook_path)
