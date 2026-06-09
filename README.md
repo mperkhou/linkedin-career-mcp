@@ -119,6 +119,8 @@ The web UI is intentionally dense and work-focused:
 - status filter for pending/applied/N/A rows
 - direct links to LinkedIn, DB-backed PDF viewers, and DB-backed PDF downloads
 - `Posted` and `Matched` columns for LinkedIn posted date and local database match date
+- an `ATS` column with a local proxy score and expandable parsing, keyword, semantic, and
+  formatting-risk details, plus missing high-value JOD terms
 - per-row updates for `applied_to`, `date_applied`, and notes
 - automatic cleanup of `~/Downloads/mp_*.pdf` when an application is saved as applied
 - "Sync from output" to import workbook/PDF artifacts into SQLite
