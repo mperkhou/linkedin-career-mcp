@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="920" viewBox="0 0 1280 920" role="img" aria-labelledby="title desc">
   <title id="title">Section-aware resume and cover-letter template generation</title>
-  <desc id="desc">A document template diagram showing red static sections and blue generated sections connected to prompt generation, OpenRouter models, and CJD, SCJDiR, and JOD context.</desc>
+  <desc id="desc">A document template diagram showing red static sections and blue generated sections connected to prompt generation, OpenRouter models, CJD, SCJDiR, JOD context, and a local ATS skills repair pass.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#08111f"/>
@@ -76,7 +76,7 @@
   <rect width="1280" height="920" rx="32" fill="url(#grid)"/>
 
   <text x="66" y="72" class="title">Section-Aware Template Generation</text>
-  <text x="66" y="102" class="subtitle">Red sections stay fixed. Blue sections are generated from CJD, SCJDiR, and JOD by focused prompts.</text>
+  <text x="66" y="102" class="subtitle">Red sections stay fixed. Blue sections are generated from CJD, SCJDiR, and JOD; ATS repair adds known missing skills.</text>
 
   <g transform="translate(930 52)">
     <rect class="chip" x="0" y="0" width="244" height="44" rx="22"/>
@@ -194,5 +194,10 @@
     <rect class="chip" x="0" y="0" width="700" height="44" rx="22"/>
     <text x="20" y="18" class="tiny">Template contract</text>
     <text x="20" y="32" class="small">Red = stable template text. Blue = generated per job and constrained to its section.</text>
+  </g>
+  <g transform="translate(790 864)">
+    <rect class="dynamicChip" x="0" y="0" width="420" height="44" rx="22"/>
+    <text x="20" y="18" class="tiny">ATS repair</text>
+    <text x="20" y="32" class="small">Missing JOD terms found in skills.md are added before storage.</text>
   </g>
 </svg>
