@@ -8,6 +8,8 @@ DEFAULT_USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/125.0 Safari/537.36 linkedin-career-mcp/0.1.0"
 )
+DEFAULT_LLM_API_MODEL = "deepseek/deepseek-chat"
+DEFAULT_LLM_PLANNER_API_MODEL = "deepseek/deepseek-v4-flash"
 
 
 @dataclass(frozen=True)
@@ -23,7 +25,8 @@ class Settings:
 
     # External API LLM settings (primary, default)
     llm_api_base_url: str = "https://openrouter.ai/api/v1"
-    llm_api_model: str = "deepseek/deepseek-chat"
+    llm_api_model: str = DEFAULT_LLM_API_MODEL
+    llm_planner_api_model: str = DEFAULT_LLM_PLANNER_API_MODEL
     llm_api_key: str = ""
     llm_api_timeout_seconds: float = 120.0
     llm_provider: str = "api"  # "api" or "ollama"
@@ -44,7 +47,14 @@ def load_settings() -> Settings:
             "LINKEDIN_CAREER_MCP_LLM_API_BASE_URL",
             "https://openrouter.ai/api/v1",
         ),
-        llm_api_model=os.getenv("LINKEDIN_CAREER_MCP_LLM_API_MODEL", "deepseek/deepseek-chat"),
+        llm_api_model=os.getenv(
+            "LINKEDIN_CAREER_MCP_LLM_API_MODEL",
+            DEFAULT_LLM_API_MODEL,
+        ),
+        llm_planner_api_model=os.getenv(
+            "LINKEDIN_CAREER_MCP_LLM_PLANNER_API_MODEL",
+            DEFAULT_LLM_PLANNER_API_MODEL,
+        ),
         llm_api_key=os.getenv("LINKEDIN_CAREER_MCP_LLM_API_KEY", ""),
         llm_api_timeout_seconds=_float_env(
             "LINKEDIN_CAREER_MCP_LLM_API_TIMEOUT_SECONDS", 120.0

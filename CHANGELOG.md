@@ -1,5 +1,9 @@
 # linkedin-career-mcp CHANGELOG
 
+## 1.21.0 - PR #21: Split planner and artifact LLM models
+
+* commit `e2b0a2c`: Split planner and artifact LLM models
+
 ## 1.20.0 - PR #20: Add artifact workflow logging
 
 * commit `f4e30e5`: Add artifact workflow logging

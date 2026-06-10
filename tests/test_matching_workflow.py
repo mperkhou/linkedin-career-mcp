@@ -443,6 +443,46 @@ async def test_search_query_planning_falls_back_to_supplemental_queries_on_llm_f
     assert {query.workplace_type for query in queries} <= {"remote", "hybrid"}
 
 
+async def test_search_planning_uses_planner_llm_and_artifacts_use_artifact_llm():
+    artifact_llm = FakeOllama()
+    planner_llm = FakeOllama()
+    workflow = MatchingJobsWorkflow(
+        service=FakeJobService(),
+        ollama=artifact_llm,
+        planner_llm=planner_llm,
+    )
+
+    await workflow._generate_search_queries(
+        profile_context="Python platform automation OpenSearch distributed systems",
+        location="United States",
+        date_posted="past_month",
+        limit_per_query=5,
+        max_queries=4,
+        query_history=[],
+        search_memory=None,
+    )
+
+    assert planner_llm.json_prompts
+    assert not artifact_llm.json_prompts
+
+    await workflow._generate_resume_text(
+        source_resume=matching.ProfileDocument(
+            path=Path("resume.txt"),
+            text="Resume: built MCP servers and local LLM workflows.",
+        ),
+        current_job_description=None,
+        job=JobDetails(
+            job_id="111",
+            title="Platform Engineer",
+            company="Acme",
+            description="Build AI platform automation.",
+        ),
+    )
+
+    assert artifact_llm.text_prompts
+    assert not planner_llm.text_prompts
+
+
 def test_coerce_search_query_drops_internship_and_entry_level_filters():
     for experience_level in ("internship", "entry_level", "Entry level"):
         query = _coerce_search_query(

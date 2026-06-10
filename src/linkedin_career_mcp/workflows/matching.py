@@ -629,9 +629,16 @@ MIN_SEARCHES_BEFORE_STOP = 4
 
 
 class MatchingJobsWorkflow:
-    def __init__(self, *, service: JobSearchService, ollama: Any) -> None:
+    def __init__(
+        self,
+        *,
+        service: JobSearchService,
+        ollama: Any,
+        planner_llm: Any | None = None,
+    ) -> None:
         self._service = service
         self._ollama = ollama
+        self._planner_llm = planner_llm or ollama
 
     async def run(
         self,
@@ -1236,7 +1243,7 @@ class MatchingJobsWorkflow:
         search_memory: _SearchMemory | None = None,
     ) -> list[ScoredQuery]:
         try:
-            plan = await self._ollama.generate_json(
+            plan = await self._planner_llm.generate_json(
                 _search_query_prompt(
                     profile_context=_limit_context(profile_context, max_chars=8_000),
                     location=location,
@@ -3348,7 +3355,11 @@ def _size_tracking_columns(sheet: Worksheet) -> None:
         sheet.column_dimensions[chr(64 + index)].width = width
 
 
-def _build_llm_client(settings: Settings) -> ApiLlmClient | OllamaClient:
+def _build_llm_client(
+    settings: Settings,
+    *,
+    api_model: str | None = None,
+) -> ApiLlmClient | OllamaClient:
     """Build the LLM client based on the configured provider.
 
     Defaults to the external API (OpenRouter / DeepSeek). Local Ollama is
@@ -3373,10 +3384,22 @@ def _build_llm_client(settings: Settings) -> ApiLlmClient | OllamaClient:
         )
     return ApiLlmClient(
         base_url=settings.llm_api_base_url,
-        model=settings.llm_api_model,
+        model=api_model or settings.llm_api_model,
         api_key=settings.llm_api_key,
         timeout_seconds=settings.llm_api_timeout_seconds,
     )
+
+
+def _build_planner_llm_client(
+    settings: Settings,
+    artifact_llm: ApiLlmClient | OllamaClient,
+) -> ApiLlmClient | OllamaClient:
+    if settings.llm_provider.casefold().strip() != "api":
+        return artifact_llm
+    planner_model = settings.llm_planner_api_model.strip() or settings.llm_api_model
+    if planner_model == settings.llm_api_model:
+        return artifact_llm
+    return _build_llm_client(settings, api_model=planner_model)
 
 
 async def run_from_cli(
@@ -3392,7 +3415,8 @@ async def run_from_cli(
     )
     service = JobSearchService(provider=provider, max_results=settings.max_results)
     llm = _build_llm_client(settings)
-    workflow = MatchingJobsWorkflow(service=service, ollama=llm)
+    planner_llm = _build_planner_llm_client(settings, llm)
+    workflow = MatchingJobsWorkflow(service=service, ollama=llm, planner_llm=planner_llm)
     try:
         return await workflow.run(
             profile_dir=Path(args.profile_dir),
@@ -3411,6 +3435,8 @@ async def run_from_cli(
         )
     finally:
         await provider.aclose()
+        if planner_llm is not llm:
+            await planner_llm.aclose()
         await llm.aclose()
 
 
@@ -3509,6 +3535,19 @@ def _llm_settings_label(settings: Settings) -> str:
     if provider == "ollama":
         return f"ollama:{settings.ollama_model} ({settings.ollama_base_url})"
     return f"{provider}:{settings.llm_api_model} ({settings.llm_api_base_url})"
+
+
+def _workflow_llm_settings_label(settings: Settings) -> str:
+    provider = settings.llm_provider.casefold().strip()
+    if provider != "api":
+        return _llm_settings_label(settings)
+    planner_model = settings.llm_planner_api_model.strip() or settings.llm_api_model
+    if planner_model == settings.llm_api_model:
+        return _llm_settings_label(settings)
+    return (
+        f"{provider}:artifact={settings.llm_api_model}; "
+        f"planner={planner_model} ({settings.llm_api_base_url})"
+    )
 
 
 def _regenerate_processed_summary(result: MatchingJobsWorkflowResult) -> str:
@@ -3614,7 +3653,7 @@ def _build_workflow_logger(
     logger = _WorkflowRunLogger(
         output_dir=Path(args.output_dir),
         operation=operation,
-        llm_label=_llm_settings_label(settings),
+        llm_label=_workflow_llm_settings_label(settings),
     )
     print(f"Workflow log: {logger.path}", file=sys.stderr, flush=True)
     return logger

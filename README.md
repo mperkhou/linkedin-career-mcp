@@ -247,10 +247,19 @@ The matching workflow supports two LLM paths:
   OpenRouter with `deepseek/deepseek-chat`.
 - **Local Ollama**: fallback/local option, defaulting to `qwen3:4b`.
 
+For API-backed `match-jobs` runs, LinkedIn search-query planning can use a cheaper model
+than resume and cover-letter generation:
+
+- `LINKEDIN_CAREER_MCP_LLM_PLANNER_API_MODEL`: search planning only. Default:
+  `deepseek/deepseek-v4-flash`.
+- `LINKEDIN_CAREER_MCP_LLM_API_MODEL`: artifact generation for resumes and cover letters.
+  This is the quality-sensitive model and can be set in your shell profile.
+
 For the default API path:
 
 ```bash
 export LINKEDIN_CAREER_MCP_LLM_API_KEY="..."
+export LINKEDIN_CAREER_MCP_LLM_API_MODEL="deepseek/deepseek-v4-pro"
 make match-jobs
 ```
 
@@ -494,6 +503,8 @@ All settings are environment variables:
 - `LINKEDIN_CAREER_MCP_LLM_API_BASE_URL`: OpenAI-compatible API base URL.
   Default: `https://openrouter.ai/api/v1`.
 - `LINKEDIN_CAREER_MCP_LLM_API_MODEL`: API model. Default: `deepseek/deepseek-chat`.
+- `LINKEDIN_CAREER_MCP_LLM_PLANNER_API_MODEL`: API model for LinkedIn query planning.
+  Default: `deepseek/deepseek-v4-flash`.
 - `LINKEDIN_CAREER_MCP_LLM_API_KEY`: API key for the default API provider.
 - `LINKEDIN_CAREER_MCP_LLM_API_TIMEOUT_SECONDS`: API generation timeout. Default: `120`.
 - `LINKEDIN_CAREER_MCP_OLLAMA_BASE_URL`: Ollama API URL. Default: `http://127.0.0.1:11434`.
