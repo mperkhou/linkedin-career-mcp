@@ -7,7 +7,7 @@ import re
 import sys
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import UTC, date, datetime
 from html import escape
 from pathlib import Path
 from typing import Any, Literal
@@ -65,6 +65,7 @@ ArtifactMode = Literal["all", "resumes-only", "cover-letters-only"]
 ProgressCallback = Callable[[str], None]
 DISALLOWED_EXPERIENCE_LEVELS = {"internship", "entry_level"}
 SEARCH_EXPERIENCE_LEVELS = ("associate", "mid_senior", "director", "executive")
+NO_PUBLIC_JOB_DESCRIPTION = "No public job description was available."
 RESUME_HEADER_NAME = "Max Perkhounkov"
 LINKEDIN_PROFILE_LABEL = "linkedin.com/in/maxim-perkhounkov"
 LINKEDIN_PROFILE_URL = "https://www.linkedin.com/in/maxim-perkhounkov/"
@@ -807,6 +808,10 @@ class MatchingJobsWorkflow:
                     )
             except LinkedInCareerMcpError as exc:
                 errors.append(f"{job.job_id}: {exc}")
+                _emit_progress(
+                    progress_callback,
+                    f"Failed to generate artifacts for job id '{job.job_id}': {exc}",
+                )
                 if artifact_mode in {"all", "cover-letters-only"}:
                     failed_cover_letter_job_ids.add(job.job_id)
                 continue
@@ -900,7 +905,7 @@ class MatchingJobsWorkflow:
         candidates: list[_RegenerationCandidate] = []
         linkedin_fetch_count = 0
         for record in records:
-            if record.prompt_job_description or record.job_description:
+            if _record_has_usable_job_description(record):
                 candidates.append(_regeneration_candidate_from_record(record))
                 continue
             try:
@@ -910,6 +915,10 @@ class MatchingJobsWorkflow:
                 linkedin_fetch_count += 1
             except LinkedInCareerMcpError as exc:
                 errors.append(f"{record.job_id}: {exc}")
+                _emit_progress(
+                    progress_callback,
+                    f"Failed to fetch LinkedIn details for job id '{record.job_id}': {exc}",
+                )
                 continue
             candidates.append(
                 _RegenerationCandidate(
@@ -944,6 +953,10 @@ class MatchingJobsWorkflow:
                 )
             except LinkedInCareerMcpError as exc:
                 errors.append(f"{candidate.job.job_id}: {exc}")
+                _emit_progress(
+                    progress_callback,
+                    f"Failed to generate artifacts for job id '{candidate.job.job_id}': {exc}",
+                )
                 if artifact_mode in {"all", "cover-letters-only"}:
                     failed_cover_letter_job_ids.add(candidate.job.job_id)
                 continue
@@ -1102,6 +1115,7 @@ class MatchingJobsWorkflow:
         cover_letter_path: Path | None = None
 
         if artifact_mode in {"all", "resumes-only"}:
+            _emit_progress(progress_callback, f"Generating resume for job id '{job.job_id}'.")
             resume_text = await self._generate_resume_text(
                 source_resume=source_resume,
                 current_job_description=current_job_description,
@@ -1121,12 +1135,20 @@ class MatchingJobsWorkflow:
                     output_dir=output_dir,
                     job=job,
                 )
+                _emit_progress(
+                    progress_callback,
+                    f"Wrote resume recommendations for job id '{job.job_id}': {resume_path}",
+                )
                 recommendations_path = resume_path
             else:
                 resume_path = write_resume_pdf(
                     resume_text=resume_text,
                     output_dir=output_dir,
                     job=job,
+                )
+                _emit_progress(
+                    progress_callback,
+                    f"Wrote resume PDF for job id '{job.job_id}': {resume_path}",
                 )
                 repaired_resume_text, added_skills = _repair_resume_skills_from_ats(
                     resume_text=resume_text,
@@ -1147,6 +1169,10 @@ class MatchingJobsWorkflow:
                         )
 
         if artifact_mode in {"all", "cover-letters-only"}:
+            _emit_progress(
+                progress_callback,
+                f"Generating cover letter for job id '{job.job_id}'.",
+            )
             cover_letter_text = await self._generate_cover_letter_text(
                 source_resume=source_resume,
                 current_job_description=current_job_description,
@@ -1156,6 +1182,10 @@ class MatchingJobsWorkflow:
                 cover_letter_text=cover_letter_text,
                 output_dir=output_dir,
                 job=job,
+            )
+            _emit_progress(
+                progress_callback,
+                f"Wrote cover letter PDF for job id '{job.job_id}': {cover_letter_path}",
             )
 
         if append_tracking:
@@ -1175,9 +1205,13 @@ class MatchingJobsWorkflow:
             resume_path=resume_path,
             cover_letter_path=cover_letter_path,
             job_description=stored_job_description,
-            prompt_job_description=prompt_job_description,
+            prompt_job_description=_usable_job_description(prompt_job_description),
             date_posted=_job_date_posted(job),
             experience_level=job.seniority_level,
+        )
+        _emit_progress(
+            progress_callback,
+            f"Stored artifacts in database for job id '{job.job_id}'.",
         )
         return TailoredResumeArtifact(
             job_id=job.job_id,
@@ -1954,6 +1988,7 @@ def _split_regeneration_job_ids(job_ids: list[str]) -> list[str]:
 
 
 def _regeneration_candidate_from_record(record: ApplicationJobRecord) -> _RegenerationCandidate:
+    job_description = _record_job_description(record)
     return _RegenerationCandidate(
         job=JobDetails(
             job_id=record.job_id,
@@ -1961,11 +1996,37 @@ def _regeneration_candidate_from_record(record: ApplicationJobRecord) -> _Regene
             company=record.company or None,
             job_url=record.linkedin_url or None,
             listed_at=record.date_posted,
-            description=record.job_description or record.prompt_job_description,
+            description=job_description,
             seniority_level=record.experience_level,
         ),
-        stored_job_description=record.job_description,
+        stored_job_description=_usable_job_description(record.job_description),
     )
+
+
+def _record_has_usable_job_description(record: ApplicationJobRecord) -> bool:
+    return _record_job_description(record) is not None
+
+
+def _record_job_description(record: ApplicationJobRecord) -> str | None:
+    return (
+        _usable_job_description(record.job_description)
+        or _usable_job_description(record.prompt_job_description)
+    )
+
+
+def _usable_job_description(value: str | None) -> str | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if _is_placeholder_job_description(text):
+        return None
+    return text
+
+
+def _is_placeholder_job_description(value: str) -> bool:
+    normalized = re.sub(r"\s+", " ", value).strip().casefold().rstrip(".")
+    placeholder = NO_PUBLIC_JOB_DESCRIPTION.casefold().rstrip(".")
+    return normalized == placeholder
 
 
 def _update_query_outcome_from_artifact(
@@ -2005,6 +2066,7 @@ def _merge_record_with_fetched_details(
     record: ApplicationJobRecord,
     details: JobDetails,
 ) -> JobDetails:
+    record_description = _record_job_description(record)
     return JobDetails(
         job_id=record.job_id,
         title=details.title if details.title != "Unknown title" else record.job_title,
@@ -2016,7 +2078,7 @@ def _merge_record_with_fetched_details(
         company_url=details.company_url,
         workplace_type=details.workplace_type,
         source=details.source,
-        description=details.description or record.job_description or record.prompt_job_description,
+        description=details.description or record_description,
         seniority_level=details.seniority_level or record.experience_level,
         employment_type=details.employment_type,
         job_function=details.job_function,
@@ -2087,7 +2149,7 @@ def _posted_date_value(value: Any) -> str | None:
 
 def _job_description_context(job: JobDetails) -> str:
     description = _clean_job_description_for_prompt(
-        job.description or "No public job description was available."
+        job.description or NO_PUBLIC_JOB_DESCRIPTION
     )
     return _limit_context(description, max_chars=JOB_DESCRIPTION_PROMPT_MAX_CHARS)
 
@@ -2095,7 +2157,7 @@ def _job_description_context(job: JobDetails) -> str:
 def _clean_job_description_for_prompt(description: str) -> str:
     original = _normalize_job_description_text(description)
     if not original:
-        return "No public job description was available."
+        return NO_PUBLIC_JOB_DESCRIPTION
 
     cleaned = _trim_low_signal_preamble(original)
     cleaned = _trim_trailing_boilerplate(cleaned)
@@ -3068,8 +3130,48 @@ def _emit_job_progress(
     )
 
 
+def _emit_progress(progress_callback: ProgressCallback | None, message: str) -> None:
+    if progress_callback is not None:
+        progress_callback(message)
+
+
 def _stderr_progress(message: str) -> None:
     print(message, file=sys.stderr, flush=True)
+
+
+class _WorkflowRunLogger:
+    def __init__(self, *, output_dir: Path, operation: str, llm_label: str) -> None:
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        self.path = output_dir / "logs" / f"{timestamp}_{operation}.jsonl"
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.write("start", operation=operation, llm=llm_label)
+
+    def progress(self, message: str) -> None:
+        _stderr_progress(message)
+        self.write("progress", message=message)
+
+    def result(self, result: MatchingJobsWorkflowResult) -> None:
+        self.write(
+            "result",
+            jobs_found=result.jobs_found,
+            resumes_created=result.resumes_created,
+            cover_letters_created=result.cover_letters_created,
+            recommendations_created=result.recommendations_created,
+            errors=result.errors,
+            artifact_audit=result.artifact_audit.model_dump(mode="json"),
+        )
+
+    def failure(self, exc: BaseException) -> None:
+        self.write("failure", error_type=type(exc).__name__, error=str(exc))
+
+    def write(self, event: str, **fields: object) -> None:
+        record = {
+            "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
+            "event": event,
+            **fields,
+        }
+        with self.path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, ensure_ascii=True) + "\n")
 
 
 def _job_label(company: str | None, title: str | None) -> str:
@@ -3277,8 +3379,13 @@ def _build_llm_client(settings: Settings) -> ApiLlmClient | OllamaClient:
     )
 
 
-async def run_from_cli(args: argparse.Namespace) -> MatchingJobsWorkflowResult:
-    settings = load_settings()
+async def run_from_cli(
+    args: argparse.Namespace,
+    *,
+    settings: Settings | None = None,
+    progress_callback: ProgressCallback | None = None,
+) -> MatchingJobsWorkflowResult:
+    settings = settings or load_settings()
     provider = LinkedInPublicJobsProvider(
         user_agent=settings.user_agent,
         timeout_seconds=settings.timeout_seconds,
@@ -3300,7 +3407,7 @@ async def run_from_cli(args: argparse.Namespace) -> MatchingJobsWorkflowResult:
             max_jobs=args.max_jobs,
             artifact_mode=args.artifact_mode,
             cover_letter_retry_attempts=args.cover_letter_retries,
-            progress_callback=_stderr_progress,
+            progress_callback=progress_callback or _stderr_progress,
         )
     finally:
         await provider.aclose()
@@ -3498,11 +3605,36 @@ def _print_result_status(result: MatchingJobsWorkflowResult) -> None:
         print(line, file=sys.stderr, flush=True)
 
 
+def _build_workflow_logger(
+    args: argparse.Namespace,
+    *,
+    operation: str,
+    settings: Settings,
+) -> _WorkflowRunLogger:
+    logger = _WorkflowRunLogger(
+        output_dir=Path(args.output_dir),
+        operation=operation,
+        llm_label=_llm_settings_label(settings),
+    )
+    print(f"Workflow log: {logger.path}", file=sys.stderr, flush=True)
+    return logger
+
+
 def main() -> None:
     parser = build_arg_parser()
-    result = asyncio.run(run_from_cli(parser.parse_args()))
+    args = parser.parse_args()
+    settings = load_settings()
+    logger = _build_workflow_logger(args, operation="match-jobs", settings=settings)
+    try:
+        result = asyncio.run(
+            run_from_cli(args, settings=settings, progress_callback=logger.progress)
+        )
+    except Exception as exc:
+        logger.failure(exc)
+        raise
     print(json.dumps(result.model_dump(mode="json"), indent=2))
     _print_result_status(result)
+    logger.result(result)
 
 
 def regenerate_main() -> None:
@@ -3510,17 +3642,23 @@ def regenerate_main() -> None:
     args = parser.parse_args()
     settings = load_settings()
     print(f"LLM: {_llm_settings_label(settings)}", file=sys.stderr, flush=True)
-    result = asyncio.run(
-        run_regenerate_from_cli(
-            args,
-            settings=settings,
-            artifact_mode="resumes-only",
-            progress_callback=_stderr_progress,
+    logger = _build_workflow_logger(args, operation="regenerate-resumes", settings=settings)
+    try:
+        result = asyncio.run(
+            run_regenerate_from_cli(
+                args,
+                settings=settings,
+                artifact_mode="resumes-only",
+                progress_callback=logger.progress,
+            )
         )
-    )
+    except Exception as exc:
+        logger.failure(exc)
+        raise
     print(json.dumps(result.model_dump(mode="json"), indent=2))
     print(_regenerate_processed_summary(result), file=sys.stderr, flush=True)
     _print_result_status(result)
+    logger.result(result)
 
 
 def regenerate_cover_letters_main() -> None:
@@ -3528,17 +3666,27 @@ def regenerate_cover_letters_main() -> None:
     args = parser.parse_args()
     settings = load_settings()
     print(f"LLM: {_llm_settings_label(settings)}", file=sys.stderr, flush=True)
-    result = asyncio.run(
-        run_regenerate_from_cli(
-            args,
-            settings=settings,
-            artifact_mode="cover-letters-only",
-            progress_callback=_stderr_progress,
-        )
+    logger = _build_workflow_logger(
+        args,
+        operation="regenerate-cover-letters",
+        settings=settings,
     )
+    try:
+        result = asyncio.run(
+            run_regenerate_from_cli(
+                args,
+                settings=settings,
+                artifact_mode="cover-letters-only",
+                progress_callback=logger.progress,
+            )
+        )
+    except Exception as exc:
+        logger.failure(exc)
+        raise
     print(json.dumps(result.model_dump(mode="json"), indent=2))
     print(_regenerate_processed_summary(result), file=sys.stderr, flush=True)
     _print_result_status(result)
+    logger.result(result)
 
 
 def regenerate_all_main() -> None:
@@ -3546,17 +3694,23 @@ def regenerate_all_main() -> None:
     args = parser.parse_args()
     settings = load_settings()
     print(f"LLM: {_llm_settings_label(settings)}", file=sys.stderr, flush=True)
-    result = asyncio.run(
-        run_regenerate_from_cli(
-            args,
-            settings=settings,
-            artifact_mode="all",
-            progress_callback=_stderr_progress,
+    logger = _build_workflow_logger(args, operation="regenerate-all", settings=settings)
+    try:
+        result = asyncio.run(
+            run_regenerate_from_cli(
+                args,
+                settings=settings,
+                artifact_mode="all",
+                progress_callback=logger.progress,
+            )
         )
-    )
+    except Exception as exc:
+        logger.failure(exc)
+        raise
     print(json.dumps(result.model_dump(mode="json"), indent=2))
     print(_regenerate_processed_summary(result), file=sys.stderr, flush=True)
     _print_result_status(result)
+    logger.result(result)
 
 
 if __name__ == "__main__":
