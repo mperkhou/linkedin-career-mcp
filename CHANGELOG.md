@@ -1,5 +1,9 @@
 # linkedin-career-mcp CHANGELOG
 
+## 1.20.0 - PR #20: Add artifact workflow logging
+
+* commit `f4e30e5`: Add artifact workflow logging
+
 ## 1.19.0 - PR #19: Harden OpenRouter provider throttling
 
 * commit `3fe51d0`: Handle OpenRouter provider rate limits
