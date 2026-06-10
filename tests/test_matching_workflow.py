@@ -247,6 +247,25 @@ class ExistingThenNewJobService:
         )
 
 
+class StoredPlaceholderJobService:
+    def __init__(self) -> None:
+        self.detail_requests: list[str] = []
+
+    async def search(self, query: JobSearchQuery) -> JobSearchResult:
+        return JobSearchResult(query=query, count=0, jobs=[], provider="fake")
+
+    async def get_details(self, job_id_or_url: str) -> JobDetails:
+        self.detail_requests.append(job_id_or_url)
+        return JobDetails(
+            job_id="111",
+            title="Fetched Platform Engineer",
+            company="Fetched Co",
+            job_url="https://www.linkedin.com/jobs/view/111",
+            workplace_type="Remote",
+            description="Fetched role requiring Python, platform automation, and AI systems.",
+        )
+
+
 class OnSiteLeakJobService:
     def __init__(self) -> None:
         self.queries: list[JobSearchQuery] = []
@@ -935,9 +954,72 @@ async def test_regenerate_cover_letters_retries_failed_generation_and_reports_pr
     )
 
 
-def test_regenerate_main_displays_llm_and_processed_count(
+async def test_regenerate_refetches_when_stored_description_is_only_placeholder(
+    tmp_path: Path,
+):
+    profile_dir = tmp_path / "profile"
+    profile_dir.mkdir()
+    (profile_dir / "MP-RESUME-AGENTIC.txt").write_text(
+        "Resume: built MCP servers and local LLM workflows.",
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "output"
+    database_path = output_dir / DEFAULT_DATABASE
+    stored_cover_letter = (
+        output_dir / "cover_letters/Placeholder_Co/111_platform_engineer/cover_letter.pdf"
+    )
+    stored_cover_letter.parent.mkdir(parents=True)
+    stored_cover_letter.write_bytes(b"%PDF-1.4 stored cover")
+    upsert_application_artifact(
+        database_path=database_path,
+        job_id="111",
+        company="Placeholder Co",
+        job_title="Platform Engineer",
+        linkedin_url="https://www.linkedin.com/jobs/view/111",
+        resume_path=None,
+        cover_letter_path=stored_cover_letter,
+        prompt_job_description=matching.NO_PUBLIC_JOB_DESCRIPTION,
+    )
+    service = StoredPlaceholderJobService()
+    ollama = FakeOllama()
+    workflow = MatchingJobsWorkflow(service=service, ollama=ollama)
+
+    result = await workflow.regenerate_resumes(
+        profile_dir=profile_dir,
+        output_dir=output_dir,
+        source_resume_name="MP-RESUME-AGENTIC.txt",
+        job_ids=["111"],
+        linkedin_delay_seconds=0,
+        artifact_mode="resumes-only",
+    )
+
+    assert service.detail_requests == ["https://www.linkedin.com/jobs/view/111"]
+    assert result.resumes_created == 1
+    assert result.artifact_audit.missing_resumes == 0
+    assert any(
+        "Fetched role requiring Python" in prompt
+        for prompt in [*ollama.text_prompts, *ollama.json_prompts]
+    )
+    with connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT job_description, prompt_job_description, resume_content
+            FROM applications
+            WHERE job_id = ?
+            """,
+            ("111",),
+        ).fetchone()
+    assert row["job_description"] == (
+        "Fetched role requiring Python, platform automation, and AI systems."
+    )
+    assert row["prompt_job_description"] != matching.NO_PUBLIC_JOB_DESCRIPTION
+    assert row["resume_content"] is not None
+
+
+def test_regenerate_main_displays_llm_processed_count_and_log_path(
     monkeypatch,
     capsys,
+    tmp_path: Path,
 ):
     settings = Settings(
         llm_provider="api",
@@ -992,16 +1074,27 @@ def test_regenerate_main_displays_llm_and_processed_count(
 
     monkeypatch.setattr(matching, "load_settings", lambda: settings)
     monkeypatch.setattr(matching, "run_regenerate_from_cli", fake_run_regenerate_from_cli)
-    monkeypatch.setattr(sys, "argv", ["linkedin-career-regenerate-resumes", "111"])
+    output_dir = tmp_path / "output"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "linkedin-career-regenerate-resumes",
+            "111",
+            "--output-dir",
+            str(output_dir),
+        ],
+    )
 
     matching.regenerate_main()
 
     assert captured_settings == [settings]
     assert captured_modes == ["resumes-only"]
     assert captured_retry_counts == [1]
-    assert captured_progress_callbacks[0] is matching._stderr_progress
+    assert callable(captured_progress_callbacks[0])
     captured = capsys.readouterr()
     assert "LLM: api:deepseek/deepseek-v4-flash" in captured.err
+    assert "Workflow log:" in captured.err
     assert (
         "Jobs processed: 2/3 "
         "(resumes: 1, cover letters: 1, recommendations: 1, errors: 1)"
@@ -1011,3 +1104,13 @@ def test_regenerate_main_displays_llm_and_processed_count(
     result = json.loads(captured.out)
     assert result["jobs_found"] == 3
     assert len(result["artifacts"]) == 2
+    log_files = list((output_dir / "logs").glob("*_regenerate-resumes.jsonl"))
+    assert len(log_files) == 1
+    log_events = [
+        json.loads(line)
+        for line in log_files[0].read_text(encoding="utf-8").splitlines()
+    ]
+    assert log_events[0]["event"] == "start"
+    assert log_events[-1]["event"] == "result"
+    assert log_events[-1]["jobs_found"] == 3
+    assert log_events[-1]["artifact_audit"]["total_jobs"] == 0
