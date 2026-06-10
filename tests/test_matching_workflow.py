@@ -119,6 +119,13 @@ class FlakyCoverLetterOllama(FakeOllama):
         return await super().generate_json(prompt)
 
 
+class FailingSearchPlannerOllama(FakeOllama):
+    async def generate_json(self, prompt: str) -> dict[str, object]:
+        if "You generate LinkedIn public job search parameters" in prompt:
+            raise matching.WorkflowError("planner was temporarily unavailable")
+        return await super().generate_json(prompt)
+
+
 class FakeJobService:
     def __init__(self) -> None:
         self.queries: list[JobSearchQuery] = []
@@ -393,6 +400,28 @@ def test_search_queries_are_supplemented_with_trending_keyword_fallbacks():
     assert DEFAULT_SUPPLEMENTAL_SEARCH_KEYWORDS[0] in keywords
     assert any("AI" in keyword or "LLM" in keyword or "agentic" in keyword for keyword in keywords)
     assert {query.workplace_type for query in expanded[:2]} == {"remote", "hybrid"}
+
+
+async def test_search_query_planning_falls_back_to_supplemental_queries_on_llm_failure():
+    workflow = MatchingJobsWorkflow(
+        service=FakeJobService(),
+        ollama=FailingSearchPlannerOllama(),
+    )
+
+    scored_queries = await workflow._generate_search_queries(
+        profile_context="Python platform automation OpenSearch distributed systems",
+        location="United States",
+        date_posted="past_month",
+        limit_per_query=5,
+        max_queries=4,
+        query_history=[],
+        search_memory=None,
+    )
+
+    queries = [scored_query.query for scored_query in scored_queries]
+    keywords = {query.keywords for query in queries}
+    assert DEFAULT_SUPPLEMENTAL_SEARCH_KEYWORDS[0] in keywords
+    assert {query.workplace_type for query in queries} <= {"remote", "hybrid"}
 
 
 def test_coerce_search_query_drops_internship_and_entry_level_filters():

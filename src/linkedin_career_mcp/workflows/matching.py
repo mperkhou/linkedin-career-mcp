@@ -1201,16 +1201,21 @@ class MatchingJobsWorkflow:
         query_history: list[StoredQueryOutcome],
         search_memory: _SearchMemory | None = None,
     ) -> list[ScoredQuery]:
-        plan = await self._ollama.generate_json(
-            _search_query_prompt(
-                profile_context=_limit_context(profile_context, max_chars=8_000),
-                location=location,
-                date_posted=date_posted,
-                limit_per_query=limit_per_query,
-                max_queries=max_queries,
-                search_memory=search_memory,
+        try:
+            plan = await self._ollama.generate_json(
+                _search_query_prompt(
+                    profile_context=_limit_context(profile_context, max_chars=8_000),
+                    location=location,
+                    date_posted=date_posted,
+                    limit_per_query=limit_per_query,
+                    max_queries=max_queries,
+                    search_memory=search_memory,
+                )
             )
-        )
+        except WorkflowError:
+            # Search planning is best-effort; history and local supplements can still
+            # produce useful LinkedIn queries during a temporary LLM outage.
+            plan = {}
         raw_queries = plan.get("queries")
         if raw_queries is None and "keywords" in plan:
             raw_queries = [plan]
