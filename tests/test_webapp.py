@@ -202,6 +202,20 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     assert b"Missing/high-value terms:" in index.data
     assert b"2026-06-07" in index.data
 
+    filtered_index = client.get(
+        "/?status=Accepted+for+interview&q=Example&sort=ats&direction=desc"
+    )
+    filtered_html = filtered_index.data.decode()
+    assert 'value="Example"' in filtered_html
+    assert (
+        'value="/?status=Accepted+for+interview&amp;q=Example&amp;sort=ats&amp;direction=desc"'
+        in filtered_html
+    )
+    assert 'const initialSort = "ats";' in filtered_html
+    assert 'const initialDirection = "desc";' in filtered_html
+    assert "preserve-state-link" in filtered_html
+    assert "return-to-state" in filtered_html
+
     descriptions = client.get("/descriptions/123")
     assert descriptions.status_code == 200
     assert b"Parsed Job Description" in descriptions.data
@@ -274,9 +288,13 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
             "applied_to": "Accepted for interview",
             "date_applied": "",
             "notes": "Recruiter screen scheduled",
+            "return_to": "/?status=Accepted+for+interview&q=Example&sort=ats&direction=desc",
         },
     )
     assert interview_response.status_code == 302
+    assert interview_response.headers["Location"] == (
+        "/?status=Accepted+for+interview&q=Example&sort=ats&direction=desc"
+    )
     interview_index = client.get("/")
     assert b"Interview: 1" in interview_index.data
     assert b'data-status="Accepted for interview"' in interview_index.data
@@ -304,8 +322,14 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
 
     opened_urls: list[str] = []
     monkeypatch.setattr(webapp, "_open_url_in_chromium", opened_urls.append)
-    linkedin_response = client.get("/linkedin/123")
+    linkedin_response = client.get(
+        "/linkedin/123",
+        query_string={"return_to": "/?status=Rejected&sort=company&direction=asc"},
+    )
     assert linkedin_response.status_code == 302
+    assert linkedin_response.headers["Location"] == (
+        "/?status=Rejected&sort=company&direction=asc"
+    )
     assert opened_urls == ["https://www.linkedin.com/jobs/view/123"]
 
     response = client.post("/applications/delete", data={"job_id": "123"})

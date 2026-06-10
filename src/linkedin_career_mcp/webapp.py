@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from openpyxl import load_workbook
 
@@ -30,6 +31,10 @@ TRACKING_COLUMNS = (
     "date_applied",
 )
 APPLICATION_STATUSES = {"No", "Yes", "N/A", "Rejected", "Accepted for interview"}
+APPLICATION_STATUS_FILTERS = {"all", *APPLICATION_STATUSES}
+VIEW_STATE_SORTS = {"company", "matched", "ats"}
+VIEW_STATE_DIRECTIONS = {"asc", "desc"}
+VIEW_STATE_QUERY_KEYS = {"q", "status", "sort", "direction"}
 REQUIRED_TRACKING_COLUMNS = (
     "job_id",
     "company",
@@ -572,7 +577,6 @@ def create_app(*, database_path: Path, output_dir: Path):
         render_template_string,
         request,
         send_file,
-        url_for,
     )
 
     app = Flask(__name__)
@@ -581,10 +585,16 @@ def create_app(*, database_path: Path, output_dir: Path):
     app.config["OUTPUT_DIR"] = output_dir
     app.jinja_env.filters["display_date"] = _display_date
 
+    def redirect_to_index_state():
+        return redirect(_safe_index_return_path(request.values.get("return_to")))
+
     @app.get("/")
     def index():
         refresh_missing_ats_scores(database_path)
         rows = _fetch_applications(database_path)
+        view_state = _view_state_from_args(request.args)
+        current_query = request.query_string.decode("utf-8")
+        current_path = f"/?{current_query}" if current_query else "/"
         stats = {
             "total": len(rows),
             "applied": sum(1 for row in rows if row["applied_to"] == "Yes"),
@@ -595,7 +605,13 @@ def create_app(*, database_path: Path, output_dir: Path):
                 1 for row in rows if row["applied_to"] == "Accepted for interview"
             ),
         }
-        return render_template_string(INDEX_TEMPLATE, rows=rows, stats=stats)
+        return render_template_string(
+            INDEX_TEMPLATE,
+            rows=rows,
+            stats=stats,
+            view_state=view_state,
+            current_path=current_path,
+        )
 
     @app.post("/applications/<job_id>")
     def update_application(job_id: str):
@@ -618,7 +634,7 @@ def create_app(*, database_path: Path, output_dir: Path):
             flash(f"Application updated. Cleared {deleted_count} downloaded PDF file(s).")
         else:
             flash("Application updated.")
-        return redirect(url_for("index"))
+        return redirect_to_index_state()
 
     @app.post("/sync")
     def sync_from_output():
@@ -628,7 +644,7 @@ def create_app(*, database_path: Path, output_dir: Path):
             f"({result.missing_resumes} missing resume files, "
             f"{result.missing_cover_letters} missing cover letter files)."
         )
-        return redirect(url_for("index"))
+        return redirect_to_index_state()
 
     @app.post("/applications/delete")
     def bulk_delete_applications():
@@ -639,7 +655,7 @@ def create_app(*, database_path: Path, output_dir: Path):
             tracking_path=output_dir / TRACKING_WORKBOOK,
         )
         flash(f"Deleted {deleted_count} application rows.")
-        return redirect(url_for("index"))
+        return redirect_to_index_state()
 
     @app.get("/linkedin/<job_id>")
     def open_linkedin_job(job_id: str):
@@ -648,7 +664,7 @@ def create_app(*, database_path: Path, output_dir: Path):
             abort(404)
         _open_url_in_chromium(str(row["linkedin_url"]))
         flash("Opened LinkedIn job in Chromium.")
-        return redirect(url_for("index"))
+        return redirect_to_index_state()
 
     @app.get("/resumes/<job_id>")
     def resume(job_id: str):
@@ -689,7 +705,7 @@ def create_app(*, database_path: Path, output_dir: Path):
             flash(f"Resume copy failed: {exc}")
         else:
             flash(f"Copied resume to {_download_display_path(destination)}.")
-        return redirect(url_for("index"))
+        return redirect_to_index_state()
 
     @app.get("/cover-letters/<job_id>")
     def cover_letter(job_id: str):
@@ -730,7 +746,7 @@ def create_app(*, database_path: Path, output_dir: Path):
             flash(f"Cover letter copy failed: {exc}")
         else:
             flash(f"Copied cover letter to {_download_display_path(destination)}.")
-        return redirect(url_for("index"))
+        return redirect_to_index_state()
 
     @app.get("/descriptions/<job_id>")
     def compare_descriptions(job_id: str):
@@ -854,6 +870,48 @@ def _date_value(value: Any) -> str | None:
 def _normalize_applied_to(value: Any) -> str:
     text = str(value or "").strip()
     return text if text in APPLICATION_STATUSES else "No"
+
+
+def _view_state_from_args(args: Any) -> dict[str, str]:
+    status = str(args.get("status") or "all").strip()
+    if status not in APPLICATION_STATUS_FILTERS:
+        status = "all"
+
+    sort = str(args.get("sort") or "").strip()
+    if sort not in VIEW_STATE_SORTS:
+        sort = ""
+
+    direction = str(args.get("direction") or "").strip()
+    if direction not in VIEW_STATE_DIRECTIONS:
+        direction = ""
+    if sort and not direction:
+        direction = "asc"
+    if direction and not sort:
+        direction = ""
+
+    return {
+        "search": str(args.get("q") or "").strip(),
+        "status": status,
+        "sort": sort,
+        "direction": direction,
+    }
+
+
+def _safe_index_return_path(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return "/"
+    parts = urlsplit(text)
+    if parts.scheme or parts.netloc or parts.path not in {"", "/"}:
+        return "/"
+
+    query_items = [
+        (key, value)
+        for key, value in parse_qsl(parts.query, keep_blank_values=False)
+        if key in VIEW_STATE_QUERY_KEYS and value
+    ]
+    query = urlencode(query_items)
+    return f"/?{query}" if query else "/"
 
 
 def cleanup_downloaded_application_pdfs(download_dir: Path | None = None) -> int:
@@ -1268,19 +1326,41 @@ INDEX_TEMPLATE = """
     </div>
   </header>
   <div class="toolbar">
-    <input id="search" type="search" placeholder="Search company, title, or job id">
+    <input
+      id="search"
+      type="search"
+      placeholder="Search company, title, or job id"
+      value="{{ view_state.search }}"
+    >
     <select id="status-filter" aria-label="Filter status">
-      <option value="all">All statuses</option>
-      <option value="No">Pending</option>
-      <option value="Yes">Applied</option>
-      <option value="Accepted for interview">Accepted for interview</option>
-      <option value="Rejected">Rejected</option>
-      <option value="N/A">N/A</option>
+      <option value="all" {{ 'selected' if view_state.status == 'all' else '' }}>
+        All statuses
+      </option>
+      <option value="No" {{ 'selected' if view_state.status == 'No' else '' }}>
+        Pending
+      </option>
+      <option value="Yes" {{ 'selected' if view_state.status == 'Yes' else '' }}>
+        Applied
+      </option>
+      <option
+        value="Accepted for interview"
+        {{ 'selected' if view_state.status == 'Accepted for interview' else '' }}
+      >
+        Accepted for interview
+      </option>
+      <option value="Rejected" {{ 'selected' if view_state.status == 'Rejected' else '' }}>
+        Rejected
+      </option>
+      <option value="N/A" {{ 'selected' if view_state.status == 'N/A' else '' }}>
+        N/A
+      </option>
     </select>
     <form method="post" action="/sync">
+      <input type="hidden" class="return-to-state" name="return_to" value="{{ current_path }}">
       <button type="submit" class="ghost">Sync from output</button>
     </form>
     <form id="bulk-delete-form" method="post" action="/applications/delete">
+      <input type="hidden" class="return-to-state" name="return_to" value="{{ current_path }}">
       <button id="delete-selected" type="submit" class="danger" disabled>
         Delete selected
       </button>
@@ -1428,7 +1508,7 @@ INDEX_TEMPLATE = """
               </td>
               <td>
                 <div class="actions">
-                  <a href="/linkedin/{{ row.job_id }}">LinkedIn</a>
+                  <a class="preserve-state-link" href="/linkedin/{{ row.job_id }}">LinkedIn</a>
                   <a
                     href="/descriptions/{{ row.job_id }}"
                     target="_blank"
@@ -1445,6 +1525,12 @@ INDEX_TEMPLATE = """
                       Resume
                     </a>
                     <form method="post" action="/resumes/{{ row.job_id }}/copy-to-downloads">
+                      <input
+                        type="hidden"
+                        class="return-to-state"
+                        name="return_to"
+                        value="{{ current_path }}"
+                      >
                       <button class="text-link-button" type="submit">Download</button>
                     </form>
                   {% else %}
@@ -1462,6 +1548,12 @@ INDEX_TEMPLATE = """
                       method="post"
                       action="/cover-letters/{{ row.job_id }}/copy-to-downloads"
                     >
+                      <input
+                        type="hidden"
+                        class="return-to-state"
+                        name="return_to"
+                        value="{{ current_path }}"
+                      >
                       <button class="text-link-button" type="submit">Download</button>
                     </form>
                   {% else %}
@@ -1471,6 +1563,12 @@ INDEX_TEMPLATE = """
               </td>
               <td>
                 <form class="apply-form" method="post" action="/applications/{{ row.job_id }}">
+                  <input
+                    type="hidden"
+                    class="return-to-state"
+                    name="return_to"
+                    value="{{ current_path }}"
+                  >
                   <select name="applied_to" aria-label="Applied status">
                     <option
                       value="No"
@@ -1525,9 +1623,53 @@ INDEX_TEMPLATE = """
     const tableBody = document.querySelector("#applications tbody");
     const rows = [...document.querySelectorAll("#applications tbody tr")];
     const rowSelectors = [...document.querySelectorAll(".row-selector")];
+    const returnToFields = [...document.querySelectorAll(".return-to-state")];
+    const preserveStateLinks = [...document.querySelectorAll(".preserve-state-link")];
+    const initialSort = {{ view_state.sort|tojson }};
+    const initialDirection = {{ view_state.direction|tojson }};
     let companySortDirection = null;
     let matchedSortDirection = null;
     let atsSortDirection = null;
+    function activeSortState() {
+      if (companySortDirection) {
+        return { sort: "company", direction: companySortDirection };
+      }
+      if (matchedSortDirection) {
+        return { sort: "matched", direction: matchedSortDirection };
+      }
+      if (atsSortDirection) {
+        return { sort: "ats", direction: atsSortDirection };
+      }
+      return { sort: "", direction: "" };
+    }
+    function currentReturnPath() {
+      return `${window.location.pathname}${window.location.search}`;
+    }
+    function syncReturnState() {
+      const value = currentReturnPath();
+      returnToFields.forEach((field) => {
+        field.value = value;
+      });
+    }
+    function updateViewStateUrl() {
+      const params = new URLSearchParams();
+      const term = search.value.trim();
+      if (term) {
+        params.set("q", term);
+      }
+      if (statusFilter.value && statusFilter.value !== "all") {
+        params.set("status", statusFilter.value);
+      }
+      const sortState = activeSortState();
+      if (sortState.sort && sortState.direction) {
+        params.set("sort", sortState.sort);
+        params.set("direction", sortState.direction);
+      }
+      const query = params.toString();
+      const nextPath = query ? `${window.location.pathname}?${query}` : window.location.pathname;
+      window.history.replaceState(null, "", nextPath);
+      syncReturnState();
+    }
     function applyFilters() {
       const term = search.value.trim().toLowerCase();
       const status = statusFilter.value;
@@ -1536,6 +1678,7 @@ INDEX_TEMPLATE = """
         const matchesStatus = status === "all" || row.dataset.status === status;
         row.hidden = !(matchesText && matchesStatus);
       });
+      updateViewStateUrl();
       updateSelectionState();
     }
     function matchedTimestamp(row) {
@@ -1558,11 +1701,11 @@ INDEX_TEMPLATE = """
         indicator.textContent = "↑↓";
       }
     }
-    function sortRowsByCompany() {
+    function sortRowsByCompany(nextDirection = null) {
       if (!tableBody) {
         return;
       }
-      companySortDirection = companySortDirection === "asc" ? "desc" : "asc";
+      companySortDirection = nextDirection || (companySortDirection === "asc" ? "desc" : "asc");
       matchedSortDirection = null;
       atsSortDirection = null;
       resetSortIndicator(matchedHeader, matchedSortIndicator);
@@ -1592,11 +1735,11 @@ INDEX_TEMPLATE = """
       companySortIndicator.textContent = companySortDirection === "asc" ? "↑" : "↓";
       applyFilters();
     }
-    function sortRowsByMatched() {
+    function sortRowsByMatched(nextDirection = null) {
       if (!tableBody) {
         return;
       }
-      matchedSortDirection = matchedSortDirection === "asc" ? "desc" : "asc";
+      matchedSortDirection = nextDirection || (matchedSortDirection === "asc" ? "desc" : "asc");
       companySortDirection = null;
       atsSortDirection = null;
       resetSortIndicator(companyHeader, companySortIndicator);
@@ -1630,11 +1773,11 @@ INDEX_TEMPLATE = """
       matchedSortIndicator.textContent = matchedSortDirection === "asc" ? "↑" : "↓";
       applyFilters();
     }
-    function sortRowsByAts() {
+    function sortRowsByAts(nextDirection = null) {
       if (!tableBody) {
         return;
       }
-      atsSortDirection = atsSortDirection === "asc" ? "desc" : "asc";
+      atsSortDirection = nextDirection || (atsSortDirection === "asc" ? "desc" : "asc");
       companySortDirection = null;
       matchedSortDirection = null;
       resetSortIndicator(companyHeader, companySortIndicator);
@@ -1686,14 +1829,24 @@ INDEX_TEMPLATE = """
     search.addEventListener("input", applyFilters);
     statusFilter.addEventListener("change", applyFilters);
     if (companySortButton) {
-      companySortButton.addEventListener("click", sortRowsByCompany);
+      companySortButton.addEventListener("click", () => sortRowsByCompany());
     }
     if (matchedSortButton) {
-      matchedSortButton.addEventListener("click", sortRowsByMatched);
+      matchedSortButton.addEventListener("click", () => sortRowsByMatched());
     }
     if (atsSortButton) {
-      atsSortButton.addEventListener("click", sortRowsByAts);
+      atsSortButton.addEventListener("click", () => sortRowsByAts());
     }
+    document.querySelectorAll("form").forEach((form) => {
+      form.addEventListener("submit", syncReturnState);
+    });
+    preserveStateLinks.forEach((link) => {
+      link.addEventListener("click", () => {
+        const url = new URL(link.href, window.location.origin);
+        url.searchParams.set("return_to", currentReturnPath());
+        link.href = `${url.pathname}${url.search}`;
+      });
+    });
     if (selectAll) {
       selectAll.addEventListener("change", () => {
         visibleSelectors().forEach((checkbox) => {
@@ -1715,6 +1868,15 @@ INDEX_TEMPLATE = """
         event.preventDefault();
       }
     });
+    if (initialSort === "company") {
+      sortRowsByCompany(initialDirection === "desc" ? "desc" : "asc");
+    } else if (initialSort === "matched") {
+      sortRowsByMatched(initialDirection === "desc" ? "desc" : "asc");
+    } else if (initialSort === "ats") {
+      sortRowsByAts(initialDirection === "desc" ? "desc" : "asc");
+    } else {
+      applyFilters();
+    }
   </script>
 </body>
 </html>
