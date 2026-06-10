@@ -1,5 +1,9 @@
 # linkedin-career-mcp CHANGELOG
 
+## 1.19.0 - PR #19: Harden OpenRouter provider throttling
+
+* commit `3fe51d0`: Handle OpenRouter provider rate limits
+
 ## 1.18.0 - PR #18: Tracker download and application state polish
 
 * commit `28e5bd4`: Copy tracker artifacts to Downloads
