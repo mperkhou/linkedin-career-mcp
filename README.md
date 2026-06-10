@@ -254,6 +254,12 @@ export LINKEDIN_CAREER_MCP_LLM_API_KEY="..."
 make match-jobs
 ```
 
+OpenRouter `429` responses can happen even when credits remain if the selected model's
+upstream provider is temporarily throttled. The API client retries transient responses and
+surfaces the provider's raw detail; if one model keeps failing, switch
+`LINKEDIN_CAREER_MCP_LLM_API_MODEL` to another paid model such as `deepseek/deepseek-chat`
+or run with local Ollama.
+
 For local Ollama:
 
 ```bash

@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
 import httpx
 
 from linkedin_career_mcp.errors import LlmError
+
+TRANSIENT_HTTP_STATUSES = {408, 409, 425, 429, 500, 502, 503, 504}
 
 
 class ApiLlmClient:
@@ -22,12 +25,18 @@ class ApiLlmClient:
         api_key: str,
         timeout_seconds: float,
         client: httpx.AsyncClient | None = None,
+        retry_attempts: int = 4,
+        retry_backoff_seconds: float = 2.0,
+        sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._api_key = api_key
         self._owns_client = client is None
         self._client = client or httpx.AsyncClient(timeout=timeout_seconds)
+        self._retry_attempts = max(1, retry_attempts)
+        self._retry_backoff_seconds = max(0.0, retry_backoff_seconds)
+        self._sleep = sleep
 
     @property
     def model(self) -> str:
@@ -66,23 +75,37 @@ class ApiLlmClient:
             "X-Title": "linkedin-career-mcp",
         }
 
-        try:
-            response = await self._client.post(
-                f"{self._base_url}/chat/completions",
-                json=payload,
-                headers=headers,
-            )
-            data = response.json()
-            response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            # Log the response body on 4xx/5xx for debugging
-            body = data if isinstance(data, dict) else {}
-            detail = body.get("error", {}).get("message", str(exc))
-            raise LlmError(f"API LLM generation failed: {detail}") from exc
-        except httpx.HTTPError as exc:
-            raise LlmError(f"API LLM generation failed: {exc}") from exc
-        except json.JSONDecodeError as exc:
-            raise LlmError("API LLM returned a non-JSON HTTP response.") from exc
+        data: Mapping[str, Any] = {}
+        for attempt in range(1, self._retry_attempts + 1):
+            try:
+                response = await self._client.post(
+                    f"{self._base_url}/chat/completions",
+                    json=payload,
+                    headers=headers,
+                )
+                data = _response_json(response)
+                response.raise_for_status()
+                break
+            except httpx.HTTPStatusError as exc:
+                status_code = exc.response.status_code
+                detail = _http_error_detail(data, exc)
+                if (
+                    status_code in TRANSIENT_HTTP_STATUSES
+                    and attempt < self._retry_attempts
+                ):
+                    await self._sleep(
+                        _retry_delay_seconds(
+                            exc.response,
+                            attempt,
+                            self._retry_backoff_seconds,
+                        )
+                    )
+                    continue
+                raise LlmError(
+                    f"API LLM generation failed ({status_code}): {detail}"
+                ) from exc
+            except httpx.HTTPError as exc:
+                raise LlmError(f"API LLM generation failed: {exc}") from exc
 
         choices = data.get("choices")
         if not isinstance(choices, list) or not choices:
@@ -94,6 +117,57 @@ class ApiLlmClient:
         if not isinstance(text, str) or not text.strip():
             raise LlmError("API LLM returned an empty generation.")
         return _strip_thinking(text.strip())
+
+
+def _response_json(response: httpx.Response) -> Mapping[str, Any]:
+    try:
+        data = response.json()
+    except json.JSONDecodeError as exc:
+        if response.is_error:
+            return {}
+        raise LlmError("API LLM returned a non-JSON HTTP response.") from exc
+    if isinstance(data, Mapping):
+        return data
+    return {}
+
+
+def _http_error_detail(data: object, exc: httpx.HTTPStatusError) -> str:
+    if isinstance(data, Mapping):
+        error = data.get("error")
+        if isinstance(error, Mapping):
+            message = str(error.get("message") or "").strip()
+            metadata = error.get("metadata")
+            raw = ""
+            provider = ""
+            if isinstance(metadata, Mapping):
+                raw = str(metadata.get("raw") or "").strip()
+                provider = str(metadata.get("provider_name") or "").strip()
+            parts = [
+                part
+                for part in (
+                    message,
+                    raw,
+                    f"provider={provider}" if provider else "",
+                )
+                if part
+            ]
+            if parts:
+                return " | ".join(parts)
+    return str(exc)
+
+
+def _retry_delay_seconds(
+    response: httpx.Response,
+    attempt: int,
+    base_delay_seconds: float,
+) -> float:
+    retry_after = response.headers.get("retry-after")
+    if retry_after:
+        try:
+            return min(max(float(retry_after), 0.0), 120.0)
+        except ValueError:
+            pass
+    return min(base_delay_seconds * (2 ** (attempt - 1)), 60.0)
 
 
 def _parse_json_object(text: str) -> Mapping[str, Any]:
