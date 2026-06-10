@@ -1,4 +1,3 @@
-import re
 import sqlite3
 from pathlib import Path
 
@@ -178,23 +177,16 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     assert b"Compare descriptions" in index.data
     assert b"Cover Letter" in index.data
     assert b"/cover-letters/123" in index.data
-    assert b"/cover-letters/123/download" in index.data
-    assert b"/resumes/123/download" in index.data
-    assert 'class="same-page-download"' in html
-    assert "downloadInCurrentPage" in html
-    assert "samePageDownloads.forEach" in html
-    assert 'href="/resumes/123/download"' in html
-    assert 'download="mp_resume_senior_engineer.pdf"' in html
-    assert 'data-download-filename="mp_resume_senior_engineer.pdf"' in html
-    assert re.search(r'href="/resumes/123/download"[^>]*target="_blank"', html, re.S) is None
-    assert 'href="/cover-letters/123/download"' in html
-    assert 'download="mp_cover_letter_senior_engineer.pdf"' in html
-    assert 'data-download-filename="mp_cover_letter_senior_engineer.pdf"' in html
-    assert (
-        re.search(r'href="/cover-letters/123/download"[^>]*target="_blank"', html, re.S)
-        is None
-    )
+    assert 'action="/resumes/123/copy-to-downloads"' in html
+    assert 'action="/cover-letters/123/copy-to-downloads"' in html
+    assert 'class="same-page-download"' not in html
+    assert "downloadInCurrentPage" not in html
+    assert "samePageDownloads.forEach" not in html
+    assert 'href="/resumes/123/download"' not in html
+    assert 'href="/cover-letters/123/download"' not in html
     assert b"N/A" in index.data
+    assert b"Rejected" in index.data
+    assert b"Accepted for interview" in index.data
     assert b"<th>Posted</th>" in index.data
     assert b"<th>Experience</th>" in index.data
     assert b"Mid-Senior level" in index.data
@@ -209,6 +201,20 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     assert b"Formatting risk:" in index.data
     assert b"Missing/high-value terms:" in index.data
     assert b"2026-06-07" in index.data
+
+    filtered_index = client.get(
+        "/?status=Accepted+for+interview&q=Example&sort=ats&direction=desc"
+    )
+    filtered_html = filtered_index.data.decode()
+    assert 'value="Example"' in filtered_html
+    assert (
+        'value="/?status=Accepted+for+interview&amp;q=Example&amp;sort=ats&amp;direction=desc"'
+        in filtered_html
+    )
+    assert 'const initialSort = "ats";' in filtered_html
+    assert 'const initialDirection = "desc";' in filtered_html
+    assert "preserve-state-link" in filtered_html
+    assert "return-to-state" in filtered_html
 
     descriptions = client.get("/descriptions/123")
     assert descriptions.status_code == 200
@@ -240,10 +246,24 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     downloaded_resume = downloads_dir / "mp_resume_senior_engineer.pdf"
     downloaded_cover_letter = downloads_dir / "mp_cover_letter_senior_engineer.pdf"
     unrelated_pdf = downloads_dir / "other_resume.pdf"
-    downloaded_resume.write_bytes(b"resume")
-    downloaded_cover_letter.write_bytes(b"cover")
-    unrelated_pdf.write_bytes(b"other")
     monkeypatch.setenv("HOME", str(tmp_path))
+
+    resume_copy = client.post("/resumes/123/copy-to-downloads")
+    assert resume_copy.status_code == 302
+    assert downloaded_resume.read_bytes() == b"%PDF-1.4 fake pdf"
+
+    cover_letter_copy = client.post("/cover-letters/123/copy-to-downloads")
+    assert cover_letter_copy.status_code == 302
+    assert downloaded_cover_letter.read_bytes() == b"%PDF-1.4 fake cover"
+
+    copy_index = client.get("/")
+    assert b"Copied resume to ~/Downloads/mp_resume_senior_engineer.pdf." in copy_index.data
+    assert (
+        b"Copied cover letter to ~/Downloads/mp_cover_letter_senior_engineer.pdf."
+        in copy_index.data
+    )
+
+    unrelated_pdf.write_bytes(b"other")
 
     yes_response = client.post(
         "/applications/123",
@@ -262,6 +282,32 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     refreshed_index = client.get("/")
     assert b'N/A: 1' in refreshed_index.data
 
+    interview_response = client.post(
+        "/applications/123",
+        data={
+            "applied_to": "Accepted for interview",
+            "date_applied": "",
+            "notes": "Recruiter screen scheduled",
+            "return_to": "/?status=Accepted+for+interview&q=Example&sort=ats&direction=desc",
+        },
+    )
+    assert interview_response.status_code == 302
+    assert interview_response.headers["Location"] == (
+        "/?status=Accepted+for+interview&q=Example&sort=ats&direction=desc"
+    )
+    interview_index = client.get("/")
+    assert b"Interview: 1" in interview_index.data
+    assert b'data-status="Accepted for interview"' in interview_index.data
+
+    rejected_response = client.post(
+        "/applications/123",
+        data={"applied_to": "Rejected", "date_applied": "", "notes": "Closed out"},
+    )
+    assert rejected_response.status_code == 302
+    rejected_index = client.get("/")
+    assert b"Rejected: 1" in rejected_index.data
+    assert b'data-status="Rejected"' in rejected_index.data
+
     output_resume = client.get(
         "/output/resumes/Example_Co/123_senior_engineer/mp_resume_senior_engineer.pdf"
     )
@@ -276,8 +322,14 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
 
     opened_urls: list[str] = []
     monkeypatch.setattr(webapp, "_open_url_in_chromium", opened_urls.append)
-    linkedin_response = client.get("/linkedin/123")
+    linkedin_response = client.get(
+        "/linkedin/123",
+        query_string={"return_to": "/?status=Rejected&sort=company&direction=asc"},
+    )
     assert linkedin_response.status_code == 302
+    assert linkedin_response.headers["Location"] == (
+        "/?status=Rejected&sort=company&direction=asc"
+    )
     assert opened_urls == ["https://www.linkedin.com/jobs/view/123"]
 
     response = client.post("/applications/delete", data={"job_id": "123"})
