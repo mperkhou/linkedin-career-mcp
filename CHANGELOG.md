@@ -1,5 +1,9 @@
 # linkedin-career-mcp CHANGELOG
 
+## 1.25.0 - PR #25: Add webapp regeneration actions
+
+* commit `TBD`: Add webapp regeneration actions
+
 ## 1.24.0 - PR #24: Bust README diagram image cache
 
 * commit `bebeaf0`: Bust README diagram image cache

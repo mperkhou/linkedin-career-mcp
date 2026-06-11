@@ -372,6 +372,12 @@ LinkedIn job links route through the local Flask app and try to open in Playwrig
 packaged Chromium. If Playwright or its Chromium browser is not installed, the app falls
 back to your system default browser.
 
+Use the tracker toolbar's Actions menu to sync the SQLite tracker from `output/` or to
+regenerate documents for selected rows. Select one or more jobs, choose Regenerate docs,
+pick Cover letters, Resumes, or All, and Run. The webapp starts the matching `make
+regenerate-* JOB_IDS="..."` command in the background, streams progress into the tracker,
+and syncs regenerated artifacts back into SQLite when the command finishes.
+
 To enable Playwright Chromium:
 
 ```bash
