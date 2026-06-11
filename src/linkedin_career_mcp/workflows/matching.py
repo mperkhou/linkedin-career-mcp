@@ -110,9 +110,7 @@ COVER_LETTER_PROJECT_PARAGRAPH = (
     "project using multiple AI-assisted engineering tools, including Codex, Cline with DeepSeek, "
     "and GitHub Copilot, while actively managing prompt structure, context windows, token usage, "
     "model selection, and output validation. I built this in my own time because I genuinely "
-    "enjoy automation, AI tooling, and turning repetitive workflows into reliable systems. I am "
-    "happy in my current role, but this project gives me a thoughtful way to explore where my "
-    "platform engineering experience and interest in applied AI could be useful next."
+    "enjoy automation, AI tooling, and turning repetitive workflows into reliable systems."
 )
 COVER_LETTER_DEFAULT_OPENING_ALIGNMENT = (
     "the platform engineering, automation, distributed systems, and AI-focused capabilities "
@@ -121,10 +119,12 @@ COVER_LETTER_DEFAULT_OPENING_ALIGNMENT = (
 COVER_LETTER_DEFAULT_ORACLE_ALIGNMENT = (
     "I have owned multi-tenant infrastructure components serving 40,000+ managed endpoints, "
     "built distributed observability pipelines using Filebeat, Logstash, and OpenSearch, and "
-    "developed Python automation frameworks to replace legacy third-party tooling. That "
-    "experience maps directly to roles requiring resilient platform services, secure API "
-    "integrations, debugging across distributed systems, developer tooling, CI/CD, and practical "
-    "automation at enterprise scale."
+    "developed Python automation frameworks to replace legacy third-party tooling. I also "
+    "standardize platform services with Terraform, Chef, Ansible, and CI/CD pipelines so "
+    "operational work stays repeatable across large enterprise environments. That experience "
+    "maps directly to roles requiring resilient platform services, secure API integrations, "
+    "debugging across distributed systems, developer tooling, CI/CD, and practical automation "
+    "at enterprise scale."
 )
 COVER_LETTER_DEFAULT_PRIOR_EXPERIENCE_ALIGNMENT = (
     "At the University of Iowa Hospitals and Clinics, I built Python and AutoIT automation "
@@ -2655,12 +2655,19 @@ The application renders these static sections itself:
 
 You only control:
 1. opening_alignment: a concise noun phrase for the end of Section 1.
-2. oracle_alignment: 2 concise sentences connecting the current Oracle role and CJD to this JOD.
+2. oracle_alignment: exactly 3 concise sentences connecting the Oracle current-role resume
+   section from the source resume, the current Oracle job description/CJD, and this JOD.
 3. prior_experience_alignment: 2-3 concise sentences connecting pre-Oracle experience to this JOD.
 
 Rules:
 - Stay factual. Do not invent employers, projects, credentials, tools, dates, metrics, products,
   leadership scope, or submitted-application facts.
+- For oracle_alignment, use the source resume's Oracle current-role section for proven
+  accomplishments, use the CJD for richer current-role context, and use the JOD to choose which
+  accomplishments to emphasize.
+- Each oracle_alignment sentence should add a distinct alignment point around platform automation,
+  IaC/CI/CD, observability, API integration, developer tooling, distributed systems, cloud
+  infrastructure, or AI-assisted engineering when relevant.
 - Use the JOD to choose emphasis and vocabulary.
 - Use the CJD only to describe the current Oracle role.
 - Use the prior experience context for pre-Oracle jobs; do not turn Oracle facts into prior jobs.
@@ -2671,7 +2678,7 @@ Rules:
 Return this exact JSON shape:
 {{
   "opening_alignment": "the platform and AI automation capabilities you are looking for",
-  "oracle_alignment": "I have owned ...",
+  "oracle_alignment": "At Oracle, I have ... . That work also ... . This maps to the role ... .",
   "prior_experience_alignment": "At the University of Iowa Hospitals and Clinics, ..."
 }}
 
@@ -2752,7 +2759,7 @@ def _coerce_cover_letter_sections(raw_value: Any) -> dict[str, str]:
         "oracle_alignment": _clean_cover_letter_fragment(
             raw_value.get("oracle_alignment"),
             default=COVER_LETTER_DEFAULT_ORACLE_ALIGNMENT,
-            max_chars=850,
+            max_chars=1050,
             ensure_sentence=True,
         ),
         "prior_experience_alignment": _clean_cover_letter_fragment(

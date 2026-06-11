@@ -48,22 +48,14 @@ OLD_COVER_LETTER_PROJECT_ENDING_LINES = (
 )
 NEW_COVER_LETTER_PROJECT_ENDING_LINES = (
     "I built this in my own time because I genuinely enjoy automation, AI tooling, and turning",
-    (
-        "repetitive workflows into reliable systems. I am happy in my current role, but this "
-        "project gives"
-    ),
-    (
-        "me a thoughtful way to explore where my platform engineering experience and interest "
-        "in applied"
-    ),
-    "AI could be useful next.",
+    "repetitive workflows into reliable systems.",
 )
 OLD_COVER_LETTER_PROJECT_ENDING_TEXT = " ".join(
     OLD_COVER_LETTER_PROJECT_ENDING_LINES
 )
 NEW_COVER_LETTER_PROJECT_ENDING_TEXT = " ".join(
     NEW_COVER_LETTER_PROJECT_ENDING_LINES
-)
+).strip()
 
 
 @dataclass(frozen=True)
@@ -374,14 +366,16 @@ def _patch_cover_letter_project_paragraph_pdf(path: Path) -> bool:
     writer = PdfWriter(clone_from=reader)
     for page in writer.pages:
         content = ContentStream(page.get_contents(), writer)
-        if not _replace_cover_letter_project_ending(content):
+        extra_line_count = _replace_cover_letter_project_ending(content)
+        if extra_line_count is None:
             continue
         page.replace_contents(content)
-        _shift_uri_annotations(
-            page=page,
-            url=LINKEDIN_PROFILE_URL,
-            y_delta=-COVER_LETTER_LINE_LEADING,
-        )
+        if extra_line_count > 0:
+            _shift_uri_annotations(
+                page=page,
+                url=LINKEDIN_PROFILE_URL,
+                y_delta=-(COVER_LETTER_LINE_LEADING * extra_line_count),
+            )
         _write_pdf(path=path, writer=writer)
         return True
     return False
@@ -470,37 +464,47 @@ def _replace_text_in_content(
     return changed
 
 
-def _replace_cover_letter_project_ending(content: ContentStream) -> bool:
+def _replace_cover_letter_project_ending(content: ContentStream) -> int | None:
     if not _content_has_text_lines(content, OLD_COVER_LETTER_PROJECT_ENDING_LINES):
-        return False
+        return None
 
     new_operations: list[tuple[list[Any], bytes]] = []
     replacement_index = 0
+    extra_line_count = max(
+        len(NEW_COVER_LETTER_PROJECT_ENDING_LINES)
+        - len(OLD_COVER_LETTER_PROJECT_ENDING_LINES),
+        0,
+    )
     shift_following_content = False
 
     for operands, operator in content.operations:
         if shift_following_content and operator == b"cm" and len(operands) >= 6:
-            operands[5] = FloatObject(float(operands[5]) - COVER_LETTER_LINE_LEADING)
+            operands[5] = FloatObject(
+                float(operands[5]) - (COVER_LETTER_LINE_LEADING * extra_line_count)
+            )
 
         new_operations.append((operands, operator))
-        replacement_index, inserted_final_line = _replace_project_line_operand(
+        replacement_index, finished_replacement = _replace_project_line_operand(
             operands=operands,
             operator=operator,
             replacement_index=replacement_index,
         )
-        if inserted_final_line:
-            new_operations.extend(
-                [
-                    ([], b"T*"),
-                    ([TextStringObject(NEW_COVER_LETTER_PROJECT_ENDING_LINES[-1])], b"Tj"),
-                ]
-            )
+        if finished_replacement and extra_line_count:
+            for extra_line in NEW_COVER_LETTER_PROJECT_ENDING_LINES[
+                len(OLD_COVER_LETTER_PROJECT_ENDING_LINES) :
+            ]:
+                new_operations.extend(
+                    [
+                        ([], b"T*"),
+                        ([TextStringObject(extra_line)], b"Tj"),
+                    ]
+                )
             shift_following_content = True
 
     if replacement_index != len(OLD_COVER_LETTER_PROJECT_ENDING_LINES):
-        return False
+        return None
     content.operations = new_operations
-    return True
+    return extra_line_count
 
 
 def _content_has_text_lines(content: ContentStream, lines: tuple[str, ...]) -> bool:
@@ -554,10 +558,14 @@ def _replacement_project_text_value(
         return replacement_index, None, False
     if text_value != OLD_COVER_LETTER_PROJECT_ENDING_LINES[replacement_index]:
         return replacement_index, None, False
-    replacement = NEW_COVER_LETTER_PROJECT_ENDING_LINES[replacement_index]
+    replacement = (
+        NEW_COVER_LETTER_PROJECT_ENDING_LINES[replacement_index]
+        if replacement_index < len(NEW_COVER_LETTER_PROJECT_ENDING_LINES)
+        else ""
+    )
     replacement_index += 1
-    inserted_final_line = replacement_index == len(OLD_COVER_LETTER_PROJECT_ENDING_LINES)
-    return replacement_index, replacement, inserted_final_line
+    finished_replacement = replacement_index == len(OLD_COVER_LETTER_PROJECT_ENDING_LINES)
+    return replacement_index, replacement, finished_replacement
 
 
 def _text_values_for_operator(*, operands: list[Any], operator: bytes) -> list[str]:

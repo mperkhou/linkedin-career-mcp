@@ -1,5 +1,9 @@
 # linkedin-career-mcp CHANGELOG
 
+## 1.22.0 - PR #22: Tune cover-letter Oracle alignment
+
+* commit `d745089`: Tune cover-letter Oracle alignment
+
 ## 1.21.0 - PR #21: Split planner and artifact LLM models
 
 * commit `e2b0a2c`: Split planner and artifact LLM models
