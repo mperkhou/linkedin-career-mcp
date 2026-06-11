@@ -4,7 +4,7 @@ from pathlib import Path
 
 from reportlab.pdfgen import canvas
 
-from linkedin_career_mcp.ats import calculate_ats_proxy_score
+from linkedin_career_mcp.ats import _extract_weighted_terms, calculate_ats_proxy_score
 
 
 def test_calculate_ats_proxy_score_rewards_parseable_matching_resume(tmp_path: Path):
@@ -63,6 +63,28 @@ def test_calculate_ats_proxy_score_handles_unparseable_pdf_bytes():
     assert score.parsing_score == 0
     assert score.formatting_risk == "High"
     assert score.missing_high_value_terms
+
+
+def test_repeated_phrase_terms_ignore_legal_and_footer_boilerplate():
+    job_description = """
+    Required experience with Kafka, Kubernetes, observability, and developer productivity
+    CI/CD tooling. Developer productivity CI/CD work includes internal engineering
+    acceleration systems.
+
+    Pursuant to the Los Angeles County Fair Chance Ordinance, we will consider qualified
+    applicants. This job posting may describe job duties. The Los Angeles County Fair
+    Chance Ordinance language is included in the job posting.
+    """
+
+    terms = dict(_extract_weighted_terms(job_description))
+
+    assert "kafka" in terms
+    assert "kubernetes" in terms
+    assert "developer productivity ci/cd" in terms
+    assert "angeles county" not in terms
+    assert "fair chance" not in terms
+    assert "fair chance ordinance" not in terms
+    assert "job posting" not in terms
 
 
 def _write_pdf(path: Path, text: str) -> None:

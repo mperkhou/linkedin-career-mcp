@@ -8,6 +8,7 @@ import httpx
 import pytest
 from fixture_loaders import load_linkedin_job_fixture
 
+from linkedin_career_mcp.ats import AtsProxyScore
 from linkedin_career_mcp.config import load_settings
 from linkedin_career_mcp.models import JobDetails
 from linkedin_career_mcp.workflows.matching import (
@@ -18,6 +19,7 @@ from linkedin_career_mcp.workflows.matching import (
     RESUME_HEADER_CONTACT,
     RESUME_HEADER_NAME,
     ProfileDocument,
+    _ats_resume_repair_prompt,
     _coerce_core_skill_sections,
     _cover_letter_sections_prompt,
     _job_description_context,
@@ -27,6 +29,7 @@ from linkedin_career_mcp.workflows.matching import (
     _render_resume_template,
     _resume_sections_prompt,
     _scjdir_prompt,
+    _source_resume_evidence_for_missing_terms,
 )
 
 SAMPLE_RESUME = f"""
@@ -105,6 +108,79 @@ def test_resume_sections_prompt_limits_model_to_dynamic_sections():
     assert "Error Budgets" in prompt
     assert "Tailored Oracle current-role SCJDiR" in prompt
     assert "React" in prompt
+
+
+def test_source_resume_evidence_uses_only_supported_missing_terms():
+    evidence = _source_resume_evidence_for_missing_terms(
+        source_resume_text=(
+            "Core skills include TypeScript and Kubernetes.\n"
+            "Automation work includes GitHub Actions pipelines.\n"
+            "Generic cloud work should not authorize every cloud term."
+        ),
+        missing_terms=("typescript", "kubernetes", "github actions", "fastapi"),
+    )
+
+    assert set(evidence) == {"typescript", "kubernetes", "github actions"}
+    assert "TypeScript" in evidence["typescript"]
+    assert "GitHub Actions" in evidence["github actions"]
+
+
+def test_source_resume_evidence_uses_limited_aliases_for_supported_terms():
+    evidence = _source_resume_evidence_for_missing_terms(
+        source_resume_text=(
+            "AI Tools: Codex, applied AI tooling, and LLM prompting.\n"
+            "Developer Tooling Innovation: improved team workflows for platform engineers.\n"
+            "CI/CD & Resilience: replaced manual workflows with automated release pipelines."
+        ),
+        missing_terms=(
+            "artificial intelligence",
+            "developer productivity ci/cd",
+            "computer hardware",
+        ),
+    )
+
+    assert set(evidence) == {
+        "artificial intelligence",
+        "developer productivity ci/cd",
+    }
+    assert "AI Tools" in evidence["artificial intelligence"]
+    assert "Developer Tooling" in evidence["developer productivity ci/cd"]
+    assert "CI/CD" in evidence["developer productivity ci/cd"]
+
+
+def test_ats_resume_repair_prompt_omits_cjd_and_uses_source_evidence():
+    job = JobDetails(
+        job_id="12345",
+        title="Platform Automation Engineer",
+        company="Acme",
+        description="Requires TypeScript, Kubernetes, and GitHub Actions.",
+    )
+    prompt = _ats_resume_repair_prompt(
+        source_evidence={
+            "typescript": "Source resume says TypeScript platform tooling.",
+            "kubernetes": "Source resume says Docker and Kubernetes.",
+        },
+        current_resume_text="Current generated resume text.",
+        current_tailored_scjdir="Oracle | Remote\nSenior Technical Lead",
+        current_sections_plan={"core_technical_skills": []},
+        job=job,
+        score=AtsProxyScore(
+            overall_score=82,
+            parsing_score=95,
+            keyword_match_score=70,
+            semantic_match_score=80,
+            formatting_risk="Low",
+            missing_high_value_terms=("typescript", "kubernetes"),
+        ),
+    )
+
+    assert "You repair a generated resume after local ATS scoring" in prompt
+    assert "source-resume evidence" in prompt
+    assert "Source resume says TypeScript" in prompt
+    assert "Requires TypeScript, Kubernetes" in prompt
+    assert "Current generated resume text" in prompt
+    assert "Current job description (CJD)" not in prompt
+    assert "current Oracle job description" not in prompt
 
 
 def test_resume_generation_prompts_include_full_job_description():

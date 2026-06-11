@@ -6,7 +6,7 @@ from dataclasses import dataclass
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/125.0 Safari/537.36 linkedin-career-mcp/0.1.1"
+    "Chrome/125.0 Safari/537.36 linkedin-career-mcp/0.1.2"
 )
 DEFAULT_LLM_API_MODEL = "deepseek/deepseek-chat"
 DEFAULT_LLM_PLANNER_API_MODEL = "deepseek/deepseek-v4-flash"
@@ -28,7 +28,7 @@ class Settings:
     llm_api_model: str = DEFAULT_LLM_API_MODEL
     llm_planner_api_model: str = DEFAULT_LLM_PLANNER_API_MODEL
     llm_api_key: str = ""
-    llm_api_timeout_seconds: float = 120.0
+    llm_api_timeout_seconds: float = 360.0
     llm_provider: str = "api"  # "api" or "ollama"
 
 
@@ -57,7 +57,7 @@ def load_settings() -> Settings:
         ),
         llm_api_key=os.getenv("LINKEDIN_CAREER_MCP_LLM_API_KEY", ""),
         llm_api_timeout_seconds=_float_env(
-            "LINKEDIN_CAREER_MCP_LLM_API_TIMEOUT_SECONDS", 120.0
+            "LINKEDIN_CAREER_MCP_LLM_API_TIMEOUT_SECONDS", 360.0
         ),
         llm_provider=os.getenv("LINKEDIN_CAREER_MCP_LLM_PROVIDER", "api"),
     )

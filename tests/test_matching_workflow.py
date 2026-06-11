@@ -106,6 +106,34 @@ class FakeOllama:
         )
 
 
+class SourceResumeAtsRepairOllama(FakeOllama):
+    async def generate_json(self, prompt: str) -> dict[str, object]:
+        if "You repair a generated resume after local ATS scoring" in prompt:
+            self.json_prompts.append(prompt)
+            return {
+                "core_technical_skills": [
+                    {
+                        "category": "Languages & Frameworks",
+                        "skills": ["Python", "JavaScript", "TypeScript"],
+                    },
+                    {
+                        "category": "Distributed Systems & Cloud",
+                        "skills": ["AWS", "Azure", "Kubernetes"],
+                    },
+                    {
+                        "category": "Platform & API Engineering",
+                        "skills": ["RESTful APIs", "Systems Architecture", "Microservices"],
+                    },
+                    {
+                        "category": "Automation & IaC",
+                        "skills": ["Terraform", "Ansible", "Jenkins", "GitHub Actions"],
+                    },
+                ],
+                "prior_experience": [],
+            }
+        return await super().generate_json(prompt)
+
+
 class FlakyCoverLetterOllama(FakeOllama):
     def __init__(self) -> None:
         super().__init__()
@@ -605,24 +633,15 @@ async def test_matching_workflow_writes_resume_and_tracking(tmp_path: Path):
     assert sheet.cell(row=2, column=8).value is None
 
 
-async def test_matching_workflow_repairs_ats_missing_skills_from_profile_skills(
+async def test_matching_workflow_repairs_ats_missing_terms_from_source_resume(
     tmp_path: Path,
 ):
     profile_dir = tmp_path / "profile"
     profile_dir.mkdir()
     (profile_dir / "MP-RESUME-AGENTIC.txt").write_text(
-        "Resume: built platform automation workflows.",
-        encoding="utf-8",
-    )
-    (profile_dir / "skills.md").write_text(
-        "\n".join(
-            [
-                "* **Languages & Frameworks:** TypeScript",
-                "* **Distributed Systems & Cloud:** Kubernetes",
-                "* **Automation & IaC (DevOps):** GitHub Actions",
-                "* **Data & Observability:** Error Budgets",
-                "* **Networking hardware:** Palo-Alto",
-            ]
+        (
+            "Mega resume: built platform automation workflows. "
+            "Additional source evidence includes TypeScript, Kubernetes, and GitHub Actions."
         ),
         encoding="utf-8",
     )
@@ -630,9 +649,10 @@ async def test_matching_workflow_repairs_ats_missing_skills_from_profile_skills(
     blacklist_path.write_text("", encoding="utf-8")
     output_dir = tmp_path / "output"
     progress_messages: list[str] = []
+    ollama = SourceResumeAtsRepairOllama()
     workflow = MatchingJobsWorkflow(
         service=SkillRepairJobService(),
-        ollama=FakeOllama(),
+        ollama=ollama,
     )
 
     result = await workflow.run(
@@ -656,7 +676,15 @@ async def test_matching_workflow_repairs_ats_missing_skills_from_profile_skills(
     assert "Automation & IaC: Terraform, Ansible, Jenkins, GitHub Actions" in resume_text
     assert "Error Budgets" not in resume_text
     assert "Palo-Alto" not in resume_text
-    assert any("ATS skill repair added" in message for message in progress_messages)
+    assert any("ATS repair improved score" in message for message in progress_messages)
+    repair_prompts = [
+        prompt
+        for prompt in ollama.json_prompts
+        if "You repair a generated resume after local ATS scoring" in prompt
+    ]
+    assert repair_prompts
+    assert "Source-resume evidence for missing terms" in repair_prompts[0]
+    assert "Current job description (CJD)" not in repair_prompts[0]
 
     database_path = output_dir / DEFAULT_DATABASE
     with connect_database(database_path) as connection:

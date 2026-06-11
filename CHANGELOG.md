@@ -1,5 +1,12 @@
 # linkedin-career-mcp CHANGELOG
 
+## 1.23.0 - PR #23: Add source-resume ATS repair loop
+
+* commit `a9cd5e4`: Add source-resume ATS repair loop
+* commit `00f64c2`: Refine ATS repair scoring evidence
+* commit `f698425`: Raise API generation timeout default
+* commit `9535335`: Revamp workflow documentation diagrams
+
 ## 1.22.0 - PR #22: Tune cover-letter Oracle alignment
 
 * commit `bbed732`: Tune cover-letter Oracle alignment
