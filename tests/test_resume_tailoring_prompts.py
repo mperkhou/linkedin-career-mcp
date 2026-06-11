@@ -171,6 +171,11 @@ def test_cover_letter_prompt_limits_model_to_dynamic_sections():
     assert COVER_LETTER_ORACLE_OPENER in prompt
     assert "Section 4 is a static paragraph" in prompt
     assert "Codex, Cline with DeepSeek, GitHub Copilot" in prompt
+    assert "exactly 3 concise sentences" in prompt
+    assert "Oracle current-role resume" in prompt
+    assert "source resume, the current Oracle job description/CJD, and this JOD" in prompt
+    assert "Each oracle_alignment sentence should add a distinct alignment point" in prompt
+    assert "At Oracle, I have ... . That work also ... . This maps to the role ... ." in prompt
     assert "Python/Django" in prompt
 
 
