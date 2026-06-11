@@ -125,6 +125,29 @@ def test_source_resume_evidence_uses_only_supported_missing_terms():
     assert "GitHub Actions" in evidence["github actions"]
 
 
+def test_source_resume_evidence_uses_limited_aliases_for_supported_terms():
+    evidence = _source_resume_evidence_for_missing_terms(
+        source_resume_text=(
+            "AI Tools: Codex, applied AI tooling, and LLM prompting.\n"
+            "Developer Tooling Innovation: improved team workflows for platform engineers.\n"
+            "CI/CD & Resilience: replaced manual workflows with automated release pipelines."
+        ),
+        missing_terms=(
+            "artificial intelligence",
+            "developer productivity ci/cd",
+            "computer hardware",
+        ),
+    )
+
+    assert set(evidence) == {
+        "artificial intelligence",
+        "developer productivity ci/cd",
+    }
+    assert "AI Tools" in evidence["artificial intelligence"]
+    assert "Developer Tooling" in evidence["developer productivity ci/cd"]
+    assert "CI/CD" in evidence["developer productivity ci/cd"]
+
+
 def test_ats_resume_repair_prompt_omits_cjd_and_uses_source_evidence():
     job = JobDetails(
         job_id="12345",

@@ -147,6 +147,29 @@ ATS_REPAIR_MAX_ATTEMPTS = 2
 ATS_REPAIR_MAX_MISSING_TERMS = 8
 ATS_REPAIR_MAX_SOURCE_SNIPPETS = 8
 ATS_REPAIR_SOURCE_SNIPPET_RADIUS = 1
+SOURCE_EVIDENCE_TERM_ALIASES = {
+    "artificialintelligence": ("ai", "agenticai", "aiassisted", "aitooling", "appliedai"),
+    "developerproductivity": (
+        "developertooling",
+        "developerworkflow",
+        "developerworkflows",
+        "deliveryvelocity",
+    ),
+    "developerproductivitycicd": (
+        "developertooling",
+        "developerworkflow",
+        "developerworkflows",
+        "deliveryvelocity",
+        "cicd",
+    ),
+    "productivitycicd": (
+        "developertooling",
+        "developerworkflow",
+        "developerworkflows",
+        "deliveryvelocity",
+        "cicd",
+    ),
+}
 DISALLOWED_CORE_SKILLS = {
     "error budget",
     "error budgets",
@@ -1547,6 +1570,9 @@ def _source_resume_snippet_for_term(source_resume_text: str, term: str) -> str |
             start = max(0, index - ATS_REPAIR_SOURCE_SNIPPET_RADIUS)
             end = min(len(lines), index + ATS_REPAIR_SOURCE_SNIPPET_RADIUS + 1)
             return " ".join(lines[start:end])[:900]
+    alias_snippet = _source_resume_alias_snippet(lines=lines, term_key=term_key)
+    if alias_snippet:
+        return alias_snippet
     normalized_source = _normalize_source_match_key(source_resume_text)
     if term_key not in normalized_source:
         return None
@@ -1565,6 +1591,41 @@ def _source_line_matches_term(*, line: str, term_key: str) -> bool:
     if term_key == "rbac" and "rolebasedaccesscontrol" in line_key:
         return True
     return term_key == "cicd" and "continuousintegration" in line_key
+
+
+def _source_resume_alias_snippet(*, lines: list[str], term_key: str) -> str | None:
+    aliases = SOURCE_EVIDENCE_TERM_ALIASES.get(term_key)
+    if not aliases:
+        return None
+    snippets: list[str] = []
+    matched_aliases: set[str] = set()
+    for index, line in enumerate(lines):
+        for alias in aliases:
+            if alias in matched_aliases:
+                continue
+            if not _source_line_matches_alias(line=line, alias_key=alias):
+                continue
+            start = max(0, index - ATS_REPAIR_SOURCE_SNIPPET_RADIUS)
+            end = min(len(lines), index + ATS_REPAIR_SOURCE_SNIPPET_RADIUS + 1)
+            snippets.append(" ".join(lines[start:end]))
+            matched_aliases.add(alias)
+            break
+        if len(snippets) >= 2:
+            break
+    if not snippets:
+        return None
+    return " ".join(snippets)[:900]
+
+
+def _source_line_matches_alias(*, line: str, alias_key: str) -> bool:
+    if alias_key == "ai":
+        return bool(re.search(r"(?<![a-z0-9])ai(?:[-\s]|$)", line, flags=re.IGNORECASE))
+    line_key = _normalize_source_match_key(line)
+    if alias_key in line_key:
+        return True
+    if alias_key == "cicd" and "continuousintegration" in line_key:
+        return True
+    return alias_key == "developerworkflow" and "developertooling" in line_key
 
 
 def _normalize_source_match_key(text: str) -> str:

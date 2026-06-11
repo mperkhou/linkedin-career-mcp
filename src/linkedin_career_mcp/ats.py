@@ -215,6 +215,26 @@ STOPWORDS = {
     "working",
     "you",
 }
+REPEATED_PHRASE_TECH_ANCHOR_WORDS = {
+    word
+    for term in TECHNICAL_TERMS
+    for word in re.findall(r"[a-z][a-z0-9+#/-]+", term)
+    if word not in STOPWORDS
+} | {
+    "artificial",
+    "hardware",
+    "intelligence",
+    "productivity",
+}
+REPEATED_PHRASE_BLOCKED_WORDS = {
+    "angeles",
+    "chance",
+    "county",
+    "duties",
+    "fair",
+    "ordinance",
+    "posting",
+}
 
 
 def calculate_ats_proxy_score(*, resume_pdf: bytes, job_description: str) -> AtsProxyScore:
@@ -376,8 +396,15 @@ def _extract_repeated_phrases(text: str) -> list[str]:
     return [
         phrase
         for phrase, count in sorted(phrases.items(), key=lambda item: (-item[1], item[0]))
-        if count > 1
+        if count > 1 and _is_relevant_repeated_phrase(phrase)
     ][:12]
+
+
+def _is_relevant_repeated_phrase(phrase: str) -> bool:
+    words = set(phrase.split())
+    if words & REPEATED_PHRASE_BLOCKED_WORDS:
+        return False
+    return bool(words & REPEATED_PHRASE_TECH_ANCHOR_WORDS)
 
 
 def _term_weight(job_description: str, term: str) -> float:
