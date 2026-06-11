@@ -508,7 +508,7 @@ All settings are environment variables:
 - `LINKEDIN_CAREER_MCP_LLM_PLANNER_API_MODEL`: API model for LinkedIn query planning.
   Default: `deepseek/deepseek-v4-flash`.
 - `LINKEDIN_CAREER_MCP_LLM_API_KEY`: API key for the default API provider.
-- `LINKEDIN_CAREER_MCP_LLM_API_TIMEOUT_SECONDS`: API generation timeout. Default: `120`.
+- `LINKEDIN_CAREER_MCP_LLM_API_TIMEOUT_SECONDS`: API generation timeout. Default: `360`.
 - `LINKEDIN_CAREER_MCP_OLLAMA_BASE_URL`: Ollama API URL. Default: `http://127.0.0.1:11434`.
 - `LINKEDIN_CAREER_MCP_OLLAMA_MODEL`: Ollama model. Default: `qwen3:4b`.
 - `LINKEDIN_CAREER_MCP_OLLAMA_TIMEOUT_SECONDS`: Ollama generation timeout. Default: `180`.
