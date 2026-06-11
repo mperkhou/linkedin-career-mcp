@@ -1,5 +1,9 @@
 # linkedin-career-mcp CHANGELOG
 
+## 1.24.0 - PR #24: Bust README diagram image cache
+
+* commit `bebeaf0`: Bust README diagram image cache
+
 ## 1.23.0 - PR #23: Add source-resume ATS repair loop
 
 * commit `a9cd5e4`: Add source-resume ATS repair loop
