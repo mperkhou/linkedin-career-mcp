@@ -6,7 +6,7 @@ from dataclasses import dataclass
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/125.0 Safari/537.36 linkedin-career-mcp/0.1.1"
+    "Chrome/125.0 Safari/537.36 linkedin-career-mcp/0.1.2"
 )
 DEFAULT_LLM_API_MODEL = "deepseek/deepseek-chat"
 DEFAULT_LLM_PLANNER_API_MODEL = "deepseek/deepseek-v4-flash"

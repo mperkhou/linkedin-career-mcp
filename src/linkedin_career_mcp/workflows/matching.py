@@ -22,7 +22,7 @@ from reportlab.lib.units import inch
 from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer
 
 from linkedin_career_mcp.api_client import ApiLlmClient
-from linkedin_career_mcp.ats import calculate_ats_proxy_score
+from linkedin_career_mcp.ats import AtsProxyScore, calculate_ats_proxy_score
 from linkedin_career_mcp.config import Settings, load_settings
 from linkedin_career_mcp.errors import LinkedInCareerMcpError, WorkflowError
 from linkedin_career_mcp.models import DatePosted, JobDetails, JobPosting, JobSearchQuery
@@ -57,7 +57,6 @@ DEFAULT_BLACKLIST_PATH = Path(".blacklist")
 DEFAULT_OUTPUT_DIR = Path("output")
 DEFAULT_SOURCE_RESUME = "MP-RESUME-AGENTIC.pdf"
 DEFAULT_CURRENT_JOB_DESCRIPTION = "Senior_Platform_Software_Engineer(IC3).pdf"
-DEFAULT_PROFILE_SKILLS = "skills.md"
 TRACKING_WORKBOOK = Path("tracking/read_applications/linkedin_applications.xlsx")
 SUPPORTED_TEXT_SUFFIXES = {".csv", ".json", ".md", ".rst", ".text", ".txt"}
 SUPPORTED_PROFILE_SUFFIXES = SUPPORTED_TEXT_SUFFIXES | {".docx", ".pdf"}
@@ -143,15 +142,15 @@ RESUME_SECTION_HEADINGS = {
     "Education & Certifications",
 }
 JOB_DESCRIPTION_PROMPT_MAX_CHARS = 12_000
-CORE_SKILL_REPAIR_MAX_PER_CATEGORY = 14
+ATS_REPAIR_TARGET_SCORE = 90
+ATS_REPAIR_MAX_ATTEMPTS = 2
+ATS_REPAIR_MAX_MISSING_TERMS = 8
+ATS_REPAIR_MAX_SOURCE_SNIPPETS = 8
+ATS_REPAIR_SOURCE_SNIPPET_RADIUS = 1
 DISALLOWED_CORE_SKILLS = {
     "error budget",
     "error budgets",
     "error budget analysis",
-}
-PROFILE_SKILL_CATEGORY_ALIASES = {
-    "networking": "Distributed Systems & Cloud",
-    "networkinghardware": "Distributed Systems & Cloud",
 }
 LEADING_BULLET_RE = re.compile(
     r"^(?:[-*]|\u2022|\u2023|\u25e6|\u2043|\u2219|\u25cf|\u25cb)\s+"
@@ -586,6 +585,13 @@ class _RegenerationCandidate:
     stored_job_description: str | None
 
 
+@dataclass(frozen=True)
+class _ResumeDraft:
+    tailored_scjdir: str
+    sections_plan: Mapping[str, Any]
+    text: str
+
+
 @dataclass
 class _QueryRunOutcome:
     scored_query: ScoredQuery
@@ -664,7 +670,6 @@ class MatchingJobsWorkflow:
             profile_documents,
             current_job_description_name,
         )
-        profile_skill_sections = load_profile_skill_sections(profile_dir)
         blacklist = CompanyBlacklist.from_file(blacklist_path)
 
         candidates: list[JobDetails] = []
@@ -799,7 +804,6 @@ class MatchingJobsWorkflow:
                     append_tracking=job.job_id not in existing_application_job_ids,
                     stored_job_description=job.description,
                     artifact_mode=artifact_mode,
-                    profile_skill_sections=profile_skill_sections,
                     progress_callback=progress_callback,
                 )
                 if artifact.resume_path and artifact.artifact_kind == "resume":
@@ -839,7 +843,6 @@ class MatchingJobsWorkflow:
             artifact_mode=artifact_mode,
             cover_letter_retry_attempts=cover_letter_retry_attempts,
             force_retry_job_ids=failed_cover_letter_job_ids,
-            profile_skill_sections=profile_skill_sections,
             progress_callback=progress_callback,
         )
         artifacts = list(artifacts_by_job_id.values())
@@ -889,7 +892,6 @@ class MatchingJobsWorkflow:
             profile_documents,
             current_job_description_name,
         )
-        profile_skill_sections = load_profile_skill_sections(profile_dir)
         tracking_path = output_dir / TRACKING_WORKBOOK
         application_database_path = output_dir / APPLICATION_DATABASE
         if tracking_path.exists():
@@ -955,7 +957,6 @@ class MatchingJobsWorkflow:
                     append_tracking=False,
                     stored_job_description=candidate.stored_job_description,
                     artifact_mode=artifact_mode,
-                    profile_skill_sections=profile_skill_sections,
                     progress_callback=progress_callback,
                 )
             except LinkedInCareerMcpError as exc:
@@ -981,7 +982,6 @@ class MatchingJobsWorkflow:
             artifact_mode=artifact_mode,
             cover_letter_retry_attempts=cover_letter_retry_attempts,
             force_retry_job_ids=failed_cover_letter_job_ids,
-            profile_skill_sections=profile_skill_sections,
             progress_callback=progress_callback,
         )
         artifacts = list(artifacts_by_job_id.values())
@@ -1021,7 +1021,6 @@ class MatchingJobsWorkflow:
         artifact_mode: ArtifactMode,
         cover_letter_retry_attempts: int,
         force_retry_job_ids: set[str] | None,
-        profile_skill_sections: list[tuple[str, list[str]]],
         progress_callback: ProgressCallback | None,
     ) -> list[CoverLetterRetryRecord]:
         if artifact_mode not in {"all", "cover-letters-only"}:
@@ -1065,7 +1064,6 @@ class MatchingJobsWorkflow:
                         append_tracking=False,
                         stored_job_description=candidate.stored_job_description,
                         artifact_mode="cover-letters-only",
-                        profile_skill_sections=profile_skill_sections,
                         progress_callback=progress_callback,
                     )
                 except LinkedInCareerMcpError as exc:
@@ -1113,7 +1111,6 @@ class MatchingJobsWorkflow:
         append_tracking: bool,
         stored_job_description: str | None = None,
         artifact_mode: ArtifactMode,
-        profile_skill_sections: list[tuple[str, list[str]]],
         progress_callback: ProgressCallback | None = None,
     ) -> TailoredResumeArtifact:
         artifact_kind: Literal["resume", "recommendations", "cover_letter"] = "cover_letter"
@@ -1123,11 +1120,12 @@ class MatchingJobsWorkflow:
 
         if artifact_mode in {"all", "resumes-only"}:
             _emit_progress(progress_callback, f"Generating resume for job id '{job.job_id}'.")
-            resume_text = await self._generate_resume_text(
+            resume_draft = await self._generate_resume_draft(
                 source_resume=source_resume,
                 current_job_description=current_job_description,
                 job=job,
             )
+            resume_text = resume_draft.text
             artifact_kind = "resume"
             if _looks_like_recommendations(resume_text):
                 artifact_kind = "recommendations"
@@ -1157,23 +1155,28 @@ class MatchingJobsWorkflow:
                     progress_callback,
                     f"Wrote resume PDF for job id '{job.job_id}': {resume_path}",
                 )
-                repaired_resume_text, added_skills = _repair_resume_skills_from_ats(
-                    resume_text=resume_text,
-                    resume_path=resume_path,
-                    job_description=_job_description_context(job),
-                    profile_skill_sections=profile_skill_sections,
-                )
-                if added_skills:
-                    write_resume_pdf(
-                        resume_text=repaired_resume_text,
-                        output_dir=output_dir,
+                repaired_draft, repaired_resume_path, repair_score = (
+                    await self._repair_resume_draft_from_ats(
+                        draft=resume_draft,
+                        source_resume=source_resume,
                         job=job,
+                        output_dir=output_dir,
+                        resume_path=resume_path,
+                        progress_callback=progress_callback,
                     )
-                    if progress_callback is not None:
-                        progress_callback(
-                            "ATS skill repair added "
-                            f"{', '.join(added_skills)} for job id '{job.job_id}'."
-                        )
+                )
+                resume_text = repaired_draft.text
+                resume_path = repaired_resume_path
+                repair_target_met = (
+                    repair_score is not None
+                    and repair_score.overall_score >= ATS_REPAIR_TARGET_SCORE
+                )
+                if repair_target_met:
+                    _emit_progress(
+                        progress_callback,
+                        "ATS repair target met "
+                        f"({repair_score.overall_score}/100) for job id '{job.job_id}'.",
+                    )
 
         if artifact_mode in {"all", "cover-letters-only"}:
             _emit_progress(
@@ -1313,6 +1316,21 @@ class MatchingJobsWorkflow:
         current_job_description: ProfileDocument | None,
         job: JobDetails,
     ) -> str:
+        return (
+            await self._generate_resume_draft(
+                source_resume=source_resume,
+                current_job_description=current_job_description,
+                job=job,
+            )
+        ).text
+
+    async def _generate_resume_draft(
+        self,
+        *,
+        source_resume: ProfileDocument | None,
+        current_job_description: ProfileDocument | None,
+        job: JobDetails,
+    ) -> _ResumeDraft:
         if source_resume is None:
             raise WorkflowError(f"Source resume file was not found: {DEFAULT_SOURCE_RESUME}")
         tailored_scjdir = await self._ollama.generate_text(
@@ -1332,10 +1350,118 @@ class MatchingJobsWorkflow:
                 job=job,
             )
         )
-        return _render_resume_template(
+        text = _render_resume_template(
             tailored_scjdir=tailored_scjdir,
             sections_plan=sections_plan,
         )
+        return _ResumeDraft(
+            tailored_scjdir=tailored_scjdir,
+            sections_plan=sections_plan if isinstance(sections_plan, Mapping) else {},
+            text=text,
+        )
+
+    async def _repair_resume_draft_from_ats(
+        self,
+        *,
+        draft: _ResumeDraft,
+        source_resume: ProfileDocument | None,
+        job: JobDetails,
+        output_dir: Path,
+        resume_path: Path,
+        progress_callback: ProgressCallback | None = None,
+    ) -> tuple[_ResumeDraft, Path, AtsProxyScore | None]:
+        if source_resume is None or not resume_path.is_file():
+            return draft, resume_path, None
+
+        job_description = _job_description_context(job)
+        if not job_description.strip():
+            return draft, resume_path, None
+
+        current_draft = draft
+        current_path = resume_path
+        best_draft = draft
+        best_path = resume_path
+        best_score = calculate_ats_proxy_score(
+            resume_pdf=resume_path.read_bytes(),
+            job_description=job_description,
+        )
+
+        for attempt in range(1, ATS_REPAIR_MAX_ATTEMPTS + 1):
+            if best_score.overall_score >= ATS_REPAIR_TARGET_SCORE:
+                break
+            missing_terms = best_score.missing_high_value_terms[
+                :ATS_REPAIR_MAX_MISSING_TERMS
+            ]
+            source_evidence = _source_resume_evidence_for_missing_terms(
+                source_resume_text=source_resume.text,
+                missing_terms=missing_terms,
+            )
+            if not source_evidence:
+                _emit_progress(
+                    progress_callback,
+                    "ATS repair skipped; no source-resume evidence for missing terms "
+                    f"on job id '{job.job_id}'.",
+                )
+                break
+
+            _emit_progress(
+                progress_callback,
+                "ATS repair attempt "
+                f"{attempt}/{ATS_REPAIR_MAX_ATTEMPTS} for job id '{job.job_id}' "
+                f"(score {best_score.overall_score}/100).",
+            )
+            repair_plan = await self._ollama.generate_json(
+                _ats_resume_repair_prompt(
+                    source_evidence=source_evidence,
+                    current_resume_text=current_draft.text,
+                    current_tailored_scjdir=current_draft.tailored_scjdir,
+                    current_sections_plan=current_draft.sections_plan,
+                    job=job,
+                    score=best_score,
+                )
+            )
+            repaired_draft = _coerce_ats_repaired_resume_draft(
+                repair_plan=repair_plan,
+                current_draft=current_draft,
+            )
+            if repaired_draft.text == current_draft.text:
+                _emit_progress(
+                    progress_callback,
+                    f"ATS repair made no changes for job id '{job.job_id}'.",
+                )
+                break
+
+            repaired_path = write_resume_pdf(
+                resume_text=repaired_draft.text,
+                output_dir=output_dir,
+                job=job,
+            )
+            repaired_score = calculate_ats_proxy_score(
+                resume_pdf=repaired_path.read_bytes(),
+                job_description=job_description,
+            )
+            if repaired_score.overall_score <= best_score.overall_score:
+                write_resume_pdf(resume_text=best_draft.text, output_dir=output_dir, job=job)
+                _emit_progress(
+                    progress_callback,
+                    "ATS repair kept existing best resume "
+                    f"({best_score.overall_score}/100) for job id '{job.job_id}'.",
+                )
+                break
+
+            _emit_progress(
+                progress_callback,
+                "ATS repair improved score "
+                f"{best_score.overall_score}/100 -> {repaired_score.overall_score}/100 "
+                f"for job id '{job.job_id}'.",
+            )
+            best_draft = repaired_draft
+            best_path = repaired_path
+            best_score = repaired_score
+            current_draft = repaired_draft
+            current_path = repaired_path
+
+        return best_draft, best_path or current_path, best_score
 
     async def _generate_cover_letter_text(
         self,
@@ -1394,231 +1520,54 @@ def load_profile_documents(profile_dir: Path) -> list[ProfileDocument]:
     return documents
 
 
-def load_profile_skill_sections(
-    profile_dir: Path,
+
+def _source_resume_evidence_for_missing_terms(
     *,
-    skills_name: str = DEFAULT_PROFILE_SKILLS,
-) -> list[tuple[str, list[str]]]:
-    skills_path = profile_dir / skills_name
-    if not skills_path.is_file():
-        return []
-    return _parse_profile_skill_sections(
-        skills_path.read_text(encoding="utf-8", errors="replace")
-    )
-
-
-def _parse_profile_skill_sections(text: str) -> list[tuple[str, list[str]]]:
-    default_categories = {
-        _normalize_label(category): category
-        for category, _ in DEFAULT_CORE_TECHNICAL_SKILLS
-    }
-    sections_by_category: dict[str, list[str]] = {}
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
-        line = re.sub(r"^(?:[-*+]|\d+\.)\s+", "", line).strip()
-        line = line.replace("**", "")
-        if ":" not in line:
-            continue
-        raw_category, raw_skills = line.split(":", 1)
-        category = _match_core_skill_category(
-            raw_category.strip(),
-            default_categories=default_categories,
-        )
-        if category is None:
-            continue
-        skills = [
-            skill
-            for item in re.split(r",|;", raw_skills)
-            if (
-                skill := _clean_profile_skill_item(item)
-            )
-            and _is_allowed_core_skill(skill)
-        ]
-        if not skills:
-            continue
-        sections_by_category.setdefault(category, []).extend(skills)
-
-    return [
-        (category, _dedupe_preserve_order(sections_by_category[category]))
-        for category, _ in DEFAULT_CORE_TECHNICAL_SKILLS
-        if category in sections_by_category
-    ]
-
-
-def _match_core_skill_category(
-    category: str,
-    *,
-    default_categories: Mapping[str, str],
-) -> str | None:
-    normalized = _normalize_label(re.sub(r"\([^)]*\)", "", category))
-    if normalized in default_categories:
-        return default_categories[normalized]
-    if normalized in PROFILE_SKILL_CATEGORY_ALIASES:
-        return PROFILE_SKILL_CATEGORY_ALIASES[normalized]
-    for default_key, default_category in default_categories.items():
-        if normalized.startswith(default_key) or default_key.startswith(normalized):
-            return default_category
-    return None
-
-
-def _clean_profile_skill_item(text: str) -> str:
-    skill = _clean_list_item_text(text)
-    skill = re.sub(r"\s+", " ", skill).strip(" \t\r\n.")
-    return skill
-
-
-def _repair_resume_skills_from_ats(
-    *,
-    resume_text: str,
-    resume_path: Path,
-    job_description: str,
-    profile_skill_sections: list[tuple[str, list[str]]],
-) -> tuple[str, tuple[str, ...]]:
-    if not profile_skill_sections or not resume_path.is_file() or not job_description.strip():
-        return resume_text, ()
-    score = calculate_ats_proxy_score(
-        resume_pdf=resume_path.read_bytes(),
-        job_description=job_description,
-    )
-    additions = _profile_skill_additions_for_missing_terms(
-        missing_terms=score.missing_high_value_terms,
-        profile_skill_sections=profile_skill_sections,
-    )
-    if not additions:
-        return resume_text, ()
-    repaired_text, added_skills = _add_core_skills_to_resume_text(
-        resume_text=resume_text,
-        additions=additions,
-    )
-    return repaired_text, added_skills
-
-
-def _profile_skill_additions_for_missing_terms(
-    *,
+    source_resume_text: str,
     missing_terms: tuple[str, ...],
-    profile_skill_sections: list[tuple[str, list[str]]],
-) -> dict[str, list[str]]:
-    if not missing_terms:
-        return {}
-    skill_index = _profile_skill_match_index(profile_skill_sections)
-    additions: dict[str, list[str]] = {}
-    added_terms: set[str] = set()
-    for term in missing_terms:
-        term_key = _normalize_skill_match_key(term)
-        if not term_key or term_key in added_terms:
+) -> dict[str, str]:
+    evidence: dict[str, str] = {}
+    for term in missing_terms[:ATS_REPAIR_MAX_MISSING_TERMS]:
+        snippet = _source_resume_snippet_for_term(source_resume_text, term)
+        if snippet is None:
             continue
-        match = skill_index.get(term_key)
-        if match is None:
-            match = _find_embedded_profile_skill_match(
-                term=term,
-                profile_skill_sections=profile_skill_sections,
-            )
-        if match is None:
-            continue
-        category, skill = match
-        additions.setdefault(category, []).append(skill)
-        added_terms.add(term_key)
-    return {
-        category: _dedupe_preserve_order(skills)
-        for category, skills in additions.items()
-    }
+        evidence[term] = snippet
+        if len(evidence) >= ATS_REPAIR_MAX_SOURCE_SNIPPETS:
+            break
+    return evidence
 
 
-def _profile_skill_match_index(
-    profile_skill_sections: list[tuple[str, list[str]]],
-) -> dict[str, tuple[str, str]]:
-    index: dict[str, tuple[str, str]] = {}
-    for category, skills in profile_skill_sections:
-        for skill in skills:
-            for key in _profile_skill_match_keys(skill):
-                index.setdefault(key, (category, skill))
-    return index
-
-
-def _profile_skill_match_keys(skill: str) -> set[str]:
-    keys = {_normalize_skill_match_key(skill)}
-    keys.update(
-        _normalize_skill_match_key(value)
-        for value in re.findall(r"\(([A-Za-z0-9.+#/-]{2,})\)", skill)
-    )
-    if re.search(r"\bLLM\b", skill, flags=re.IGNORECASE):
-        keys.add("llm")
-    normalized = _normalize_skill_match_key(skill)
-    if "restful" in normalized and "api" in normalized:
-        keys.update({"rest", "restapi"})
-    if "rolebasedaccesscontrol" in normalized:
-        keys.add("rbac")
-    return {key for key in keys if key}
-
-
-def _find_embedded_profile_skill_match(
-    *,
-    term: str,
-    profile_skill_sections: list[tuple[str, list[str]]],
-) -> tuple[str, str] | None:
-    normalized_term = _normalize_skill_match_key(term)
-    if not normalized_term or normalized_term in {"ai", "api", "cloud"}:
+def _source_resume_snippet_for_term(source_resume_text: str, term: str) -> str | None:
+    term_key = _normalize_source_match_key(term)
+    if not term_key or term_key in {"ai", "api", "cloud"}:
         return None
-    if len(normalized_term) < 4 and normalized_term not in {"llm", "oci", "rbac"}:
+    lines = [line.strip() for line in source_resume_text.splitlines() if line.strip()]
+    for index, line in enumerate(lines):
+        if _source_line_matches_term(line=line, term_key=term_key):
+            start = max(0, index - ATS_REPAIR_SOURCE_SNIPPET_RADIUS)
+            end = min(len(lines), index + ATS_REPAIR_SOURCE_SNIPPET_RADIUS + 1)
+            return " ".join(lines[start:end])[:900]
+    normalized_source = _normalize_source_match_key(source_resume_text)
+    if term_key not in normalized_source:
         return None
-    for category, skills in profile_skill_sections:
-        for skill in skills:
-            skill_key = _normalize_skill_match_key(skill)
-            if normalized_term in skill_key:
-                return category, skill
-    return None
+    raw_index = normalized_source.find(term_key)
+    window_start = max(0, raw_index - 360)
+    window_end = min(len(source_resume_text), raw_index + len(term) + 360)
+    return _clean_inline_text(source_resume_text[window_start:window_end])[:900]
 
 
-def _add_core_skills_to_resume_text(
-    *,
-    resume_text: str,
-    additions: dict[str, list[str]],
-) -> tuple[str, tuple[str, ...]]:
-    lines = resume_text.splitlines()
-    repaired_lines: list[str] = []
-    added_skills: list[str] = []
-    in_core_skills = False
-    for line in lines:
-        stripped = line.strip()
-        if stripped == "Core Technical Skills":
-            in_core_skills = True
-            repaired_lines.append(line)
-            continue
-        if in_core_skills and stripped in RESUME_SECTION_HEADINGS - {"Core Technical Skills"}:
-            in_core_skills = False
-        if in_core_skills and stripped.startswith("- ") and ":" in stripped:
-            prefix, raw_skills = stripped[2:].split(":", 1)
-            category = prefix.strip()
-            skills = [
-                skill
-                for item in raw_skills.split(",")
-                if (skill := _clean_profile_skill_item(item))
-            ]
-            for skill in additions.get(category, []):
-                if len(skills) >= CORE_SKILL_REPAIR_MAX_PER_CATEGORY:
-                    break
-                if _skill_already_listed(skill, skills):
-                    continue
-                skills.append(skill)
-                added_skills.append(skill)
-            line = f"- {category}: {', '.join(_dedupe_preserve_order(skills))}"
-        repaired_lines.append(line)
-    if not added_skills:
-        return resume_text, ()
-    return "\n".join(repaired_lines).strip(), tuple(added_skills)
+def _source_line_matches_term(*, line: str, term_key: str) -> bool:
+    line_key = _normalize_source_match_key(line)
+    if term_key in line_key:
+        return True
+    if term_key == "restapi" and "restfulapi" in line_key:
+        return True
+    if term_key == "rbac" and "rolebasedaccesscontrol" in line_key:
+        return True
+    return term_key == "cicd" and "continuousintegration" in line_key
 
 
-def _skill_already_listed(skill: str, listed_skills: list[str]) -> bool:
-    skill_keys = _profile_skill_match_keys(skill)
-    return any(
-        skill_keys & _profile_skill_match_keys(listed_skill)
-        for listed_skill in listed_skills
-    )
-
-
-def _normalize_skill_match_key(text: str) -> str:
+def _normalize_source_match_key(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", text.casefold())
 
 
@@ -2579,6 +2528,92 @@ Description:
 """.strip()
 
 
+def _ats_resume_repair_prompt(
+    *,
+    source_evidence: Mapping[str, str],
+    current_resume_text: str,
+    current_tailored_scjdir: str,
+    current_sections_plan: Mapping[str, Any],
+    job: JobDetails,
+    score: AtsProxyScore,
+) -> str:
+    missing_terms = ", ".join(score.missing_high_value_terms[:ATS_REPAIR_MAX_MISSING_TERMS])
+    evidence_text = "\n".join(
+        f"- {term}: {snippet}" for term, snippet in source_evidence.items()
+    )
+    current_sections_json = json.dumps(
+        current_sections_plan,
+        ensure_ascii=True,
+        default=str,
+        indent=2,
+    )
+    return f"""
+You repair a generated resume after local ATS scoring.
+Return only valid JSON. Do not return markdown fences, commentary, advice, or a full resume.
+
+The first resume draft already used the source resume, CJD, and JOD. To save tokens, this
+repair pass only uses the JOD, current draft, ATS score, and source-resume evidence snippets.
+
+Goal:
+- Improve the ATS score toward {ATS_REPAIR_TARGET_SCORE}/100 when factual source evidence
+  supports it.
+- Cover missing high-value JOD terms only when supported by the source-resume evidence below.
+- Keep the existing local resume template; you only control tailored_scjdir, core_technical_skills,
+  and prior_experience.
+
+Rules:
+- Do not invent employers, dates, credentials, projects, tools, metrics, products, or
+  responsibilities.
+- Do not add a missing term unless it appears in, or is directly supported by, the source evidence.
+- Prefer small factual keyword/wording changes over broad rewrites.
+- Preserve the seven Core Technical Skills categories exactly.
+- Preserve prior employer names, locations, titles, dates, and bullet count per job.
+- Do not include "Error Budgets" in Core Technical Skills; use concrete observability tools
+  or reliability language instead.
+- If no factual repair is possible, return the current values unchanged.
+
+Return this JSON shape. Include complete replacement values only for sections you change:
+{{
+  "tailored_scjdir": "Oracle | Remote / International Datacenters...",
+  "core_technical_skills": [
+    {{"category": "Languages & Frameworks", "skills": ["Python", "Django"]}}
+  ],
+  "prior_experience": [
+    {{
+      "organization": "University of Iowa Hospitals and Clinics",
+      "bullets": ["Full-Cycle Software Engineering: ..."]
+    }}
+  ]
+}}
+
+ATS score:
+- overall: {score.overall_score}/100
+- parsing: {score.parsing_score}/100
+- keyword: {score.keyword_match_score}/100
+- semantic: {score.semantic_match_score}/100
+- formatting risk: {score.formatting_risk}
+- missing high-value terms: {missing_terms or "None"}
+
+Source-resume evidence for missing terms:
+{evidence_text}
+
+Current tailored Oracle section:
+{_limit_context(current_tailored_scjdir, max_chars=4_000)}
+
+Current dynamic section plan:
+{_limit_context(current_sections_json, max_chars=5_000)}
+
+Current generated resume:
+{_limit_context(current_resume_text, max_chars=10_000)}
+
+JOD:
+Title: {job.title}
+Company: {job.company or "Unknown"}
+Description:
+{_limit_context(_job_description_context(job), max_chars=6_000)}
+""".strip()
+
+
 def _recommendations_prompt(
     *,
     source_resume: ProfileDocument | None,
@@ -2818,6 +2853,73 @@ def _clean_cover_letter_text(text: str) -> str:
         cleaned.append(line)
         previous_blank = False
     return "\n".join(cleaned).strip()
+
+
+def _coerce_ats_repaired_resume_draft(
+    *,
+    repair_plan: Any,
+    current_draft: _ResumeDraft,
+) -> _ResumeDraft:
+    if not isinstance(repair_plan, Mapping):
+        return current_draft
+
+    tailored_scjdir = current_draft.tailored_scjdir
+    raw_scjdir = repair_plan.get("tailored_scjdir") or repair_plan.get("scjdir")
+    if isinstance(raw_scjdir, str) and _resume_block_lines(raw_scjdir):
+        tailored_scjdir = raw_scjdir
+
+    sections_plan: dict[str, Any] = dict(current_draft.sections_plan)
+    core_skills = _merge_category_section_plan(
+        current_value=sections_plan.get("core_technical_skills"),
+        repair_value=repair_plan.get("core_technical_skills"),
+        category_key="category",
+    )
+    if core_skills is not None:
+        sections_plan["core_technical_skills"] = core_skills
+
+    prior_experience = _merge_category_section_plan(
+        current_value=sections_plan.get("prior_experience"),
+        repair_value=repair_plan.get("prior_experience"),
+        category_key="organization",
+    )
+    if prior_experience is not None:
+        sections_plan["prior_experience"] = prior_experience
+
+    text = _render_resume_template(
+        tailored_scjdir=tailored_scjdir,
+        sections_plan=sections_plan,
+    )
+    return _ResumeDraft(
+        tailored_scjdir=tailored_scjdir,
+        sections_plan=sections_plan,
+        text=text,
+    )
+
+
+def _merge_category_section_plan(
+    *,
+    current_value: Any,
+    repair_value: Any,
+    category_key: str,
+) -> list[Any] | None:
+    if not isinstance(repair_value, list):
+        return None
+    if not isinstance(current_value, list):
+        return repair_value
+
+    merged_by_key: dict[str, Any] = {}
+    order: list[str] = []
+    for item in [*current_value, *repair_value]:
+        if not isinstance(item, Mapping):
+            continue
+        raw_key = str(item.get(category_key) or item.get("name") or item.get("company") or "")
+        normalized_key = _normalize_label(raw_key)
+        if not normalized_key:
+            continue
+        if normalized_key not in order:
+            order.append(normalized_key)
+        merged_by_key[normalized_key] = dict(item)
+    return [merged_by_key[key] for key in order]
 
 
 def _render_resume_template(

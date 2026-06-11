@@ -29,9 +29,9 @@ isolation, testable workflows, practical automation, and human-in-the-loop guard
   targeted LLM-written opening, Oracle-current-role, and prior-experience fragments. Prompts
   use a cleaned role-focused job description that removes obvious company boilerplate before
   LLM calls.
-- **ATS-informed skill repair**: after the local ATS proxy score identifies missing high-value
-  JOD terms, the workflow checks `profile/skills.md` and adds matching known skills to the
-  appropriate Core Technical Skills category before storing the final resume PDF.
+- **ATS-informed resume repair**: after the first resume draft is rendered and scored, the
+  workflow checks missing high-value JOD terms against the source resume, then runs a compact
+  source-evidence repair loop when factual improvements are available.
 - **Duplicate-aware workflow**: uses SQLite job IDs to skip openings that already have the
   requested artifact type, and does not count skipped jobs toward the requested run size.
 - **Local application tracker**: Flask + SQLite web UI for search/filter, status updates,
@@ -68,9 +68,10 @@ the part of the document it is allowed to change.
 Resume and cover-letter artifacts are assembled from a mix of stable local template sections
 and job-specific generated sections. Red sections stay static across jobs; blue sections are
 generated through focused prompts that compare the CJD, SCJDiR, and JOD before rendering the
-final PDF. After a resume PDF is rendered, a local ATS proxy can identify missing high-value
-terms and, when those terms are present in `profile/skills.md`, repair the Core Technical
-Skills section before the artifact is stored.
+first resume PDF. After that first PDF is rendered, a local ATS proxy can identify missing
+high-value terms. If those terms are supported by evidence snippets in the source resume, a
+compact repair prompt can revise the generated resume sections, re-render the PDF, and keep
+the best factual ATS score.
 
 ## ATS Feedback Loop
 
@@ -82,9 +83,11 @@ in the tracker:
 - calculate an overall proxy score plus parsing, keyword, semantic, and formatting-risk
   sub-scores
 - surface missing high-value terms in the Flask tracker so the gap is visible during review
-- check missing terms against `profile/skills.md` during resume generation, then add factual
-  matches to the appropriate Core Technical Skills category without another LLM call
-- store the final repaired PDF and updated ATS breakdown in SQLite
+- check missing terms against the expanded source resume, then build a small evidence-only
+  repair prompt instead of sending the full CJD again
+- re-render and rescore improved drafts up to a capped attempt limit, targeting 90+/100 when
+  the source resume supports the missing terms
+- store the final best factual PDF and updated ATS breakdown in SQLite
 
 ## Local Tracker Convenience
 
@@ -468,10 +471,9 @@ src/linkedin_career_mcp/
 ## Inputs
 
 Place private profile material in `profile/`. The directory is intentionally ignored by Git.
-Add `profile/skills.md` to maintain an expanded category-by-category skill inventory used by
-the ATS-informed resume repair pass. Only skills that are both missing from the generated
-resume and present in this file are added back into the generated Core Technical Skills
-section.
+The source resume is the factual inventory for ATS-informed repair, so keep
+`profile/MP-RESUME-AGENTIC.pdf` expanded with skills, experience, education, certifications,
+and project details you are comfortable using as tailoring evidence.
 
 Supported profile file types:
 
