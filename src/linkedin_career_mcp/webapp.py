@@ -34,7 +34,7 @@ TRACKING_COLUMNS = (
 )
 APPLICATION_STATUSES = {"No", "Yes", "N/A", "Rejected", "Accepted for interview"}
 APPLICATION_STATUS_FILTERS = {"all", *APPLICATION_STATUSES}
-VIEW_STATE_SORTS = {"company", "matched", "ats"}
+VIEW_STATE_SORTS = {"company", "matched", "ats", "resume", "cover_letter"}
 VIEW_STATE_DIRECTIONS = {"asc", "desc"}
 VIEW_STATE_QUERY_KEYS = {"q", "status", "sort", "direction"}
 REQUIRED_TRACKING_COLUMNS = (
@@ -49,10 +49,12 @@ REQUIRED_TRACKING_COLUMNS = (
 APPLICATION_EXTRA_COLUMNS = {
     "job_description": "TEXT",
     "prompt_job_description": "TEXT",
+    "resume_updated_at": "TEXT",
     "cover_letter_filename": "TEXT NOT NULL DEFAULT ''",
     "cover_letter_content": "BLOB",
     "cover_letter_mime_type": "TEXT NOT NULL DEFAULT 'application/pdf'",
     "source_cover_letter_path": "TEXT NOT NULL DEFAULT ''",
+    "cover_letter_updated_at": "TEXT",
     "date_matched": "TEXT",
     "date_posted": "TEXT",
     "experience_level": "TEXT",
@@ -134,10 +136,12 @@ def init_database(connection: sqlite3.Connection) -> None:
             resume_content BLOB,
             resume_mime_type TEXT NOT NULL DEFAULT 'application/pdf',
             source_resume_path TEXT NOT NULL,
+            resume_updated_at TEXT,
             cover_letter_filename TEXT NOT NULL DEFAULT '',
             cover_letter_content BLOB,
             cover_letter_mime_type TEXT NOT NULL DEFAULT 'application/pdf',
             source_cover_letter_path TEXT NOT NULL DEFAULT '',
+            cover_letter_updated_at TEXT,
             date_matched TEXT,
             date_posted TEXT,
             experience_level TEXT,
@@ -285,9 +289,15 @@ def upsert_application_artifact(
         if resume_path is not None and resume_path.is_file()
         else None
     )
+    resume_updated_at = _artifact_timestamp(resume_path) if resume_content is not None else None
     cover_letter_content = (
         cover_letter_path.read_bytes()
         if cover_letter_path is not None and cover_letter_path.is_file()
+        else None
+    )
+    cover_letter_updated_at = (
+        _artifact_timestamp(cover_letter_path)
+        if cover_letter_content is not None
         else None
     )
     ats_score = _calculate_ats_score(
@@ -300,15 +310,16 @@ def upsert_application_artifact(
             INSERT INTO applications (
                 job_id, company, job_title, linkedin_url, job_description,
                 prompt_job_description, resume_filename, resume_content, resume_mime_type,
-                source_resume_path, cover_letter_filename, cover_letter_content,
-                cover_letter_mime_type, source_cover_letter_path, date_matched, date_posted,
-                experience_level, ats_score, ats_parsing_score, ats_keyword_score,
-                ats_semantic_score, ats_formatting_risk, ats_missing_terms, ats_updated_at,
-                applied_to, date_applied, imported_at, updated_at
+                source_resume_path, resume_updated_at, cover_letter_filename,
+                cover_letter_content, cover_letter_mime_type, source_cover_letter_path,
+                cover_letter_updated_at, date_matched, date_posted, experience_level,
+                ats_score, ats_parsing_score, ats_keyword_score, ats_semantic_score,
+                ats_formatting_risk, ats_missing_terms, ats_updated_at, applied_to,
+                date_applied, imported_at, updated_at
             )
             VALUES (
                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?
+                ?, ?, ?, ?, ?, ?
             )
             ON CONFLICT(job_id) DO UPDATE SET
                 company = excluded.company,
@@ -335,6 +346,10 @@ def upsert_application_artifact(
                     WHEN excluded.source_resume_path != '' THEN excluded.source_resume_path
                     ELSE applications.source_resume_path
                 END,
+                resume_updated_at = COALESCE(
+                    excluded.resume_updated_at,
+                    applications.resume_updated_at
+                ),
                 cover_letter_filename = CASE
                     WHEN excluded.cover_letter_filename != '' THEN excluded.cover_letter_filename
                     ELSE applications.cover_letter_filename
@@ -353,6 +368,10 @@ def upsert_application_artifact(
                     THEN excluded.source_cover_letter_path
                     ELSE applications.source_cover_letter_path
                 END,
+                cover_letter_updated_at = COALESCE(
+                    excluded.cover_letter_updated_at,
+                    applications.cover_letter_updated_at
+                ),
                 date_matched = COALESCE(
                     NULLIF(applications.date_matched, ''),
                     excluded.date_matched
@@ -405,10 +424,12 @@ def upsert_application_artifact(
                 resume_content,
                 "application/pdf",
                 str(resume_path) if resume_path is not None else "",
+                resume_updated_at,
                 cover_letter_path.name if cover_letter_path is not None else "",
                 cover_letter_content,
                 "application/pdf",
                 str(cover_letter_path) if cover_letter_path is not None else "",
+                cover_letter_updated_at,
                 date_matched,
                 date_posted,
                 experience_level,
@@ -841,6 +862,7 @@ def create_app(
     app.config["DATABASE_PATH"] = database_path
     app.config["OUTPUT_DIR"] = output_dir
     app.jinja_env.filters["display_date"] = _display_date
+    app.jinja_env.filters["display_timestamp"] = _display_timestamp
 
     def redirect_to_index_state():
         return redirect(_safe_index_return_path(request.values.get("return_to")))
@@ -1155,6 +1177,16 @@ def _date_value(value: Any) -> str | None:
     return text or None
 
 
+def _artifact_timestamp(path: Path | None) -> str | None:
+    if path is None or not path.is_file():
+        return None
+    try:
+        modified_at = path.stat().st_mtime
+    except OSError:
+        return None
+    return datetime.fromtimestamp(modified_at, UTC).isoformat(timespec="seconds")
+
+
 def _normalize_applied_to(value: Any) -> str:
     text = str(value or "").strip()
     return text if text in APPLICATION_STATUSES else "No"
@@ -1280,6 +1312,17 @@ def _display_date(value: Any) -> str:
     if "T" in text:
         return text.split("T", 1)[0]
     return text
+
+
+def _display_timestamp(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return text
+    return parsed.strftime("%Y-%m-%d %H:%M")
 
 
 def _delete_tracking_rows(*, tracking_path: Path, job_ids: set[str]) -> None:
@@ -1671,6 +1714,14 @@ INDEX_TEMPLATE = """
     .score-row strong { font-weight: 700; }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; min-width: 170px; }
     .actions form { margin: 0; }
+    .artifact-cell { min-width: 132px; }
+    .artifact-timestamp {
+      color: var(--muted);
+      display: block;
+      font-size: 12px;
+      margin-top: 3px;
+      white-space: nowrap;
+    }
     .text-link-button {
       background: transparent;
       border: 0;
@@ -1860,8 +1911,32 @@ INDEX_TEMPLATE = """
               </button>
             </th>
             <th>Job Links</th>
-            <th>Resume</th>
-            <th>Cover Letter</th>
+            <th id="resume-header" aria-sort="none">
+              <button
+                id="resume-sort"
+                class="sort-button"
+                type="button"
+                aria-label="Sort by resume timestamp"
+              >
+                Resume
+                <span id="resume-sort-indicator" class="sort-indicator" aria-hidden="true">
+                  ↑↓
+                </span>
+              </button>
+            </th>
+            <th id="cover-letter-header" aria-sort="none">
+              <button
+                id="cover-letter-sort"
+                class="sort-button"
+                type="button"
+                aria-label="Sort by cover letter timestamp"
+              >
+                Cover Letter
+                <span id="cover-letter-sort-indicator" class="sort-indicator" aria-hidden="true">
+                  ↑↓
+                </span>
+              </button>
+            </th>
             <th>Application</th>
           </tr>
         </thead>
@@ -1876,6 +1951,8 @@ INDEX_TEMPLATE = """
                 data-company-sort="{{ row.company }}"
                 data-matched-sort="{{ row.date_matched or '' }}"
                 data-ats-sort="{{ row.ats_score if row.ats_score is not none else '' }}"
+                data-resume-sort="{{ row.resume_updated_at or '' }}"
+                data-cover-letter-sort="{{ row.cover_letter_updated_at or '' }}"
                 data-search="{{ search_text|lower }}">
               <td class="select-col">
                 <input
@@ -1954,7 +2031,8 @@ INDEX_TEMPLATE = """
                 </div>
               </td>
               <td>
-                <div class="actions">
+                <div class="artifact-cell">
+                  <div class="actions">
                   {% if row.resume_content %}
                     <a href="/resumes/{{ row.job_id }}" target="_blank" rel="noreferrer">
                       Resume
@@ -1971,10 +2049,17 @@ INDEX_TEMPLATE = """
                   {% else %}
                     <span class="muted">Missing</span>
                   {% endif %}
+                  </div>
+                  {% if row.resume_updated_at %}
+                    <span class="artifact-timestamp">
+                      {{ row.resume_updated_at|display_timestamp }}
+                    </span>
+                  {% endif %}
                 </div>
               </td>
               <td>
-                <div class="actions">
+                <div class="artifact-cell">
+                  <div class="actions">
                   {% if row.cover_letter_content %}
                     <a href="/cover-letters/{{ row.job_id }}" target="_blank" rel="noreferrer">
                       Cover Letter
@@ -1993,6 +2078,12 @@ INDEX_TEMPLATE = """
                     </form>
                   {% else %}
                     <span class="muted">Missing</span>
+                  {% endif %}
+                  </div>
+                  {% if row.cover_letter_updated_at %}
+                    <span class="artifact-timestamp">
+                      {{ row.cover_letter_updated_at|display_timestamp }}
+                    </span>
                   {% endif %}
                 </div>
               </td>
@@ -2055,6 +2146,12 @@ INDEX_TEMPLATE = """
     const atsSortButton = document.querySelector("#ats-sort");
     const atsSortIndicator = document.querySelector("#ats-sort-indicator");
     const atsHeader = document.querySelector("#ats-header");
+    const resumeSortButton = document.querySelector("#resume-sort");
+    const resumeSortIndicator = document.querySelector("#resume-sort-indicator");
+    const resumeHeader = document.querySelector("#resume-header");
+    const coverLetterSortButton = document.querySelector("#cover-letter-sort");
+    const coverLetterSortIndicator = document.querySelector("#cover-letter-sort-indicator");
+    const coverLetterHeader = document.querySelector("#cover-letter-header");
     const tableBody = document.querySelector("#applications tbody");
     const rows = [...document.querySelectorAll("#applications tbody tr")];
     const rowSelectors = [...document.querySelectorAll(".row-selector")];
@@ -2075,6 +2172,8 @@ INDEX_TEMPLATE = """
     let companySortDirection = null;
     let matchedSortDirection = null;
     let atsSortDirection = null;
+    let resumeSortDirection = null;
+    let coverLetterSortDirection = null;
     function activeSortState() {
       if (companySortDirection) {
         return { sort: "company", direction: companySortDirection };
@@ -2084,6 +2183,12 @@ INDEX_TEMPLATE = """
       }
       if (atsSortDirection) {
         return { sort: "ats", direction: atsSortDirection };
+      }
+      if (resumeSortDirection) {
+        return { sort: "resume", direction: resumeSortDirection };
+      }
+      if (coverLetterSortDirection) {
+        return { sort: "cover_letter", direction: coverLetterSortDirection };
       }
       return { sort: "", direction: "" };
     }
@@ -2127,7 +2232,15 @@ INDEX_TEMPLATE = """
       updateSelectionState();
     }
     function matchedTimestamp(row) {
-      const value = row.dataset.matchedSort;
+      return sortableTimestamp(row.dataset.matchedSort);
+    }
+    function resumeTimestamp(row) {
+      return sortableTimestamp(row.dataset.resumeSort);
+    }
+    function coverLetterTimestamp(row) {
+      return sortableTimestamp(row.dataset.coverLetterSort);
+    }
+    function sortableTimestamp(value) {
       if (!value) {
         return null;
       }
@@ -2153,8 +2266,12 @@ INDEX_TEMPLATE = """
       companySortDirection = nextDirection || (companySortDirection === "asc" ? "desc" : "asc");
       matchedSortDirection = null;
       atsSortDirection = null;
+      resumeSortDirection = null;
+      coverLetterSortDirection = null;
       resetSortIndicator(matchedHeader, matchedSortIndicator);
       resetSortIndicator(atsHeader, atsSortIndicator);
+      resetSortIndicator(resumeHeader, resumeSortIndicator);
+      resetSortIndicator(coverLetterHeader, coverLetterSortIndicator);
       const direction = companySortDirection === "asc" ? 1 : -1;
       const originalIndex = new Map(rows.map((row, index) => [row, index]));
       const sortedRows = [...rows].sort((left, right) => {
@@ -2187,8 +2304,12 @@ INDEX_TEMPLATE = """
       matchedSortDirection = nextDirection || (matchedSortDirection === "asc" ? "desc" : "asc");
       companySortDirection = null;
       atsSortDirection = null;
+      resumeSortDirection = null;
+      coverLetterSortDirection = null;
       resetSortIndicator(companyHeader, companySortIndicator);
       resetSortIndicator(atsHeader, atsSortIndicator);
+      resetSortIndicator(resumeHeader, resumeSortIndicator);
+      resetSortIndicator(coverLetterHeader, coverLetterSortIndicator);
       const direction = matchedSortDirection === "asc" ? 1 : -1;
       const originalIndex = new Map(rows.map((row, index) => [row, index]));
       const sortedRows = [...rows].sort((left, right) => {
@@ -2225,8 +2346,12 @@ INDEX_TEMPLATE = """
       atsSortDirection = nextDirection || (atsSortDirection === "asc" ? "desc" : "asc");
       companySortDirection = null;
       matchedSortDirection = null;
+      resumeSortDirection = null;
+      coverLetterSortDirection = null;
       resetSortIndicator(companyHeader, companySortIndicator);
       resetSortIndicator(matchedHeader, matchedSortIndicator);
+      resetSortIndicator(resumeHeader, resumeSortIndicator);
+      resetSortIndicator(coverLetterHeader, coverLetterSortIndicator);
       const direction = atsSortDirection === "asc" ? 1 : -1;
       const originalIndex = new Map(rows.map((row, index) => [row, index]));
       const sortedRows = [...rows].sort((left, right) => {
@@ -2254,6 +2379,92 @@ INDEX_TEMPLATE = """
         );
       }
       atsSortIndicator.textContent = atsSortDirection === "asc" ? "↑" : "↓";
+      applyFilters();
+    }
+    function sortRowsByResume(nextDirection = null) {
+      if (!tableBody) {
+        return;
+      }
+      resumeSortDirection = nextDirection || (resumeSortDirection === "asc" ? "desc" : "asc");
+      companySortDirection = null;
+      matchedSortDirection = null;
+      atsSortDirection = null;
+      coverLetterSortDirection = null;
+      resetSortIndicator(companyHeader, companySortIndicator);
+      resetSortIndicator(matchedHeader, matchedSortIndicator);
+      resetSortIndicator(atsHeader, atsSortIndicator);
+      resetSortIndicator(coverLetterHeader, coverLetterSortIndicator);
+      const direction = resumeSortDirection === "asc" ? 1 : -1;
+      const originalIndex = new Map(rows.map((row, index) => [row, index]));
+      const sortedRows = [...rows].sort((left, right) => {
+        const leftValue = resumeTimestamp(left);
+        const rightValue = resumeTimestamp(right);
+        if (leftValue === null && rightValue === null) {
+          return originalIndex.get(left) - originalIndex.get(right);
+        }
+        if (leftValue === null) {
+          return 1;
+        }
+        if (rightValue === null) {
+          return -1;
+        }
+        if (leftValue === rightValue) {
+          return originalIndex.get(left) - originalIndex.get(right);
+        }
+        return (leftValue - rightValue) * direction;
+      });
+      sortedRows.forEach((row) => tableBody.appendChild(row));
+      if (resumeHeader) {
+        resumeHeader.setAttribute(
+          "aria-sort",
+          resumeSortDirection === "asc" ? "ascending" : "descending",
+        );
+      }
+      resumeSortIndicator.textContent = resumeSortDirection === "asc" ? "↑" : "↓";
+      applyFilters();
+    }
+    function sortRowsByCoverLetter(nextDirection = null) {
+      if (!tableBody) {
+        return;
+      }
+      coverLetterSortDirection =
+        nextDirection || (coverLetterSortDirection === "asc" ? "desc" : "asc");
+      companySortDirection = null;
+      matchedSortDirection = null;
+      atsSortDirection = null;
+      resumeSortDirection = null;
+      resetSortIndicator(companyHeader, companySortIndicator);
+      resetSortIndicator(matchedHeader, matchedSortIndicator);
+      resetSortIndicator(atsHeader, atsSortIndicator);
+      resetSortIndicator(resumeHeader, resumeSortIndicator);
+      const direction = coverLetterSortDirection === "asc" ? 1 : -1;
+      const originalIndex = new Map(rows.map((row, index) => [row, index]));
+      const sortedRows = [...rows].sort((left, right) => {
+        const leftValue = coverLetterTimestamp(left);
+        const rightValue = coverLetterTimestamp(right);
+        if (leftValue === null && rightValue === null) {
+          return originalIndex.get(left) - originalIndex.get(right);
+        }
+        if (leftValue === null) {
+          return 1;
+        }
+        if (rightValue === null) {
+          return -1;
+        }
+        if (leftValue === rightValue) {
+          return originalIndex.get(left) - originalIndex.get(right);
+        }
+        return (leftValue - rightValue) * direction;
+      });
+      sortedRows.forEach((row) => tableBody.appendChild(row));
+      if (coverLetterHeader) {
+        coverLetterHeader.setAttribute(
+          "aria-sort",
+          coverLetterSortDirection === "asc" ? "ascending" : "descending",
+        );
+      }
+      coverLetterSortIndicator.textContent =
+        coverLetterSortDirection === "asc" ? "↑" : "↓";
       applyFilters();
     }
     function visibleSelectors() {
@@ -2349,6 +2560,12 @@ INDEX_TEMPLATE = """
     if (atsSortButton) {
       atsSortButton.addEventListener("click", () => sortRowsByAts());
     }
+    if (resumeSortButton) {
+      resumeSortButton.addEventListener("click", () => sortRowsByResume());
+    }
+    if (coverLetterSortButton) {
+      coverLetterSortButton.addEventListener("click", () => sortRowsByCoverLetter());
+    }
     document.querySelectorAll("form").forEach((form) => {
       form.addEventListener("submit", syncReturnState);
     });
@@ -2395,6 +2612,10 @@ INDEX_TEMPLATE = """
       sortRowsByMatched(initialDirection === "desc" ? "desc" : "asc");
     } else if (initialSort === "ats") {
       sortRowsByAts(initialDirection === "desc" ? "desc" : "asc");
+    } else if (initialSort === "resume") {
+      sortRowsByResume(initialDirection === "desc" ? "desc" : "asc");
+    } else if (initialSort === "cover_letter") {
+      sortRowsByCoverLetter(initialDirection === "desc" ? "desc" : "asc");
     } else {
       applyFilters();
     }

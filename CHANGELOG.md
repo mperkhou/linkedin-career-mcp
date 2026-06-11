@@ -3,6 +3,7 @@
 ## 1.25.0 - PR #25: Add webapp regeneration actions
 
 * commit `5d79e39`: Add webapp regeneration actions
+* commit `TBD`: Track artifact timestamps in the tracker
 
 ## 1.24.0 - PR #24: Bust README diagram image cache
 

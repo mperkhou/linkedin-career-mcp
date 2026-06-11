@@ -377,6 +377,8 @@ regenerate documents for selected rows. Select one or more jobs, choose Regenera
 pick Cover letters, Resumes, or All, and Run. The webapp starts the matching `make
 regenerate-* JOB_IDS="..."` command in the background, streams progress into the tracker,
 and syncs regenerated artifacts back into SQLite when the command finishes.
+Resume and cover-letter columns show the latest synced artifact timestamp under their
+links, and both columns can be sorted to quickly find stale or newly regenerated PDFs.
 
 To enable Playwright Chromium:
 
