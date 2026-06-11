@@ -3,6 +3,7 @@
 ## 1.23.0 - PR #23: Add source-resume ATS repair loop
 
 * commit `a9cd5e4`: Add source-resume ATS repair loop
+* commit `00f64c2`: Refine ATS repair scoring evidence
 
 ## 1.22.0 - PR #22: Tune cover-letter Oracle alignment
 
