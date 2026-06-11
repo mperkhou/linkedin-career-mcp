@@ -50,7 +50,7 @@ isolation, testable workflows, practical automation, and human-in-the-loop guard
 
 ## Workflow Graphic
 
-![Agentic LinkedIn career workflow](docs/assets/agentic-career-workflow.svg)
+![Agentic LinkedIn career workflow](docs/assets/agentic-career-workflow.svg?v=20260611-ats-repair)
 
 This system turns public job descriptions and private profile context into reviewable
 application artifacts while preserving a human-owned application workflow.
@@ -63,7 +63,7 @@ generated sections. This is also where the resume workflow keeps the document ea
 parsers to read: the template owns the structure, while each generated section is bounded to
 the part of the document it is allowed to change.
 
-![Section-aware resume and cover-letter template generation](docs/assets/section-aware-template-generation.svg)
+![Section-aware resume and cover-letter template generation](docs/assets/section-aware-template-generation.svg?v=20260611-ats-repair)
 
 Resume and cover-letter artifacts are assembled from a mix of stable local template sections
 and job-specific generated sections. Red sections stay static across jobs; blue sections are
