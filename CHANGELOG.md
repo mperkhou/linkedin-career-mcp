@@ -1,5 +1,9 @@
 # linkedin-career-mcp CHANGELOG
 
+## 1.28.0 - PR #28: Preserve cover letter bold styling
+
+* commit `4814923`: Preserve cover letter bold styling
+
 ## 1.27.0 - PR #27: Preserve hyperlinks in stylized PDFs
 
 * commit `1e0b844`: Preserve hyperlinks in stylized PDFs
