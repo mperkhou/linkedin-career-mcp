@@ -17,6 +17,7 @@ from linkedin_career_mcp.artifact_refresh import (
     _patch_cover_letter_project_paragraph_pdf,
     _patch_resume_pdf,
     _patch_resume_style_pdf,
+    stylize_cover_letter_pdf,
     stylize_resume_pdf,
 )
 from linkedin_career_mcp.workflows.matching import _write_cover_letter_text_pdf
@@ -118,6 +119,50 @@ def test_stylize_resume_pdf_writes_emerald_copy_without_rewriting_source(
     assert "Staff Engineer | AI Enablement & Platform Automation" in text
     assert "Analytical Staff Engineer focused on practical AI enablement." in text
     assert "Built AI-assisted delivery workflows" in text
+    assert _has_emerald_color(reader)
+
+
+def test_stylize_cover_letter_pdf_writes_emerald_copy_without_rewriting_source(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "cover-letter-input.pdf"
+    pdf = canvas.Canvas(str(path), pagesize=LETTER)
+    pdf.setFont("Helvetica", 10)
+    y = 740
+    lines = [
+        "Subject: AI enablement platform automation",
+        "",
+        "Dear Hiring Manager,",
+        "",
+        "I build practical AI enablement workflows for enterprise infrastructure.",
+        "",
+        "1. Building the Connective Tissue",
+        "MCP connectivity gives agents the context they need.",
+        "\u2022 OCI Automation: Built agentic infrastructure workflows.",
+        "\u2022 JIRA Automation: Converted troubleshooting context into stories.",
+        "",
+        "Sincerely,",
+        "Maxim Perkhounkov",
+    ]
+    for line in lines:
+        if line:
+            pdf.drawString(60, y, line)
+        y -= 16
+    pdf.save()
+    original_bytes = path.read_bytes()
+
+    result = stylize_cover_letter_pdf(input_path=path)
+
+    assert result.source_path == path
+    assert result.output_path == tmp_path / "cover-letter-input_emerald.pdf"
+    assert path.read_bytes() == original_bytes
+
+    reader = PdfReader(result.output_path)
+    text = _extract_text(reader)
+    assert "Subject: AI enablement platform automation" in text
+    assert "MCP connectivity gives agents the context they need." in text
+    assert "OCI Automation: Built agentic infrastructure workflows." in text
+    assert "Sincerely," in text
     assert _has_emerald_color(reader)
 
 

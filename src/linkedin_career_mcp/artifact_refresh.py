@@ -26,6 +26,7 @@ from linkedin_career_mcp.workflows.matching import (
     RESUME_SECTION_HEADINGS,
     _looks_like_employer_line,
     _looks_like_title_line,
+    _write_cover_letter_text_pdf,
     _write_text_pdf,
 )
 
@@ -97,6 +98,14 @@ class StylizedResumeResult:
     output_path: Path
     pages_read: int
     lines_rendered: int
+
+
+@dataclass(frozen=True)
+class StylizedCoverLetterResult:
+    source_path: Path
+    output_path: Path
+    pages_read: int
+    paragraphs_rendered: int
 
 
 @dataclass(frozen=True)
@@ -359,6 +368,93 @@ def _normalize_stylized_resume_pdf_line(raw_line: str) -> str:
     if bullet_match:
         line = f"- {raw_line[bullet_match.end():]}"
     return _clean_inline_pdf_text(line)
+
+
+def stylize_cover_letter_pdf(
+    *,
+    input_path: Path,
+    output_path: Path | None = None,
+    output_suffix: str = STYLIZED_RESUME_DEFAULT_SUFFIX,
+) -> StylizedCoverLetterResult:
+    source_path = input_path.expanduser()
+    if not source_path.is_file():
+        raise ValueError(f"Cover letter PDF was not found: {source_path}")
+    if source_path.suffix.lower() != ".pdf":
+        raise ValueError(f"Cover letter stylizer only supports PDF input: {source_path}")
+
+    destination_path = (
+        output_path.expanduser()
+        if output_path is not None
+        else _stylized_resume_output_path(source_path, output_suffix=output_suffix)
+    )
+    if destination_path == source_path:
+        raise ValueError(
+            "Refusing to overwrite the input cover letter; choose a different output path."
+        )
+
+    reader = PdfReader(source_path)
+    cover_letter_text = _stylized_cover_letter_text_from_pdf(reader)
+    if not cover_letter_text:
+        raise ValueError(f"No extractable text was found in cover letter PDF: {source_path}")
+
+    destination_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = destination_path.with_name(f".{destination_path.name}.tmp")
+    _write_cover_letter_text_pdf(text=cover_letter_text, path=temp_path)
+    temp_path.replace(destination_path)
+    return StylizedCoverLetterResult(
+        source_path=source_path,
+        output_path=destination_path,
+        pages_read=len(reader.pages),
+        paragraphs_rendered=sum(
+            1 for paragraph in cover_letter_text.split("\n\n") if paragraph.strip()
+        ),
+    )
+
+
+def _stylized_cover_letter_text_from_pdf(reader: PdfReader) -> str:
+    text = _extract_pdf_layout_text(reader)
+    paragraphs = _normalize_stylized_cover_letter_pdf_paragraphs(text)
+    return "\n\n".join(paragraphs).strip()
+
+
+def _normalize_stylized_cover_letter_pdf_paragraphs(text: str) -> list[str]:
+    paragraphs: list[str] = []
+    current_lines: list[str] = []
+    current_is_bullet = False
+
+    def flush_current() -> None:
+        nonlocal current_is_bullet
+        if current_lines:
+            paragraphs.append(" ".join(current_lines).strip())
+            current_lines.clear()
+        current_is_bullet = False
+
+    for raw_line in text.splitlines():
+        line = _clean_inline_pdf_text(raw_line)
+        if not line:
+            flush_current()
+            continue
+
+        bullet_match = PDF_BULLET_PREFIX_RE.match(raw_line)
+        if bullet_match:
+            flush_current()
+            current_lines.append(f"\u2022 {_clean_inline_pdf_text(raw_line[bullet_match.end():])}")
+            current_is_bullet = True
+            continue
+
+        if _looks_like_numbered_cover_letter_heading(line):
+            flush_current()
+            paragraphs.append(line)
+            continue
+
+        current_lines.append(line)
+
+    flush_current()
+    return paragraphs
+
+
+def _looks_like_numbered_cover_letter_heading(line: str) -> bool:
+    return bool(re.fullmatch(r"\d+\.\s+\S.+", line))
 
 
 def _resume_has_emerald_style(reader: PdfReader) -> bool:
@@ -985,6 +1081,44 @@ def stylize_resume_main() -> None:
     print(
         "Resume stylized: "
         f"{result.pages_read} page(s), {result.lines_rendered} rendered line(s).",
+        file=sys.stderr,
+    )
+    print(result.output_path)
+
+
+def stylize_cover_letter_main() -> None:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Render an existing cover letter PDF with the emerald cover-letter style. "
+            "The input PDF is left untouched and the output is written beside it by default."
+        )
+    )
+    parser.add_argument("input_path", type=Path, help="Cover letter PDF to restyle.")
+    parser.add_argument(
+        "--output-path",
+        type=Path,
+        default=None,
+        help="Optional output PDF path. Defaults to INPUT_STEM_emerald.pdf in the input directory.",
+    )
+    parser.add_argument(
+        "--suffix",
+        default=STYLIZED_RESUME_DEFAULT_SUFFIX,
+        help="Filename suffix used when --output-path is omitted. Defaults to emerald.",
+    )
+    args = parser.parse_args()
+
+    try:
+        result = stylize_cover_letter_pdf(
+            input_path=args.input_path,
+            output_path=args.output_path,
+            output_suffix=args.suffix,
+        )
+    except ValueError as exc:
+        parser.exit(status=1, message=f"error: {exc}\n")
+
+    print(
+        "Cover letter stylized: "
+        f"{result.pages_read} page(s), {result.paragraphs_rendered} rendered paragraph(s).",
         file=sys.stderr,
     )
     print(result.output_path)

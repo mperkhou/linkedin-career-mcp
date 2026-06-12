@@ -333,6 +333,18 @@ equivalent executable is:
 .venv/bin/linkedin-career-stylize-resume ~/Downloads/mp_resume_ai_enablement_platform_auto_openly.pdf
 ```
 
+Apply the same polished cover-letter style to an existing PDF:
+
+```bash
+make stylize-cover-letter COVER_LETTER_PATH=~/Downloads/mp_CL_ai_enablement_platform_auto_openly.pdf
+```
+
+The equivalent executable is:
+
+```bash
+.venv/bin/linkedin-career-stylize-cover-letter ~/Downloads/mp_CL_ai_enablement_platform_auto_openly.pdf
+```
+
 Regeneration equivalent executable:
 
 ```bash
