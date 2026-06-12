@@ -1860,7 +1860,7 @@ def _write_text_pdf(*, text: str, path: Path) -> None:
             story.append(Paragraph(_paragraph_markup(line), heading))
         elif line_number == 0:
             story.append(Paragraph(_paragraph_markup(line), name_style))
-        elif line_number == 1:
+        elif current_section is None:
             story.append(Paragraph(_paragraph_markup(line), contact_style))
         elif line.startswith("Note:"):
             story.append(Paragraph(_paragraph_markup(line), note_style))

@@ -17,6 +17,7 @@ from linkedin_career_mcp.artifact_refresh import (
     _patch_cover_letter_project_paragraph_pdf,
     _patch_resume_pdf,
     _patch_resume_style_pdf,
+    stylize_resume_pdf,
 )
 from linkedin_career_mcp.workflows.matching import _write_cover_letter_text_pdf
 
@@ -76,6 +77,47 @@ def test_patch_resume_style_pdf_rerenders_old_style_resume(tmp_path: Path) -> No
     assert "Platform Component Ownership: Built multi-tenant automation systems" in text
     assert _has_uri(reader, LINKEDIN_PROFILE_URL)
     assert _has_uri(reader, "https://github.com/mperkhou/linkedin-career-mcp")
+    assert _has_emerald_color(reader)
+
+
+def test_stylize_resume_pdf_writes_emerald_copy_without_rewriting_source(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "resume-input.pdf"
+    pdf = canvas.Canvas(str(path), pagesize=LETTER)
+    pdf.setFont("Helvetica", 10)
+    y = 740
+    lines = [
+        "Max Perkhounkov",
+        "Staff Engineer | AI Enablement & Platform Automation",
+        "Professional Summary",
+        "Analytical Staff Engineer focused on practical AI enablement.",
+        "Core Technical Skills",
+        "\u2022 MCP, agentic workflows, Python automation",
+        "Professional Experience",
+        "Oracle | Remote",
+        "Senior Technical Lead - Cloud Automation Engineer | Feb 2022 - Present",
+        "\u2022 Built AI-assisted delivery workflows",
+        "Education & Certifications",
+        "\u2022 Bachelor of Science in Physics & Mathematics",
+    ]
+    for line in lines:
+        pdf.drawString(60, y, line)
+        y -= 16
+    pdf.save()
+    original_bytes = path.read_bytes()
+
+    result = stylize_resume_pdf(input_path=path)
+
+    assert result.source_path == path
+    assert result.output_path == tmp_path / "resume-input_emerald.pdf"
+    assert path.read_bytes() == original_bytes
+
+    reader = PdfReader(result.output_path)
+    text = _extract_text(reader)
+    assert "Staff Engineer | AI Enablement & Platform Automation" in text
+    assert "Analytical Staff Engineer focused on practical AI enablement." in text
+    assert "Built AI-assisted delivery workflows" in text
     assert _has_emerald_color(reader)
 
 

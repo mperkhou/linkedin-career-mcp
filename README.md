@@ -320,6 +320,19 @@ make regenerate-all JOB_IDS="4407411418 4342788295"
 make regenerate-all JOB_IDS="4407411418,4342788295"
 ```
 
+Apply the emerald resume style to an existing PDF without changing the source file:
+
+```bash
+make stylize-resume RESUME_PATH=~/Downloads/mp_resume_ai_enablement_platform_auto_openly.pdf
+```
+
+The styled copy is written beside the input file with an `_emerald.pdf` suffix by default. The
+equivalent executable is:
+
+```bash
+.venv/bin/linkedin-career-stylize-resume ~/Downloads/mp_resume_ai_enablement_platform_auto_openly.pdf
+```
+
 Regeneration equivalent executable:
 
 ```bash

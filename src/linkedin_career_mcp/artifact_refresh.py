@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sqlite3
 import sys
 from dataclasses import dataclass
@@ -36,6 +37,27 @@ EMERALD_DARK_RGB = (0.015686, 0.470588, 0.341176)
 RESUME_CONTACT_PREFIX = (
     "Iowa City, IA | 641-781-0477 | mperkhounkov1@gmail.com | "
 )
+STYLIZED_RESUME_DEFAULT_SUFFIX = "emerald"
+PDF_BULLET_PREFIX_RE = re.compile(
+    r"^\s*(?P<marker>[\x7f\u2022\u2023\u2043\u2219\u25aa\u25cf\u25e6]|o)\s+"
+)
+PROFESSIONAL_EXPERIENCE_DATE_CONTINUATION_RE = re.compile(
+    r"(?:[A-Z][a-z]{2}\s+)?\d{4}(?:\s*-\s*(?:Present|[A-Z][a-z]{2}\s+\d{4}|\d{4}))?"
+)
+MONTH_ABBREVIATIONS = (
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+)
 OLD_RESUME_CONTACT_LINE = f"{RESUME_CONTACT_PREFIX}{OLD_LINKEDIN_PROFILE_LABEL}"
 NEW_RESUME_CONTACT_LINE = f"{RESUME_CONTACT_PREFIX}{LINKEDIN_PROFILE_LABEL}"
 OLD_COVER_LETTER_PROJECT_ENDING_LINES = (
@@ -67,6 +89,14 @@ class StaticArtifactRefreshResult:
     cover_letters_updated: int
     database_rows_updated: int
     missing_files: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class StylizedResumeResult:
+    source_path: Path
+    output_path: Path
+    pages_read: int
+    lines_rendered: int
 
 
 @dataclass(frozen=True)
@@ -238,6 +268,99 @@ def _patch_resume_style_pdf(path: Path) -> bool:
     return True
 
 
+def stylize_resume_pdf(
+    *,
+    input_path: Path,
+    output_path: Path | None = None,
+    output_suffix: str = STYLIZED_RESUME_DEFAULT_SUFFIX,
+) -> StylizedResumeResult:
+    source_path = input_path.expanduser()
+    if not source_path.is_file():
+        raise ValueError(f"Resume PDF was not found: {source_path}")
+    if source_path.suffix.lower() != ".pdf":
+        raise ValueError(f"Resume stylizer only supports PDF input: {source_path}")
+
+    destination_path = (
+        output_path.expanduser()
+        if output_path is not None
+        else _stylized_resume_output_path(source_path, output_suffix=output_suffix)
+    )
+    if destination_path == source_path:
+        raise ValueError("Refusing to overwrite the input resume; choose a different output path.")
+
+    reader = PdfReader(source_path)
+    resume_text = _stylized_resume_text_from_pdf(reader)
+    if not resume_text:
+        raise ValueError(f"No extractable text was found in resume PDF: {source_path}")
+
+    destination_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = destination_path.with_name(f".{destination_path.name}.tmp")
+    _write_text_pdf(text=resume_text, path=temp_path)
+    temp_path.replace(destination_path)
+    return StylizedResumeResult(
+        source_path=source_path,
+        output_path=destination_path,
+        pages_read=len(reader.pages),
+        lines_rendered=sum(1 for line in resume_text.splitlines() if line.strip()),
+    )
+
+
+def _stylized_resume_output_path(path: Path, *, output_suffix: str) -> Path:
+    suffix = re.sub(r"[^A-Za-z0-9._-]+", "_", output_suffix.strip()).strip("._-")
+    suffix = suffix or STYLIZED_RESUME_DEFAULT_SUFFIX
+    return path.with_name(f"{path.stem}_{suffix}.pdf")
+
+
+def _stylized_resume_text_from_pdf(reader: PdfReader) -> str:
+    text = _extract_pdf_layout_text(reader)
+    lines = _normalize_stylized_resume_pdf_lines(text)
+    return "\n".join(lines).strip()
+
+
+def _extract_pdf_layout_text(reader: PdfReader) -> str:
+    page_text: list[str] = []
+    for page in reader.pages:
+        try:
+            text = page.extract_text(extraction_mode="layout") or ""
+        except TypeError:
+            text = page.extract_text() or ""
+        page_text.append(text)
+    return "\n".join(page_text)
+
+
+def _normalize_stylized_resume_pdf_lines(text: str) -> list[str]:
+    normalized_lines: list[str] = []
+    current_section: str | None = None
+    for raw_line in text.splitlines():
+        line = _normalize_stylized_resume_pdf_line(raw_line)
+        if not line:
+            continue
+        if line in RESUME_SECTION_HEADINGS:
+            current_section = line
+            normalized_lines.append(line)
+            continue
+        if _should_append_resume_continuation(
+            raw_line=raw_line,
+            line=line,
+            previous_line=normalized_lines[-1] if normalized_lines else "",
+            current_section=current_section,
+        ):
+            normalized_lines[-1] = f"{normalized_lines[-1]} {line}"
+            continue
+        normalized_lines.append(line)
+    return normalized_lines
+
+
+def _normalize_stylized_resume_pdf_line(raw_line: str) -> str:
+    line = raw_line.strip()
+    if not line:
+        return ""
+    bullet_match = PDF_BULLET_PREFIX_RE.match(raw_line)
+    if bullet_match:
+        line = f"- {raw_line[bullet_match.end():]}"
+    return _clean_inline_pdf_text(line)
+
+
 def _resume_has_emerald_style(reader: PdfReader) -> bool:
     emerald_colors = {EMERALD_ACCENT_RGB, EMERALD_DARK_RGB}
     for page in reader.pages:
@@ -327,7 +450,21 @@ def _should_append_resume_continuation(
         return True
     if previous_line.startswith(("- ", "  - ")):
         return True
+    if current_section == "Professional Experience" and _looks_like_date_continuation(
+        previous_line=previous_line,
+        line=line,
+    ):
+        return True
     return current_section == "Professional Summary" and not line.startswith("Note:")
+
+
+def _looks_like_date_continuation(*, previous_line: str, line: str) -> bool:
+    normalized_line = line.replace("\u2013", "-").replace("\u2014", "-")
+    if not PROFESSIONAL_EXPERIENCE_DATE_CONTINUATION_RE.fullmatch(normalized_line):
+        return False
+    return previous_line.endswith(MONTH_ABBREVIATIONS) or previous_line.endswith(
+        ("-", "\u2013", "\u2014")
+    )
 
 
 def _patch_cover_letter_pdf(path: Path) -> bool:
@@ -813,6 +950,44 @@ def refresh_static_artifacts_main() -> None:
         print("Missing artifact files:", file=sys.stderr)
         for path in result.missing_files:
             print(f"- {path}", file=sys.stderr)
+
+
+def stylize_resume_main() -> None:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Render an existing resume PDF with the emerald resume style. "
+            "The input PDF is left untouched and the output is written beside it by default."
+        )
+    )
+    parser.add_argument("input_path", type=Path, help="Resume PDF to restyle.")
+    parser.add_argument(
+        "--output-path",
+        type=Path,
+        default=None,
+        help="Optional output PDF path. Defaults to INPUT_STEM_emerald.pdf in the input directory.",
+    )
+    parser.add_argument(
+        "--suffix",
+        default=STYLIZED_RESUME_DEFAULT_SUFFIX,
+        help="Filename suffix used when --output-path is omitted. Defaults to emerald.",
+    )
+    args = parser.parse_args()
+
+    try:
+        result = stylize_resume_pdf(
+            input_path=args.input_path,
+            output_path=args.output_path,
+            output_suffix=args.suffix,
+        )
+    except ValueError as exc:
+        parser.exit(status=1, message=f"error: {exc}\n")
+
+    print(
+        "Resume stylized: "
+        f"{result.pages_read} page(s), {result.lines_rendered} rendered line(s).",
+        file=sys.stderr,
+    )
+    print(result.output_path)
 
 
 def _parse_job_ids(values: list[str]) -> list[str]:
