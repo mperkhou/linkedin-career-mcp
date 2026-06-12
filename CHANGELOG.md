@@ -1,5 +1,14 @@
 # linkedin-career-mcp CHANGELOG
 
+## 1.25.0 - PR #25: Add webapp regeneration actions and artifact stylizers
+
+* commit `5d79e39`: Add webapp regeneration actions
+* commit `6b7b9da`: Track artifact timestamps in the tracker
+* commit `2a20329`: Add standalone resume stylizer
+* commit `ff5d019`: Add standalone cover letter stylizer
+* commit `1e0b844`: Preserve hyperlinks in stylized PDFs
+* commit `4814923`: Preserve cover letter bold styling
+
 ## 1.24.0 - PR #24: Bust README diagram image cache
 
 * commit `bebeaf0`: Bust README diagram image cache

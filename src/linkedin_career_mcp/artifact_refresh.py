@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sqlite3
 import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlparse
 
 from pypdf import PdfReader, PdfWriter
 from pypdf.annotations import Link
@@ -25,6 +27,7 @@ from linkedin_career_mcp.workflows.matching import (
     RESUME_SECTION_HEADINGS,
     _looks_like_employer_line,
     _looks_like_title_line,
+    _write_cover_letter_text_pdf,
     _write_text_pdf,
 )
 
@@ -35,6 +38,27 @@ EMERALD_ACCENT_RGB = (0.341176, 0.729412, 0.52549)
 EMERALD_DARK_RGB = (0.015686, 0.470588, 0.341176)
 RESUME_CONTACT_PREFIX = (
     "Iowa City, IA | 641-781-0477 | mperkhounkov1@gmail.com | "
+)
+STYLIZED_RESUME_DEFAULT_SUFFIX = "emerald"
+PDF_BULLET_PREFIX_RE = re.compile(
+    r"^\s*(?P<marker>[\x7f\u2022\u2023\u2043\u2219\u25aa\u25cf\u25e6]|o)\s+"
+)
+PROFESSIONAL_EXPERIENCE_DATE_CONTINUATION_RE = re.compile(
+    r"(?:[A-Z][a-z]{2}\s+)?\d{4}(?:\s*-\s*(?:Present|[A-Z][a-z]{2}\s+\d{4}|\d{4}))?"
+)
+MONTH_ABBREVIATIONS = (
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
 )
 OLD_RESUME_CONTACT_LINE = f"{RESUME_CONTACT_PREFIX}{OLD_LINKEDIN_PROFILE_LABEL}"
 NEW_RESUME_CONTACT_LINE = f"{RESUME_CONTACT_PREFIX}{LINKEDIN_PROFILE_LABEL}"
@@ -70,6 +94,22 @@ class StaticArtifactRefreshResult:
 
 
 @dataclass(frozen=True)
+class StylizedResumeResult:
+    source_path: Path
+    output_path: Path
+    pages_read: int
+    lines_rendered: int
+
+
+@dataclass(frozen=True)
+class StylizedCoverLetterResult:
+    source_path: Path
+    output_path: Path
+    pages_read: int
+    paragraphs_rendered: int
+
+
+@dataclass(frozen=True)
 class _TextHit:
     x: float
     y: float
@@ -83,6 +123,24 @@ class _LinkLocation:
     y: float
     font_name: str
     font_size: float
+
+
+@dataclass(frozen=True)
+class _UriLink:
+    label: str
+    url: str
+    page_number: int
+    source_order: int
+
+
+@dataclass(frozen=True)
+class _PdfTextToken:
+    text: str
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+    bold: bool
 
 
 def refresh_static_artifacts(
@@ -238,6 +296,486 @@ def _patch_resume_style_pdf(path: Path) -> bool:
     return True
 
 
+def stylize_resume_pdf(
+    *,
+    input_path: Path,
+    output_path: Path | None = None,
+    output_suffix: str = STYLIZED_RESUME_DEFAULT_SUFFIX,
+) -> StylizedResumeResult:
+    source_path = input_path.expanduser()
+    if not source_path.is_file():
+        raise ValueError(f"Resume PDF was not found: {source_path}")
+    if source_path.suffix.lower() != ".pdf":
+        raise ValueError(f"Resume stylizer only supports PDF input: {source_path}")
+
+    destination_path = (
+        output_path.expanduser()
+        if output_path is not None
+        else _stylized_resume_output_path(source_path, output_suffix=output_suffix)
+    )
+    if destination_path == source_path:
+        raise ValueError("Refusing to overwrite the input resume; choose a different output path.")
+
+    reader = PdfReader(source_path)
+    resume_text = _stylized_resume_text_from_pdf(reader)
+    if not resume_text:
+        raise ValueError(f"No extractable text was found in resume PDF: {source_path}")
+
+    destination_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = destination_path.with_name(f".{destination_path.name}.tmp")
+    _write_text_pdf(text=resume_text, path=temp_path)
+    temp_path.replace(destination_path)
+    return StylizedResumeResult(
+        source_path=source_path,
+        output_path=destination_path,
+        pages_read=len(reader.pages),
+        lines_rendered=sum(1 for line in resume_text.splitlines() if line.strip()),
+    )
+
+
+def _stylized_resume_output_path(path: Path, *, output_suffix: str) -> Path:
+    suffix = re.sub(r"[^A-Za-z0-9._-]+", "_", output_suffix.strip()).strip("._-")
+    suffix = suffix or STYLIZED_RESUME_DEFAULT_SUFFIX
+    return path.with_name(f"{path.stem}_{suffix}.pdf")
+
+
+def _stylized_resume_text_from_pdf(reader: PdfReader) -> str:
+    layout_pages = _extract_pdf_layout_pages(reader)
+    text = "\n".join(layout_pages)
+    lines = _normalize_stylized_resume_pdf_lines(text)
+    links = _extract_pdf_uri_links(reader=reader, layout_pages=layout_pages)
+    lines = _apply_uri_links_to_lines(lines=lines, links=links)
+    return "\n".join(lines).strip()
+
+
+def _extract_pdf_layout_text(reader: PdfReader) -> str:
+    return "\n".join(_extract_pdf_layout_pages(reader))
+
+
+def _extract_pdf_layout_pages(reader: PdfReader) -> list[str]:
+    page_text: list[str] = []
+    for page in reader.pages:
+        try:
+            text = page.extract_text(extraction_mode="layout") or ""
+        except TypeError:
+            text = page.extract_text() or ""
+        page_text.append(text)
+    return page_text
+
+
+def _normalize_stylized_resume_pdf_lines(text: str) -> list[str]:
+    normalized_lines: list[str] = []
+    current_section: str | None = None
+    for raw_line in text.splitlines():
+        line = _normalize_stylized_resume_pdf_line(raw_line)
+        if not line:
+            continue
+        if line in RESUME_SECTION_HEADINGS:
+            current_section = line
+            normalized_lines.append(line)
+            continue
+        if _should_append_resume_continuation(
+            raw_line=raw_line,
+            line=line,
+            previous_line=normalized_lines[-1] if normalized_lines else "",
+            current_section=current_section,
+        ):
+            normalized_lines[-1] = f"{normalized_lines[-1]} {line}"
+            continue
+        normalized_lines.append(line)
+    return normalized_lines
+
+
+def _normalize_stylized_resume_pdf_line(raw_line: str) -> str:
+    line = raw_line.strip()
+    if not line:
+        return ""
+    bullet_match = PDF_BULLET_PREFIX_RE.match(raw_line)
+    if bullet_match:
+        line = f"- {raw_line[bullet_match.end():]}"
+    return _clean_inline_pdf_text(line)
+
+
+def _extract_pdf_uri_links(*, reader: PdfReader, layout_pages: list[str]) -> list[_UriLink]:
+    links: list[_UriLink] = []
+    source_order = 0
+    for page_number, page in enumerate(reader.pages):
+        page_layout_text = layout_pages[page_number] if page_number < len(layout_pages) else ""
+        for annotation_ref in page.get("/Annots") or []:
+            annotation = annotation_ref.get_object()
+            action = annotation.get("/A")
+            uri = action.get("/URI") if action is not None else None
+            if not uri:
+                continue
+
+            url = str(uri)
+            coordinate_label = _link_label_from_annotation(page=page, annotation=annotation)
+            fallback_label = _link_label_from_uri(url=url, page_text=page_layout_text)
+            label = _preferred_uri_link_label(
+                coordinate_label=coordinate_label,
+                fallback_label=fallback_label,
+                url=url,
+            )
+            if not label:
+                continue
+
+            links.append(
+                _UriLink(
+                    label=label,
+                    url=url,
+                    page_number=page_number,
+                    source_order=source_order,
+                )
+            )
+            source_order += 1
+    return links
+
+
+def _preferred_uri_link_label(
+    *,
+    coordinate_label: str | None,
+    fallback_label: str | None,
+    url: str,
+) -> str | None:
+    if coordinate_label and fallback_label and not _label_matches_uri(
+        label=coordinate_label,
+        url=url,
+    ):
+        return fallback_label
+    return coordinate_label or fallback_label
+
+
+def _label_matches_uri(*, label: str, url: str) -> bool:
+    normalized_label = label.casefold()
+    for candidate in _uri_label_candidates(url):
+        normalized_candidate = candidate.casefold()
+        if normalized_label in normalized_candidate or normalized_candidate in normalized_label:
+            return True
+    return False
+
+
+def _link_label_from_annotation(*, page: Any, annotation: Any) -> str | None:
+    rectangle = annotation.get("/Rect")
+    if rectangle is None or len(rectangle) < 4:
+        return None
+
+    rect = tuple(float(value) for value in rectangle[:4])
+    tokens = [
+        token
+        for token in _page_text_tokens(page)
+        if _rectangle_contains_token_center(token=token, rectangle=rect)
+    ]
+    if not tokens:
+        return None
+
+    tokens.sort(key=lambda token: (-token.y0, token.x0))
+    return _clean_inline_pdf_text(" ".join(token.text for token in tokens)) or None
+
+
+def _page_text_tokens(page: Any) -> list[_PdfTextToken]:
+    tokens: list[_PdfTextToken] = []
+
+    def visitor(
+        text: str,
+        current_matrix: list[float],
+        text_matrix: list[float],
+        font_dictionary: dict[str, Any] | None,
+        font_size: float,
+    ) -> None:
+        if not text.strip():
+            return
+
+        font_name = "Helvetica"
+        if font_dictionary is not None:
+            base_font = str(font_dictionary.get("/BaseFont", "")).lstrip("/")
+            if base_font:
+                font_name = base_font
+
+        x = float(current_matrix[4]) + float(text_matrix[4])
+        y = float(current_matrix[5]) + float(text_matrix[5])
+        for match in re.finditer(r"\S+", text):
+            prefix = text[: match.start()]
+            token_text = match.group(0)
+            token_x0 = x + _safe_string_width(prefix, font_name, font_size)
+            token_x1 = token_x0 + _safe_string_width(token_text, font_name, font_size)
+            tokens.append(
+                _PdfTextToken(
+                    text=token_text,
+                    x0=token_x0,
+                    y0=y - 2,
+                    x1=token_x1,
+                    y1=y + float(font_size) + 2,
+                    bold=_is_bold_font_name(font_name),
+                )
+            )
+
+    page.extract_text(visitor_text=visitor)
+    return tokens
+
+
+def _rectangle_contains_token_center(
+    *,
+    token: _PdfTextToken,
+    rectangle: tuple[float, float, float, float],
+) -> bool:
+    x0, y0, x1, y1 = rectangle
+    token_center_x = (token.x0 + token.x1) / 2
+    token_center_y = (token.y0 + token.y1) / 2
+    return x0 <= token_center_x <= x1 and y0 <= token_center_y <= y1
+
+
+def _link_label_from_uri(*, url: str, page_text: str) -> str | None:
+    normalized_page_text = _clean_inline_pdf_text(page_text)
+    if not normalized_page_text:
+        return None
+
+    for candidate in _uri_label_candidates(url):
+        if _text_has_link_label_candidate(text=normalized_page_text, candidate=candidate):
+            return candidate
+    return None
+
+
+def _text_has_link_label_candidate(*, text: str, candidate: str) -> bool:
+    candidate_pattern = re.escape(candidate)
+    return bool(
+        re.search(
+            rf"(?<![A-Za-z0-9_-]){candidate_pattern}(?![A-Za-z0-9_-])",
+            text,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
+def _uri_label_candidates(url: str) -> list[str]:
+    parsed = urlparse(url)
+    decoded_url = unquote(url)
+    decoded_path = unquote(parsed.path or "").strip("/")
+    candidates = [
+        decoded_url,
+        decoded_url.removeprefix("https://").removeprefix("http://"),
+    ]
+    if parsed.netloc:
+        host = parsed.netloc.removeprefix("www.")
+        candidates.append(host)
+        if decoded_path:
+            candidates.extend(
+                [
+                    f"{parsed.netloc}/{decoded_path}",
+                    f"{host}/{decoded_path}",
+                    decoded_path,
+                ]
+            )
+    if decoded_path:
+        path_parts = [part for part in decoded_path.split("/") if part]
+        candidates.extend(path_parts)
+        if len(path_parts) >= 2:
+            candidates.append("/".join(path_parts[-2:]))
+
+    unique_candidates: list[str] = []
+    for candidate in sorted(candidates, key=len, reverse=True):
+        candidate = candidate.strip()
+        if len(candidate) < 6 or candidate in unique_candidates:
+            continue
+        unique_candidates.append(candidate)
+    return unique_candidates
+
+
+def _apply_uri_links_to_lines(*, lines: list[str], links: list[_UriLink]) -> list[str]:
+    linked_lines = list(lines)
+    ordered_links = sorted(
+        links,
+        key=lambda link: (-len(link.label), link.page_number, link.source_order),
+    )
+    for link in ordered_links:
+        for index, line in enumerate(linked_lines):
+            linked_line = _link_first_plain_occurrence(
+                line=line,
+                label=link.label,
+                url=link.url,
+            )
+            if linked_line != line:
+                linked_lines[index] = linked_line
+                break
+    return linked_lines
+
+
+def _link_first_plain_occurrence(*, line: str, label: str, url: str) -> str:
+    protected_spans = [match.span() for match in re.finditer(r"\[[^\]]+]\(https?://[^)]+\)", line)]
+    for match in re.finditer(re.escape(label), line):
+        if any(
+            match.start() < protected_end and match.end() > protected_start
+            for protected_start, protected_end in protected_spans
+        ):
+            continue
+        return f"{line[: match.start()]}[{label}]({url}){line[match.end() :]}"
+    return line
+
+
+def _extract_pdf_bold_phrases(reader: PdfReader) -> list[str]:
+    phrases: list[str] = []
+    for page in reader.pages:
+        current_line_y: float | None = None
+        current_line_tokens: list[_PdfTextToken] = []
+        for token in sorted(_page_text_tokens(page), key=lambda item: (-item.y0, item.x0)):
+            if current_line_y is None or abs(token.y0 - current_line_y) <= 3:
+                current_line_tokens.append(token)
+                current_line_y = token.y0 if current_line_y is None else current_line_y
+                continue
+            phrases.extend(_bold_phrases_from_line(current_line_tokens))
+            current_line_tokens = [token]
+            current_line_y = token.y0
+        phrases.extend(_bold_phrases_from_line(current_line_tokens))
+
+    unique_phrases: list[str] = []
+    for phrase in phrases:
+        if phrase and phrase not in unique_phrases:
+            unique_phrases.append(phrase)
+    return unique_phrases
+
+
+def _bold_phrases_from_line(tokens: list[_PdfTextToken]) -> list[str]:
+    phrases: list[str] = []
+    current_tokens: list[str] = []
+    for token in sorted(tokens, key=lambda item: item.x0):
+        if token.bold:
+            current_tokens.append(token.text)
+            continue
+        if current_tokens:
+            phrases.append(_clean_inline_pdf_text(" ".join(current_tokens)))
+            current_tokens = []
+    if current_tokens:
+        phrases.append(_clean_inline_pdf_text(" ".join(current_tokens)))
+    return phrases
+
+
+def _is_bold_font_name(font_name: str) -> bool:
+    normalized = font_name.casefold()
+    return "bold" in normalized or "black" in normalized or "heavy" in normalized
+
+
+def _apply_bold_phrases_to_lines(*, lines: list[str], bold_phrases: list[str]) -> list[str]:
+    bold_lines = list(lines)
+    for phrase in sorted(bold_phrases, key=len, reverse=True):
+        for index, line in enumerate(bold_lines):
+            bold_line = _bold_first_plain_occurrence(line=line, phrase=phrase)
+            if bold_line != line:
+                bold_lines[index] = bold_line
+                break
+    return bold_lines
+
+
+def _bold_first_plain_occurrence(*, line: str, phrase: str) -> str:
+    protected_spans = _markdown_link_spans(line) + _markdown_bold_spans(line)
+    for match in re.finditer(re.escape(phrase), line):
+        if any(
+            match.start() < protected_end and match.end() > protected_start
+            for protected_start, protected_end in protected_spans
+        ):
+            continue
+        return f"{line[: match.start()]}**{phrase}**{line[match.end() :]}"
+    return line
+
+
+def _markdown_link_spans(text: str) -> list[tuple[int, int]]:
+    return [match.span() for match in re.finditer(r"\[[^\]]+]\(https?://[^)]+\)", text)]
+
+
+def _markdown_bold_spans(text: str) -> list[tuple[int, int]]:
+    return [match.span() for match in re.finditer(r"\*\*.+?\*\*", text)]
+
+
+def stylize_cover_letter_pdf(
+    *,
+    input_path: Path,
+    output_path: Path | None = None,
+    output_suffix: str = STYLIZED_RESUME_DEFAULT_SUFFIX,
+) -> StylizedCoverLetterResult:
+    source_path = input_path.expanduser()
+    if not source_path.is_file():
+        raise ValueError(f"Cover letter PDF was not found: {source_path}")
+    if source_path.suffix.lower() != ".pdf":
+        raise ValueError(f"Cover letter stylizer only supports PDF input: {source_path}")
+
+    destination_path = (
+        output_path.expanduser()
+        if output_path is not None
+        else _stylized_resume_output_path(source_path, output_suffix=output_suffix)
+    )
+    if destination_path == source_path:
+        raise ValueError(
+            "Refusing to overwrite the input cover letter; choose a different output path."
+        )
+
+    reader = PdfReader(source_path)
+    cover_letter_text = _stylized_cover_letter_text_from_pdf(reader)
+    if not cover_letter_text:
+        raise ValueError(f"No extractable text was found in cover letter PDF: {source_path}")
+
+    destination_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = destination_path.with_name(f".{destination_path.name}.tmp")
+    _write_cover_letter_text_pdf(text=cover_letter_text, path=temp_path)
+    temp_path.replace(destination_path)
+    return StylizedCoverLetterResult(
+        source_path=source_path,
+        output_path=destination_path,
+        pages_read=len(reader.pages),
+        paragraphs_rendered=sum(
+            1 for paragraph in cover_letter_text.split("\n\n") if paragraph.strip()
+        ),
+    )
+
+
+def _stylized_cover_letter_text_from_pdf(reader: PdfReader) -> str:
+    layout_pages = _extract_pdf_layout_pages(reader)
+    text = "\n".join(layout_pages)
+    paragraphs = _normalize_stylized_cover_letter_pdf_paragraphs(text)
+    links = _extract_pdf_uri_links(reader=reader, layout_pages=layout_pages)
+    paragraphs = _apply_uri_links_to_lines(lines=paragraphs, links=links)
+    bold_phrases = _extract_pdf_bold_phrases(reader)
+    paragraphs = _apply_bold_phrases_to_lines(lines=paragraphs, bold_phrases=bold_phrases)
+    return "\n\n".join(paragraphs).strip()
+
+
+def _normalize_stylized_cover_letter_pdf_paragraphs(text: str) -> list[str]:
+    paragraphs: list[str] = []
+    current_lines: list[str] = []
+    current_is_bullet = False
+
+    def flush_current() -> None:
+        nonlocal current_is_bullet
+        if current_lines:
+            paragraphs.append(" ".join(current_lines).strip())
+            current_lines.clear()
+        current_is_bullet = False
+
+    for raw_line in text.splitlines():
+        line = _clean_inline_pdf_text(raw_line)
+        if not line:
+            flush_current()
+            continue
+
+        bullet_match = PDF_BULLET_PREFIX_RE.match(raw_line)
+        if bullet_match:
+            flush_current()
+            current_lines.append(f"\u2022 {_clean_inline_pdf_text(raw_line[bullet_match.end():])}")
+            current_is_bullet = True
+            continue
+
+        if _looks_like_numbered_cover_letter_heading(line):
+            flush_current()
+            paragraphs.append(line)
+            continue
+
+        current_lines.append(line)
+
+    flush_current()
+    return paragraphs
+
+
+def _looks_like_numbered_cover_letter_heading(line: str) -> bool:
+    return bool(re.fullmatch(r"\d+\.\s+\S.+", line))
+
+
 def _resume_has_emerald_style(reader: PdfReader) -> bool:
     emerald_colors = {EMERALD_ACCENT_RGB, EMERALD_DARK_RGB}
     for page in reader.pages:
@@ -327,7 +865,21 @@ def _should_append_resume_continuation(
         return True
     if previous_line.startswith(("- ", "  - ")):
         return True
+    if current_section == "Professional Experience" and _looks_like_date_continuation(
+        previous_line=previous_line,
+        line=line,
+    ):
+        return True
     return current_section == "Professional Summary" and not line.startswith("Note:")
+
+
+def _looks_like_date_continuation(*, previous_line: str, line: str) -> bool:
+    normalized_line = line.replace("\u2013", "-").replace("\u2014", "-")
+    if not PROFESSIONAL_EXPERIENCE_DATE_CONTINUATION_RE.fullmatch(normalized_line):
+        return False
+    return previous_line.endswith(MONTH_ABBREVIATIONS) or previous_line.endswith(
+        ("-", "\u2013", "\u2014")
+    )
 
 
 def _patch_cover_letter_pdf(path: Path) -> bool:
@@ -643,13 +1195,33 @@ def _font_name_from_operand(operand: Any) -> str:
     return "Helvetica"
 
 
+def _safe_string_width(text: str, font_name: str, font_size: float) -> float:
+    candidates = [font_name]
+    if "+" in font_name:
+        candidates.append(font_name.split("+", 1)[1])
+    if "Arial" in font_name:
+        candidates.append("Helvetica-Bold" if "Bold" in font_name else "Helvetica")
+    candidates.append("Helvetica")
+
+    tried: set[str] = set()
+    for candidate in candidates:
+        if candidate in tried:
+            continue
+        tried.add(candidate)
+        try:
+            return stringWidth(text, candidate, font_size)
+        except (KeyError, ValueError):
+            continue
+    return stringWidth(text, "Helvetica", font_size)
+
+
 def _add_resume_link_annotation(
     *,
     writer: PdfWriter,
     page_number: int,
     hit: _TextHit,
 ) -> None:
-    link_x = hit.x + stringWidth(RESUME_CONTACT_PREFIX, hit.font_name, hit.font_size)
+    link_x = hit.x + _safe_string_width(RESUME_CONTACT_PREFIX, hit.font_name, hit.font_size)
     location = _LinkLocation(
         x=link_x,
         y=hit.y,
@@ -671,7 +1243,7 @@ def _add_link_annotation(
     location: _LinkLocation,
     font_label: str,
 ) -> None:
-    width = stringWidth(font_label, location.font_name, location.font_size)
+    width = _safe_string_width(font_label, location.font_name, location.font_size)
     writer.add_annotation(
         page_number,
         Link(
@@ -813,6 +1385,82 @@ def refresh_static_artifacts_main() -> None:
         print("Missing artifact files:", file=sys.stderr)
         for path in result.missing_files:
             print(f"- {path}", file=sys.stderr)
+
+
+def stylize_resume_main() -> None:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Render an existing resume PDF with the emerald resume style. "
+            "The input PDF is left untouched and the output is written beside it by default."
+        )
+    )
+    parser.add_argument("input_path", type=Path, help="Resume PDF to restyle.")
+    parser.add_argument(
+        "--output-path",
+        type=Path,
+        default=None,
+        help="Optional output PDF path. Defaults to INPUT_STEM_emerald.pdf in the input directory.",
+    )
+    parser.add_argument(
+        "--suffix",
+        default=STYLIZED_RESUME_DEFAULT_SUFFIX,
+        help="Filename suffix used when --output-path is omitted. Defaults to emerald.",
+    )
+    args = parser.parse_args()
+
+    try:
+        result = stylize_resume_pdf(
+            input_path=args.input_path,
+            output_path=args.output_path,
+            output_suffix=args.suffix,
+        )
+    except ValueError as exc:
+        parser.exit(status=1, message=f"error: {exc}\n")
+
+    print(
+        "Resume stylized: "
+        f"{result.pages_read} page(s), {result.lines_rendered} rendered line(s).",
+        file=sys.stderr,
+    )
+    print(result.output_path)
+
+
+def stylize_cover_letter_main() -> None:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Render an existing cover letter PDF with the emerald cover-letter style. "
+            "The input PDF is left untouched and the output is written beside it by default."
+        )
+    )
+    parser.add_argument("input_path", type=Path, help="Cover letter PDF to restyle.")
+    parser.add_argument(
+        "--output-path",
+        type=Path,
+        default=None,
+        help="Optional output PDF path. Defaults to INPUT_STEM_emerald.pdf in the input directory.",
+    )
+    parser.add_argument(
+        "--suffix",
+        default=STYLIZED_RESUME_DEFAULT_SUFFIX,
+        help="Filename suffix used when --output-path is omitted. Defaults to emerald.",
+    )
+    args = parser.parse_args()
+
+    try:
+        result = stylize_cover_letter_pdf(
+            input_path=args.input_path,
+            output_path=args.output_path,
+            output_suffix=args.suffix,
+        )
+    except ValueError as exc:
+        parser.exit(status=1, message=f"error: {exc}\n")
+
+    print(
+        "Cover letter stylized: "
+        f"{result.pages_read} page(s), {result.paragraphs_rendered} rendered paragraph(s).",
+        file=sys.stderr,
+    )
+    print(result.output_path)
 
 
 def _parse_job_ids(values: list[str]) -> list[str]:

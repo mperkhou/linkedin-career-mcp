@@ -5,7 +5,9 @@ import sqlite3
 import subprocess
 import sys
 import threading
-from dataclasses import dataclass
+import uuid
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
@@ -32,7 +34,7 @@ TRACKING_COLUMNS = (
 )
 APPLICATION_STATUSES = {"No", "Yes", "N/A", "Rejected", "Accepted for interview"}
 APPLICATION_STATUS_FILTERS = {"all", *APPLICATION_STATUSES}
-VIEW_STATE_SORTS = {"company", "matched", "ats"}
+VIEW_STATE_SORTS = {"company", "matched", "ats", "resume", "cover_letter"}
 VIEW_STATE_DIRECTIONS = {"asc", "desc"}
 VIEW_STATE_QUERY_KEYS = {"q", "status", "sort", "direction"}
 REQUIRED_TRACKING_COLUMNS = (
@@ -47,10 +49,12 @@ REQUIRED_TRACKING_COLUMNS = (
 APPLICATION_EXTRA_COLUMNS = {
     "job_description": "TEXT",
     "prompt_job_description": "TEXT",
+    "resume_updated_at": "TEXT",
     "cover_letter_filename": "TEXT NOT NULL DEFAULT ''",
     "cover_letter_content": "BLOB",
     "cover_letter_mime_type": "TEXT NOT NULL DEFAULT 'application/pdf'",
     "source_cover_letter_path": "TEXT NOT NULL DEFAULT ''",
+    "cover_letter_updated_at": "TEXT",
     "date_matched": "TEXT",
     "date_posted": "TEXT",
     "experience_level": "TEXT",
@@ -62,6 +66,13 @@ APPLICATION_EXTRA_COLUMNS = {
     "ats_missing_terms": "TEXT",
     "ats_updated_at": "TEXT",
 }
+REGENERATE_ACTION_TARGETS = {
+    "resumes": "regenerate-resumes",
+    "cover_letters": "regenerate-cover-letters",
+    "all": "regenerate-all",
+}
+MAX_ACTION_RUNS = 8
+MAX_ACTION_MESSAGES = 160
 
 
 @dataclass(frozen=True)
@@ -83,6 +94,24 @@ class ApplicationJobRecord:
     date_matched: str | None
     date_posted: str | None
     experience_level: str | None
+
+
+@dataclass
+class BackgroundActionRun:
+    run_id: str
+    title: str
+    status: str
+    started_at: str
+    finished_at: str | None = None
+    return_code: int | None = None
+    messages: list[str] = field(default_factory=list)
+
+
+BackgroundActionRunner = Callable[..., None]
+
+
+_ACTION_RUNS: dict[str, BackgroundActionRun] = {}
+_ACTION_RUN_LOCK = threading.Lock()
 
 
 def connect_database(database_path: Path) -> sqlite3.Connection:
@@ -107,10 +136,12 @@ def init_database(connection: sqlite3.Connection) -> None:
             resume_content BLOB,
             resume_mime_type TEXT NOT NULL DEFAULT 'application/pdf',
             source_resume_path TEXT NOT NULL,
+            resume_updated_at TEXT,
             cover_letter_filename TEXT NOT NULL DEFAULT '',
             cover_letter_content BLOB,
             cover_letter_mime_type TEXT NOT NULL DEFAULT 'application/pdf',
             source_cover_letter_path TEXT NOT NULL DEFAULT '',
+            cover_letter_updated_at TEXT,
             date_matched TEXT,
             date_posted TEXT,
             experience_level TEXT,
@@ -258,9 +289,15 @@ def upsert_application_artifact(
         if resume_path is not None and resume_path.is_file()
         else None
     )
+    resume_updated_at = _artifact_timestamp(resume_path) if resume_content is not None else None
     cover_letter_content = (
         cover_letter_path.read_bytes()
         if cover_letter_path is not None and cover_letter_path.is_file()
+        else None
+    )
+    cover_letter_updated_at = (
+        _artifact_timestamp(cover_letter_path)
+        if cover_letter_content is not None
         else None
     )
     ats_score = _calculate_ats_score(
@@ -273,15 +310,16 @@ def upsert_application_artifact(
             INSERT INTO applications (
                 job_id, company, job_title, linkedin_url, job_description,
                 prompt_job_description, resume_filename, resume_content, resume_mime_type,
-                source_resume_path, cover_letter_filename, cover_letter_content,
-                cover_letter_mime_type, source_cover_letter_path, date_matched, date_posted,
-                experience_level, ats_score, ats_parsing_score, ats_keyword_score,
-                ats_semantic_score, ats_formatting_risk, ats_missing_terms, ats_updated_at,
-                applied_to, date_applied, imported_at, updated_at
+                source_resume_path, resume_updated_at, cover_letter_filename,
+                cover_letter_content, cover_letter_mime_type, source_cover_letter_path,
+                cover_letter_updated_at, date_matched, date_posted, experience_level,
+                ats_score, ats_parsing_score, ats_keyword_score, ats_semantic_score,
+                ats_formatting_risk, ats_missing_terms, ats_updated_at, applied_to,
+                date_applied, imported_at, updated_at
             )
             VALUES (
                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?
+                ?, ?, ?, ?, ?, ?
             )
             ON CONFLICT(job_id) DO UPDATE SET
                 company = excluded.company,
@@ -308,6 +346,10 @@ def upsert_application_artifact(
                     WHEN excluded.source_resume_path != '' THEN excluded.source_resume_path
                     ELSE applications.source_resume_path
                 END,
+                resume_updated_at = COALESCE(
+                    excluded.resume_updated_at,
+                    applications.resume_updated_at
+                ),
                 cover_letter_filename = CASE
                     WHEN excluded.cover_letter_filename != '' THEN excluded.cover_letter_filename
                     ELSE applications.cover_letter_filename
@@ -326,6 +368,10 @@ def upsert_application_artifact(
                     THEN excluded.source_cover_letter_path
                     ELSE applications.source_cover_letter_path
                 END,
+                cover_letter_updated_at = COALESCE(
+                    excluded.cover_letter_updated_at,
+                    applications.cover_letter_updated_at
+                ),
                 date_matched = COALESCE(
                     NULLIF(applications.date_matched, ''),
                     excluded.date_matched
@@ -378,10 +424,12 @@ def upsert_application_artifact(
                 resume_content,
                 "application/pdf",
                 str(resume_path) if resume_path is not None else "",
+                resume_updated_at,
                 cover_letter_path.name if cover_letter_path is not None else "",
                 cover_letter_content,
                 "application/pdf",
                 str(cover_letter_path) if cover_letter_path is not None else "",
+                cover_letter_updated_at,
                 date_matched,
                 date_posted,
                 experience_level,
@@ -567,12 +615,242 @@ def refresh_missing_ats_scores(database_path: Path) -> int:
     return updated_count
 
 
-def create_app(*, database_path: Path, output_dir: Path):
+def start_background_action(
+    *,
+    database_path: Path,
+    output_dir: Path,
+    sync_requested: bool,
+    regenerate_mode: str,
+    job_ids: list[str],
+    runner: BackgroundActionRunner | None = None,
+) -> BackgroundActionRun:
+    run = _create_background_action_run(
+        title=_background_action_title(
+            sync_requested=sync_requested,
+            regenerate_mode=regenerate_mode,
+            job_ids=job_ids,
+        )
+    )
+    target = runner or _run_background_action
+    thread = threading.Thread(
+        target=target,
+        kwargs={
+            "run_id": run.run_id,
+            "database_path": database_path,
+            "output_dir": output_dir,
+            "sync_requested": sync_requested,
+            "regenerate_mode": regenerate_mode,
+            "job_ids": job_ids,
+        },
+        daemon=True,
+    )
+    thread.start()
+    return run
+
+
+def background_action_snapshots() -> list[dict[str, object]]:
+    with _ACTION_RUN_LOCK:
+        runs = sorted(
+            _ACTION_RUNS.values(),
+            key=lambda run: run.started_at,
+            reverse=True,
+        )
+        return [
+            {
+                "id": run.run_id,
+                "title": run.title,
+                "status": run.status,
+                "started_at": run.started_at,
+                "finished_at": run.finished_at,
+                "return_code": run.return_code,
+                "messages": run.messages[-20:],
+            }
+            for run in runs
+        ]
+
+
+def _create_background_action_run(*, title: str) -> BackgroundActionRun:
+    run = BackgroundActionRun(
+        run_id=uuid.uuid4().hex,
+        title=title,
+        status="running",
+        started_at=datetime.now(UTC).isoformat(timespec="seconds"),
+    )
+    with _ACTION_RUN_LOCK:
+        _ACTION_RUNS[run.run_id] = run
+        _trim_background_action_runs_locked()
+    _append_background_action_message(run.run_id, "Queued background action.")
+    return run
+
+
+def _trim_background_action_runs_locked() -> None:
+    if len(_ACTION_RUNS) <= MAX_ACTION_RUNS:
+        return
+    old_runs = sorted(_ACTION_RUNS.values(), key=lambda run: run.started_at)
+    for run in old_runs[: len(_ACTION_RUNS) - MAX_ACTION_RUNS]:
+        del _ACTION_RUNS[run.run_id]
+
+
+def _append_background_action_message(run_id: str, message: str) -> None:
+    value = " ".join(str(message).split())
+    if not value:
+        return
+    timestamp = datetime.now(UTC).strftime("%H:%M:%S")
+    with _ACTION_RUN_LOCK:
+        run = _ACTION_RUNS.get(run_id)
+        if run is None:
+            return
+        run.messages.append(f"{timestamp} {value}")
+        if len(run.messages) > MAX_ACTION_MESSAGES:
+            run.messages = run.messages[-MAX_ACTION_MESSAGES:]
+
+
+def _finish_background_action_run(
+    run_id: str,
+    *,
+    status: str,
+    return_code: int | None = None,
+) -> None:
+    with _ACTION_RUN_LOCK:
+        run = _ACTION_RUNS.get(run_id)
+        if run is None:
+            return
+        run.status = status
+        run.return_code = return_code
+        run.finished_at = datetime.now(UTC).isoformat(timespec="seconds")
+
+
+def _run_background_action(
+    *,
+    run_id: str,
+    database_path: Path,
+    output_dir: Path,
+    sync_requested: bool,
+    regenerate_mode: str,
+    job_ids: list[str],
+) -> None:
+    try:
+        if sync_requested:
+            _run_sync_action(run_id=run_id, database_path=database_path, output_dir=output_dir)
+        if regenerate_mode:
+            _run_regenerate_action(run_id=run_id, regenerate_mode=regenerate_mode, job_ids=job_ids)
+            _run_sync_action(
+                run_id=run_id,
+                database_path=database_path,
+                output_dir=output_dir,
+                label="Refreshing tracker after regeneration",
+            )
+        _append_background_action_message(run_id, "Background action completed.")
+        _finish_background_action_run(run_id, status="completed", return_code=0)
+    except Exception as exc:
+        _append_background_action_message(run_id, f"Background action failed: {exc}")
+        _finish_background_action_run(run_id, status="failed", return_code=1)
+
+
+def _run_sync_action(
+    *,
+    run_id: str,
+    database_path: Path,
+    output_dir: Path,
+    label: str = "Syncing from output",
+) -> None:
+    _append_background_action_message(run_id, f"{label}.")
+    result = import_output_artifacts(output_dir=output_dir, database_path=database_path)
+    _append_background_action_message(
+        run_id,
+        (
+            f"Sync complete: imported {result.rows_imported}/{result.rows_seen} workbook rows "
+            f"({result.missing_resumes} missing resumes, "
+            f"{result.missing_cover_letters} missing cover letters)."
+        ),
+    )
+
+
+def _run_regenerate_action(
+    *,
+    run_id: str,
+    regenerate_mode: str,
+    job_ids: list[str],
+) -> None:
+    command = _regenerate_make_command(regenerate_mode=regenerate_mode, job_ids=job_ids)
+    _append_background_action_message(run_id, f"Running {' '.join(command)}")
+    process = subprocess.Popen(  # noqa: S603
+        command,
+        cwd=_project_root(),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    if process.stdout is None:
+        raise RuntimeError("regeneration command did not provide an output stream")
+    for line in process.stdout:
+        _append_background_action_message(run_id, line)
+    return_code = process.wait()
+    if return_code != 0:
+        raise RuntimeError(f"regeneration command exited with status {return_code}")
+    _append_background_action_message(run_id, "Regeneration command completed.")
+
+
+def _regenerate_make_command(*, regenerate_mode: str, job_ids: list[str]) -> list[str]:
+    target = REGENERATE_ACTION_TARGETS.get(regenerate_mode)
+    if target is None:
+        raise ValueError(f"Unsupported regeneration mode: {regenerate_mode}")
+    if not job_ids:
+        raise ValueError("At least one job id is required for regeneration.")
+    return ["make", target, f"JOB_IDS={' '.join(job_ids)}"]
+
+
+def _project_root() -> Path:
+    candidate = Path(__file__).resolve().parents[2]
+    if (candidate / "Makefile").is_file():
+        return candidate
+    return Path.cwd()
+
+
+def _selected_job_ids(values: list[str]) -> list[str]:
+    job_ids: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        job_id = str(value or "").strip()
+        if not job_id or job_id in seen:
+            continue
+        seen.add(job_id)
+        job_ids.append(job_id)
+    return job_ids
+
+
+def _background_action_title(
+    *,
+    sync_requested: bool,
+    regenerate_mode: str,
+    job_ids: list[str],
+) -> str:
+    parts: list[str] = []
+    if sync_requested:
+        parts.append("sync output")
+    if regenerate_mode:
+        label = {
+            "resumes": "regenerate resumes",
+            "cover_letters": "regenerate cover letters",
+            "all": "regenerate all docs",
+        }.get(regenerate_mode, "regenerate docs")
+        parts.append(f"{label} for {len(job_ids)} job(s)")
+    return " + ".join(parts) or "background action"
+
+
+def create_app(
+    *,
+    database_path: Path,
+    output_dir: Path,
+    background_action_runner: BackgroundActionRunner | None = None,
+):
     from flask import (
         Flask,
         Response,
         abort,
         flash,
+        jsonify,
         redirect,
         render_template_string,
         request,
@@ -584,6 +862,7 @@ def create_app(*, database_path: Path, output_dir: Path):
     app.config["DATABASE_PATH"] = database_path
     app.config["OUTPUT_DIR"] = output_dir
     app.jinja_env.filters["display_date"] = _display_date
+    app.jinja_env.filters["display_timestamp"] = _display_timestamp
 
     def redirect_to_index_state():
         return redirect(_safe_index_return_path(request.values.get("return_to")))
@@ -645,6 +924,37 @@ def create_app(*, database_path: Path, output_dir: Path):
             f"{result.missing_cover_letters} missing cover letter files)."
         )
         return redirect_to_index_state()
+
+    @app.post("/actions/run")
+    def run_actions():
+        sync_requested = request.form.get("action_sync") == "1"
+        regenerate_requested = request.form.get("action_regenerate") == "1"
+        regenerate_mode = request.form.get("regenerate_mode", "all")
+        job_ids = _selected_job_ids(request.form.getlist("job_id"))
+        if not sync_requested and not regenerate_requested:
+            flash("Choose at least one action to run.")
+            return redirect_to_index_state()
+        if regenerate_requested and not job_ids:
+            flash("Select at least one job before regenerating documents.")
+            return redirect_to_index_state()
+        if regenerate_requested and regenerate_mode not in REGENERATE_ACTION_TARGETS:
+            flash("Choose a valid regeneration option.")
+            return redirect_to_index_state()
+
+        run = start_background_action(
+            database_path=database_path,
+            output_dir=output_dir,
+            sync_requested=sync_requested,
+            regenerate_mode=regenerate_mode if regenerate_requested else "",
+            job_ids=job_ids,
+            runner=background_action_runner,
+        )
+        flash(f"Started background action: {run.title}.")
+        return redirect_to_index_state()
+
+    @app.get("/actions/status")
+    def action_status():
+        return jsonify({"runs": background_action_snapshots()})
 
     @app.post("/applications/delete")
     def bulk_delete_applications():
@@ -867,6 +1177,16 @@ def _date_value(value: Any) -> str | None:
     return text or None
 
 
+def _artifact_timestamp(path: Path | None) -> str | None:
+    if path is None or not path.is_file():
+        return None
+    try:
+        modified_at = path.stat().st_mtime
+    except OSError:
+        return None
+    return datetime.fromtimestamp(modified_at, UTC).isoformat(timespec="seconds")
+
+
 def _normalize_applied_to(value: Any) -> str:
     text = str(value or "").strip()
     return text if text in APPLICATION_STATUSES else "No"
@@ -992,6 +1312,17 @@ def _display_date(value: Any) -> str:
     if "T" in text:
         return text.split("T", 1)[0]
     return text
+
+
+def _display_timestamp(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return text
+    return parsed.strftime("%Y-%m-%d %H:%M")
 
 
 def _delete_tracking_rows(*, tracking_path: Path, job_ids: set[str]) -> None:
@@ -1192,6 +1523,108 @@ INDEX_TEMPLATE = """
     }
     .toolbar form { margin: 0; }
     .selected-count { color: var(--muted); white-space: nowrap; }
+    .actions-menu {
+      position: relative;
+    }
+    .actions-menu summary {
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--accent);
+      cursor: pointer;
+      font: inherit;
+      font-weight: 700;
+      list-style: none;
+      padding: 8px 10px;
+      white-space: nowrap;
+    }
+    .actions-menu summary::-webkit-details-marker { display: none; }
+    .actions-menu[open] summary {
+      background: #eef8f6;
+      color: var(--accent-strong);
+    }
+    .actions-panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 14px 36px rgba(20, 33, 45, .18);
+      min-width: 280px;
+      padding: 12px;
+      position: absolute;
+      right: 0;
+      top: 42px;
+      z-index: 5;
+    }
+    .action-choice {
+      align-items: center;
+      display: flex;
+      gap: 8px;
+      font-weight: 650;
+      margin-bottom: 8px;
+    }
+    .regenerate-options {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      margin: 8px 0 10px;
+      padding: 8px 10px 10px;
+    }
+    .regenerate-options legend {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 0 4px;
+    }
+    .regenerate-options label {
+      align-items: center;
+      display: flex;
+      gap: 7px;
+      margin-top: 6px;
+    }
+    .actions-menu-footer {
+      align-items: center;
+      display: flex;
+      gap: 10px;
+      justify-content: space-between;
+    }
+    .actions-selected-summary {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .action-status {
+      background: #fff8e6;
+      border-bottom: 1px solid #f1d48a;
+      color: #5c4100;
+      padding: 10px 24px;
+    }
+    .action-status.is-running {
+      background: #eef8f6;
+      border-bottom-color: #c8dfdc;
+      color: var(--accent-strong);
+    }
+    .action-status-header {
+      align-items: center;
+      display: flex;
+      gap: 10px;
+      justify-content: space-between;
+    }
+    .action-status-title { font-weight: 750; }
+    .action-status-state {
+      border: 1px solid currentColor;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 2px 8px;
+      text-transform: uppercase;
+    }
+    .action-status-messages {
+      margin: 8px 0 0;
+      max-height: 112px;
+      overflow: auto;
+      padding-left: 18px;
+    }
+    .action-status-messages li {
+      margin: 2px 0;
+    }
     main { padding: 20px 24px 32px; }
     .flash {
       margin: 0 0 12px;
@@ -1281,6 +1714,14 @@ INDEX_TEMPLATE = """
     .score-row strong { font-weight: 700; }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; min-width: 170px; }
     .actions form { margin: 0; }
+    .artifact-cell { min-width: 132px; }
+    .artifact-timestamp {
+      color: var(--muted);
+      display: block;
+      font-size: 12px;
+      margin-top: 3px;
+      white-space: nowrap;
+    }
     .text-link-button {
       background: transparent;
       border: 0;
@@ -1355,10 +1796,48 @@ INDEX_TEMPLATE = """
         N/A
       </option>
     </select>
-    <form method="post" action="/sync">
-      <input type="hidden" class="return-to-state" name="return_to" value="{{ current_path }}">
-      <button type="submit" class="ghost">Sync from output</button>
-    </form>
+    <details class="actions-menu">
+      <summary>Actions</summary>
+      <div class="actions-panel">
+        <form id="actions-form" method="post" action="/actions/run">
+          <input
+            type="hidden"
+            class="return-to-state"
+            name="return_to"
+            value="{{ current_path }}"
+          >
+          <label class="action-choice">
+            <input id="action-sync" type="checkbox" name="action_sync" value="1">
+            <span>Sync from output</span>
+          </label>
+          <label class="action-choice">
+            <input id="action-regenerate" type="checkbox" name="action_regenerate" value="1">
+            <span>Regenerate docs</span>
+          </label>
+          <fieldset id="regenerate-options" class="regenerate-options" disabled>
+            <legend>Document type</legend>
+            <label>
+              <input type="radio" name="regenerate_mode" value="cover_letters">
+              <span>Cover letters</span>
+            </label>
+            <label>
+              <input type="radio" name="regenerate_mode" value="resumes">
+              <span>Resumes</span>
+            </label>
+            <label>
+              <input type="radio" name="regenerate_mode" value="all" checked>
+              <span>All</span>
+            </label>
+          </fieldset>
+          <div class="actions-menu-footer">
+            <span id="actions-selected-summary" class="actions-selected-summary">
+              0 selected
+            </span>
+            <button id="run-actions" type="submit" disabled>Run</button>
+          </div>
+        </form>
+      </div>
+    </details>
     <form id="bulk-delete-form" method="post" action="/applications/delete">
       <input type="hidden" class="return-to-state" name="return_to" value="{{ current_path }}">
       <button id="delete-selected" type="submit" class="danger" disabled>
@@ -1367,6 +1846,13 @@ INDEX_TEMPLATE = """
     </form>
     <span id="selected-count" class="selected-count">0 selected</span>
   </div>
+  <section id="action-status" class="action-status" hidden aria-live="polite">
+    <div class="action-status-header">
+      <span id="action-status-title" class="action-status-title">Background action</span>
+      <span id="action-status-state" class="action-status-state">Running</span>
+    </div>
+    <ol id="action-status-messages" class="action-status-messages"></ol>
+  </section>
   <main>
     {% with messages = get_flashed_messages() %}
       {% if messages %}
@@ -1425,8 +1911,32 @@ INDEX_TEMPLATE = """
               </button>
             </th>
             <th>Job Links</th>
-            <th>Resume</th>
-            <th>Cover Letter</th>
+            <th id="resume-header" aria-sort="none">
+              <button
+                id="resume-sort"
+                class="sort-button"
+                type="button"
+                aria-label="Sort by resume timestamp"
+              >
+                Resume
+                <span id="resume-sort-indicator" class="sort-indicator" aria-hidden="true">
+                  ↑↓
+                </span>
+              </button>
+            </th>
+            <th id="cover-letter-header" aria-sort="none">
+              <button
+                id="cover-letter-sort"
+                class="sort-button"
+                type="button"
+                aria-label="Sort by cover letter timestamp"
+              >
+                Cover Letter
+                <span id="cover-letter-sort-indicator" class="sort-indicator" aria-hidden="true">
+                  ↑↓
+                </span>
+              </button>
+            </th>
             <th>Application</th>
           </tr>
         </thead>
@@ -1441,6 +1951,8 @@ INDEX_TEMPLATE = """
                 data-company-sort="{{ row.company }}"
                 data-matched-sort="{{ row.date_matched or '' }}"
                 data-ats-sort="{{ row.ats_score if row.ats_score is not none else '' }}"
+                data-resume-sort="{{ row.resume_updated_at or '' }}"
+                data-cover-letter-sort="{{ row.cover_letter_updated_at or '' }}"
                 data-search="{{ search_text|lower }}">
               <td class="select-col">
                 <input
@@ -1519,7 +2031,8 @@ INDEX_TEMPLATE = """
                 </div>
               </td>
               <td>
-                <div class="actions">
+                <div class="artifact-cell">
+                  <div class="actions">
                   {% if row.resume_content %}
                     <a href="/resumes/{{ row.job_id }}" target="_blank" rel="noreferrer">
                       Resume
@@ -1536,10 +2049,17 @@ INDEX_TEMPLATE = """
                   {% else %}
                     <span class="muted">Missing</span>
                   {% endif %}
+                  </div>
+                  {% if row.resume_updated_at %}
+                    <span class="artifact-timestamp">
+                      {{ row.resume_updated_at|display_timestamp }}
+                    </span>
+                  {% endif %}
                 </div>
               </td>
               <td>
-                <div class="actions">
+                <div class="artifact-cell">
+                  <div class="actions">
                   {% if row.cover_letter_content %}
                     <a href="/cover-letters/{{ row.job_id }}" target="_blank" rel="noreferrer">
                       Cover Letter
@@ -1558,6 +2078,12 @@ INDEX_TEMPLATE = """
                     </form>
                   {% else %}
                     <span class="muted">Missing</span>
+                  {% endif %}
+                  </div>
+                  {% if row.cover_letter_updated_at %}
+                    <span class="artifact-timestamp">
+                      {{ row.cover_letter_updated_at|display_timestamp }}
+                    </span>
                   {% endif %}
                 </div>
               </td>
@@ -1620,16 +2146,34 @@ INDEX_TEMPLATE = """
     const atsSortButton = document.querySelector("#ats-sort");
     const atsSortIndicator = document.querySelector("#ats-sort-indicator");
     const atsHeader = document.querySelector("#ats-header");
+    const resumeSortButton = document.querySelector("#resume-sort");
+    const resumeSortIndicator = document.querySelector("#resume-sort-indicator");
+    const resumeHeader = document.querySelector("#resume-header");
+    const coverLetterSortButton = document.querySelector("#cover-letter-sort");
+    const coverLetterSortIndicator = document.querySelector("#cover-letter-sort-indicator");
+    const coverLetterHeader = document.querySelector("#cover-letter-header");
     const tableBody = document.querySelector("#applications tbody");
     const rows = [...document.querySelectorAll("#applications tbody tr")];
     const rowSelectors = [...document.querySelectorAll(".row-selector")];
     const returnToFields = [...document.querySelectorAll(".return-to-state")];
     const preserveStateLinks = [...document.querySelectorAll(".preserve-state-link")];
+    const actionsForm = document.querySelector("#actions-form");
+    const actionSync = document.querySelector("#action-sync");
+    const actionRegenerate = document.querySelector("#action-regenerate");
+    const regenerateOptions = document.querySelector("#regenerate-options");
+    const runActionsButton = document.querySelector("#run-actions");
+    const actionsSelectedSummary = document.querySelector("#actions-selected-summary");
+    const actionStatus = document.querySelector("#action-status");
+    const actionStatusTitle = document.querySelector("#action-status-title");
+    const actionStatusState = document.querySelector("#action-status-state");
+    const actionStatusMessages = document.querySelector("#action-status-messages");
     const initialSort = {{ view_state.sort|tojson }};
     const initialDirection = {{ view_state.direction|tojson }};
     let companySortDirection = null;
     let matchedSortDirection = null;
     let atsSortDirection = null;
+    let resumeSortDirection = null;
+    let coverLetterSortDirection = null;
     function activeSortState() {
       if (companySortDirection) {
         return { sort: "company", direction: companySortDirection };
@@ -1639,6 +2183,12 @@ INDEX_TEMPLATE = """
       }
       if (atsSortDirection) {
         return { sort: "ats", direction: atsSortDirection };
+      }
+      if (resumeSortDirection) {
+        return { sort: "resume", direction: resumeSortDirection };
+      }
+      if (coverLetterSortDirection) {
+        return { sort: "cover_letter", direction: coverLetterSortDirection };
       }
       return { sort: "", direction: "" };
     }
@@ -1682,7 +2232,15 @@ INDEX_TEMPLATE = """
       updateSelectionState();
     }
     function matchedTimestamp(row) {
-      const value = row.dataset.matchedSort;
+      return sortableTimestamp(row.dataset.matchedSort);
+    }
+    function resumeTimestamp(row) {
+      return sortableTimestamp(row.dataset.resumeSort);
+    }
+    function coverLetterTimestamp(row) {
+      return sortableTimestamp(row.dataset.coverLetterSort);
+    }
+    function sortableTimestamp(value) {
       if (!value) {
         return null;
       }
@@ -1708,8 +2266,12 @@ INDEX_TEMPLATE = """
       companySortDirection = nextDirection || (companySortDirection === "asc" ? "desc" : "asc");
       matchedSortDirection = null;
       atsSortDirection = null;
+      resumeSortDirection = null;
+      coverLetterSortDirection = null;
       resetSortIndicator(matchedHeader, matchedSortIndicator);
       resetSortIndicator(atsHeader, atsSortIndicator);
+      resetSortIndicator(resumeHeader, resumeSortIndicator);
+      resetSortIndicator(coverLetterHeader, coverLetterSortIndicator);
       const direction = companySortDirection === "asc" ? 1 : -1;
       const originalIndex = new Map(rows.map((row, index) => [row, index]));
       const sortedRows = [...rows].sort((left, right) => {
@@ -1742,8 +2304,12 @@ INDEX_TEMPLATE = """
       matchedSortDirection = nextDirection || (matchedSortDirection === "asc" ? "desc" : "asc");
       companySortDirection = null;
       atsSortDirection = null;
+      resumeSortDirection = null;
+      coverLetterSortDirection = null;
       resetSortIndicator(companyHeader, companySortIndicator);
       resetSortIndicator(atsHeader, atsSortIndicator);
+      resetSortIndicator(resumeHeader, resumeSortIndicator);
+      resetSortIndicator(coverLetterHeader, coverLetterSortIndicator);
       const direction = matchedSortDirection === "asc" ? 1 : -1;
       const originalIndex = new Map(rows.map((row, index) => [row, index]));
       const sortedRows = [...rows].sort((left, right) => {
@@ -1780,8 +2346,12 @@ INDEX_TEMPLATE = """
       atsSortDirection = nextDirection || (atsSortDirection === "asc" ? "desc" : "asc");
       companySortDirection = null;
       matchedSortDirection = null;
+      resumeSortDirection = null;
+      coverLetterSortDirection = null;
       resetSortIndicator(companyHeader, companySortIndicator);
       resetSortIndicator(matchedHeader, matchedSortIndicator);
+      resetSortIndicator(resumeHeader, resumeSortIndicator);
+      resetSortIndicator(coverLetterHeader, coverLetterSortIndicator);
       const direction = atsSortDirection === "asc" ? 1 : -1;
       const originalIndex = new Map(rows.map((row, index) => [row, index]));
       const sortedRows = [...rows].sort((left, right) => {
@@ -1811,14 +2381,167 @@ INDEX_TEMPLATE = """
       atsSortIndicator.textContent = atsSortDirection === "asc" ? "↑" : "↓";
       applyFilters();
     }
+    function sortRowsByResume(nextDirection = null) {
+      if (!tableBody) {
+        return;
+      }
+      resumeSortDirection = nextDirection || (resumeSortDirection === "asc" ? "desc" : "asc");
+      companySortDirection = null;
+      matchedSortDirection = null;
+      atsSortDirection = null;
+      coverLetterSortDirection = null;
+      resetSortIndicator(companyHeader, companySortIndicator);
+      resetSortIndicator(matchedHeader, matchedSortIndicator);
+      resetSortIndicator(atsHeader, atsSortIndicator);
+      resetSortIndicator(coverLetterHeader, coverLetterSortIndicator);
+      const direction = resumeSortDirection === "asc" ? 1 : -1;
+      const originalIndex = new Map(rows.map((row, index) => [row, index]));
+      const sortedRows = [...rows].sort((left, right) => {
+        const leftValue = resumeTimestamp(left);
+        const rightValue = resumeTimestamp(right);
+        if (leftValue === null && rightValue === null) {
+          return originalIndex.get(left) - originalIndex.get(right);
+        }
+        if (leftValue === null) {
+          return 1;
+        }
+        if (rightValue === null) {
+          return -1;
+        }
+        if (leftValue === rightValue) {
+          return originalIndex.get(left) - originalIndex.get(right);
+        }
+        return (leftValue - rightValue) * direction;
+      });
+      sortedRows.forEach((row) => tableBody.appendChild(row));
+      if (resumeHeader) {
+        resumeHeader.setAttribute(
+          "aria-sort",
+          resumeSortDirection === "asc" ? "ascending" : "descending",
+        );
+      }
+      resumeSortIndicator.textContent = resumeSortDirection === "asc" ? "↑" : "↓";
+      applyFilters();
+    }
+    function sortRowsByCoverLetter(nextDirection = null) {
+      if (!tableBody) {
+        return;
+      }
+      coverLetterSortDirection =
+        nextDirection || (coverLetterSortDirection === "asc" ? "desc" : "asc");
+      companySortDirection = null;
+      matchedSortDirection = null;
+      atsSortDirection = null;
+      resumeSortDirection = null;
+      resetSortIndicator(companyHeader, companySortIndicator);
+      resetSortIndicator(matchedHeader, matchedSortIndicator);
+      resetSortIndicator(atsHeader, atsSortIndicator);
+      resetSortIndicator(resumeHeader, resumeSortIndicator);
+      const direction = coverLetterSortDirection === "asc" ? 1 : -1;
+      const originalIndex = new Map(rows.map((row, index) => [row, index]));
+      const sortedRows = [...rows].sort((left, right) => {
+        const leftValue = coverLetterTimestamp(left);
+        const rightValue = coverLetterTimestamp(right);
+        if (leftValue === null && rightValue === null) {
+          return originalIndex.get(left) - originalIndex.get(right);
+        }
+        if (leftValue === null) {
+          return 1;
+        }
+        if (rightValue === null) {
+          return -1;
+        }
+        if (leftValue === rightValue) {
+          return originalIndex.get(left) - originalIndex.get(right);
+        }
+        return (leftValue - rightValue) * direction;
+      });
+      sortedRows.forEach((row) => tableBody.appendChild(row));
+      if (coverLetterHeader) {
+        coverLetterHeader.setAttribute(
+          "aria-sort",
+          coverLetterSortDirection === "asc" ? "ascending" : "descending",
+        );
+      }
+      coverLetterSortIndicator.textContent =
+        coverLetterSortDirection === "asc" ? "↑" : "↓";
+      applyFilters();
+    }
     function visibleSelectors() {
       return rowSelectors.filter((checkbox) => !checkbox.closest("tr").hidden);
+    }
+    function selectedJobIds() {
+      return rowSelectors
+        .filter((checkbox) => checkbox.checked)
+        .map((checkbox) => checkbox.value);
+    }
+    function updateActionsState() {
+      const selected = selectedJobIds();
+      if (regenerateOptions && actionRegenerate) {
+        regenerateOptions.disabled = !actionRegenerate.checked;
+      }
+      if (actionsSelectedSummary) {
+        actionsSelectedSummary.textContent = `${selected.length} selected`;
+      }
+      if (runActionsButton && actionSync && actionRegenerate) {
+        const hasAction = actionSync.checked || actionRegenerate.checked;
+        const missingRegenerateSelection = actionRegenerate.checked && selected.length === 0;
+        runActionsButton.disabled = !hasAction || missingRegenerateSelection;
+      }
+    }
+    function syncActionsFormJobIds() {
+      if (!actionsForm) {
+        return;
+      }
+      actionsForm.querySelectorAll(".actions-job-id").forEach((input) => input.remove());
+      selectedJobIds().forEach((jobId) => {
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.name = "job_id";
+        input.value = jobId;
+        input.className = "actions-job-id";
+        actionsForm.appendChild(input);
+      });
+    }
+    function renderActionStatus(run) {
+      if (!actionStatus || !actionStatusTitle || !actionStatusState || !actionStatusMessages) {
+        return;
+      }
+      if (!run) {
+        actionStatus.hidden = true;
+        return;
+      }
+      actionStatus.hidden = false;
+      actionStatus.classList.toggle("is-running", run.status === "running");
+      actionStatusTitle.textContent = run.title || "Background action";
+      actionStatusState.textContent = run.status || "running";
+      actionStatusMessages.replaceChildren();
+      (run.messages || []).slice(-8).forEach((message) => {
+        const item = document.createElement("li");
+        item.textContent = message;
+        actionStatusMessages.appendChild(item);
+      });
+    }
+    async function refreshActionStatus() {
+      try {
+        const response = await fetch("/actions/status", {
+          headers: { "Accept": "application/json" },
+        });
+        if (!response.ok) {
+          return;
+        }
+        const payload = await response.json();
+        renderActionStatus((payload.runs || [])[0] || null);
+      } catch {
+        // Background status is a convenience layer; table controls should keep working.
+      }
     }
     function updateSelectionState() {
       const selected = rowSelectors.filter((checkbox) => checkbox.checked);
       const visible = visibleSelectors();
       deleteButton.disabled = selected.length === 0;
       selectedCount.textContent = `${selected.length} selected`;
+      updateActionsState();
       if (!selectAll) {
         return;
       }
@@ -1837,9 +2560,24 @@ INDEX_TEMPLATE = """
     if (atsSortButton) {
       atsSortButton.addEventListener("click", () => sortRowsByAts());
     }
+    if (resumeSortButton) {
+      resumeSortButton.addEventListener("click", () => sortRowsByResume());
+    }
+    if (coverLetterSortButton) {
+      coverLetterSortButton.addEventListener("click", () => sortRowsByCoverLetter());
+    }
     document.querySelectorAll("form").forEach((form) => {
       form.addEventListener("submit", syncReturnState);
     });
+    if (actionSync) {
+      actionSync.addEventListener("change", updateActionsState);
+    }
+    if (actionRegenerate) {
+      actionRegenerate.addEventListener("change", updateActionsState);
+    }
+    if (actionsForm) {
+      actionsForm.addEventListener("submit", syncActionsFormJobIds);
+    }
     preserveStateLinks.forEach((link) => {
       link.addEventListener("click", () => {
         const url = new URL(link.href, window.location.origin);
@@ -1874,9 +2612,15 @@ INDEX_TEMPLATE = """
       sortRowsByMatched(initialDirection === "desc" ? "desc" : "asc");
     } else if (initialSort === "ats") {
       sortRowsByAts(initialDirection === "desc" ? "desc" : "asc");
+    } else if (initialSort === "resume") {
+      sortRowsByResume(initialDirection === "desc" ? "desc" : "asc");
+    } else if (initialSort === "cover_letter") {
+      sortRowsByCoverLetter(initialDirection === "desc" ? "desc" : "asc");
     } else {
       applyFilters();
     }
+    refreshActionStatus();
+    window.setInterval(refreshActionStatus, 2500);
   </script>
 </body>
 </html>

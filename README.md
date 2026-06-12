@@ -320,6 +320,31 @@ make regenerate-all JOB_IDS="4407411418 4342788295"
 make regenerate-all JOB_IDS="4407411418,4342788295"
 ```
 
+Apply the emerald resume style to an existing PDF without changing the source file:
+
+```bash
+make stylize-resume RESUME_PATH=~/Downloads/mp_resume_ai_enablement_platform_auto_openly.pdf
+```
+
+The styled copy is written beside the input file with an `_emerald.pdf` suffix by default. The
+equivalent executable is:
+
+```bash
+.venv/bin/linkedin-career-stylize-resume ~/Downloads/mp_resume_ai_enablement_platform_auto_openly.pdf
+```
+
+Apply the same polished cover-letter style to an existing PDF:
+
+```bash
+make stylize-cover-letter COVER_LETTER_PATH=~/Downloads/mp_CL_ai_enablement_platform_auto_openly.pdf
+```
+
+The equivalent executable is:
+
+```bash
+.venv/bin/linkedin-career-stylize-cover-letter ~/Downloads/mp_CL_ai_enablement_platform_auto_openly.pdf
+```
+
 Regeneration equivalent executable:
 
 ```bash
@@ -371,6 +396,14 @@ This starts the Flask server and opens the tracker in your browser.
 LinkedIn job links route through the local Flask app and try to open in Playwright's
 packaged Chromium. If Playwright or its Chromium browser is not installed, the app falls
 back to your system default browser.
+
+Use the tracker toolbar's Actions menu to sync the SQLite tracker from `output/` or to
+regenerate documents for selected rows. Select one or more jobs, choose Regenerate docs,
+pick Cover letters, Resumes, or All, and Run. The webapp starts the matching `make
+regenerate-* JOB_IDS="..."` command in the background, streams progress into the tracker,
+and syncs regenerated artifacts back into SQLite when the command finishes.
+Resume and cover-letter columns show the latest synced artifact timestamp under their
+links, and both columns can be sorted to quickly find stale or newly regenerated PDFs.
 
 To enable Playwright Chromium:
 

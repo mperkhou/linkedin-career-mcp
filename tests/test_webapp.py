@@ -1,4 +1,7 @@
+import os
 import sqlite3
+import threading
+from datetime import UTC, datetime
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
@@ -52,9 +55,11 @@ def test_connect_database_migrates_job_description_columns(tmp_path: Path):
     columns = {row["name"] for row in rows}
     assert "job_description" in columns
     assert "prompt_job_description" in columns
+    assert "resume_updated_at" in columns
     assert "cover_letter_filename" in columns
     assert "cover_letter_content" in columns
     assert "source_cover_letter_path" in columns
+    assert "cover_letter_updated_at" in columns
     assert "date_matched" in columns
     assert "date_posted" in columns
     assert "experience_level" in columns
@@ -90,6 +95,8 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     )
     resume_path.parent.mkdir(parents=True)
     resume_path.write_bytes(b"%PDF-1.4 fake pdf")
+    resume_updated_at = datetime(2026, 6, 9, 15, 30, tzinfo=UTC)
+    os.utime(resume_path, (resume_updated_at.timestamp(), resume_updated_at.timestamp()))
     cover_letter_path = (
         output_dir
         / "cover_letters"
@@ -99,6 +106,11 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     )
     cover_letter_path.parent.mkdir(parents=True)
     cover_letter_path.write_bytes(b"%PDF-1.4 fake cover")
+    cover_letter_updated_at = datetime(2026, 6, 10, 16, 45, tzinfo=UTC)
+    os.utime(
+        cover_letter_path,
+        (cover_letter_updated_at.timestamp(), cover_letter_updated_at.timestamp()),
+    )
 
     tracking_path = output_dir / "tracking/read_applications/linkedin_applications.xlsx"
     tracking_path.parent.mkdir(parents=True)
@@ -157,7 +169,7 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
             """
             SELECT ats_score, ats_parsing_score, ats_keyword_score,
                    ats_semantic_score, ats_formatting_risk, ats_missing_terms,
-                   experience_level
+                   experience_level, resume_updated_at, cover_letter_updated_at
             FROM applications
             WHERE job_id = '123'
             """
@@ -166,6 +178,8 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     assert score_row["ats_formatting_risk"] in {"Low", "Medium", "High"}
     assert score_row["ats_missing_terms"] is not None
     assert score_row["experience_level"] == "Mid-Senior level"
+    assert score_row["resume_updated_at"] == "2026-06-09T15:30:00+00:00"
+    assert score_row["cover_letter_updated_at"] == "2026-06-10T16:45:00+00:00"
 
     app = create_app(database_path=database_path, output_dir=output_dir)
     client = app.test_client()
@@ -179,6 +193,16 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     assert b"/cover-letters/123" in index.data
     assert 'action="/resumes/123/copy-to-downloads"' in html
     assert 'action="/cover-letters/123/copy-to-downloads"' in html
+    assert 'id="actions-form"' in html
+    assert 'action="/actions/run"' in html
+    assert 'id="action-sync"' in html
+    assert "Sync from output" in html
+    assert 'id="action-regenerate"' in html
+    assert "Regenerate docs" in html
+    assert "Cover letters" in html
+    assert "Resumes" in html
+    assert 'id="action-status"' in html
+    assert 'fetch("/actions/status"' in html
     assert 'class="same-page-download"' not in html
     assert "downloadInCurrentPage" not in html
     assert "samePageDownloads.forEach" not in html
@@ -193,9 +217,15 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     assert b'id="company-sort"' in index.data
     assert b'id="matched-sort"' in index.data
     assert b'id="ats-sort"' in index.data
+    assert b'id="resume-sort"' in index.data
+    assert b'id="cover-letter-sort"' in index.data
     assert b'data-company-sort="Example Co"' in index.data
     assert b'data-matched-sort=' in index.data
     assert b"data-ats-sort=" in index.data
+    assert b'data-resume-sort="2026-06-09T15:30:00+00:00"' in index.data
+    assert b'data-cover-letter-sort="2026-06-10T16:45:00+00:00"' in index.data
+    assert b"2026-06-09 15:30" in index.data
+    assert b"2026-06-10 16:45" in index.data
     assert b"ATS proxy score:" in index.data
     assert b"Keyword match:" in index.data
     assert b"Formatting risk:" in index.data
@@ -215,6 +245,16 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     assert 'const initialDirection = "desc";' in filtered_html
     assert "preserve-state-link" in filtered_html
     assert "return-to-state" in filtered_html
+
+    artifact_sorted_index = client.get("/?sort=resume&direction=desc")
+    artifact_sorted_html = artifact_sorted_index.data.decode()
+    assert 'const initialSort = "resume";' in artifact_sorted_html
+    assert 'const initialDirection = "desc";' in artifact_sorted_html
+
+    cover_sorted_index = client.get("/?sort=cover_letter&direction=asc")
+    cover_sorted_html = cover_sorted_index.data.decode()
+    assert 'const initialSort = "cover_letter";' in cover_sorted_html
+    assert 'const initialDirection = "asc";' in cover_sorted_html
 
     descriptions = client.get("/descriptions/123")
     assert descriptions.status_code == 200
@@ -340,3 +380,74 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     workbook = load_workbook(tracking_path)
     sheet = workbook.active
     assert sheet.max_row == 1
+
+
+def test_regenerate_make_command_maps_modes_to_make_targets():
+    assert webapp._regenerate_make_command(  # noqa: SLF001
+        regenerate_mode="all",
+        job_ids=["123", "456"],
+    ) == ["make", "regenerate-all", "JOB_IDS=123 456"]
+    assert webapp._regenerate_make_command(  # noqa: SLF001
+        regenerate_mode="resumes",
+        job_ids=["123"],
+    ) == ["make", "regenerate-resumes", "JOB_IDS=123"]
+    assert webapp._regenerate_make_command(  # noqa: SLF001
+        regenerate_mode="cover_letters",
+        job_ids=["123"],
+    ) == ["make", "regenerate-cover-letters", "JOB_IDS=123"]
+
+
+def test_actions_run_starts_background_regeneration(tmp_path: Path):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    calls = []
+    completed = threading.Event()
+
+    def runner(**kwargs):
+        calls.append(kwargs)
+        webapp._append_background_action_message(  # noqa: SLF001
+            kwargs["run_id"],
+            "processing job 123",
+        )
+        webapp._finish_background_action_run(  # noqa: SLF001
+            kwargs["run_id"],
+            status="completed",
+            return_code=0,
+        )
+        completed.set()
+
+    output_dir = tmp_path / "output"
+    database_path = output_dir / "tracking/applications.sqlite3"
+    app = create_app(
+        database_path=database_path,
+        output_dir=output_dir,
+        background_action_runner=runner,
+    )
+    client = app.test_client()
+
+    response = client.post(
+        "/actions/run",
+        data={
+            "action_sync": "1",
+            "action_regenerate": "1",
+            "regenerate_mode": "all",
+            "job_id": ["123", "123", "456"],
+            "return_to": "/?q=Example",
+        },
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/?q=Example"
+    assert completed.wait(timeout=2)
+    assert calls
+    assert calls[0]["sync_requested"] is True
+    assert calls[0]["regenerate_mode"] == "all"
+    assert calls[0]["job_ids"] == ["123", "456"]
+
+    status = client.get("/actions/status").get_json()
+    assert status is not None
+    assert status["runs"][0]["status"] == "completed"
+    assert status["runs"][0]["return_code"] == 0
+    assert status["runs"][0]["title"] == "sync output + regenerate all docs for 2 job(s)"
+    assert any("processing job 123" in message for message in status["runs"][0]["messages"])

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "linkedin-career-mcp"
-version = "0.1.2"
+version = "0.1.3"
 description = "Python-centric MCP server for LinkedIn public job search and future career workflows."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -49,6 +49,8 @@ linkedin-career-regenerate-resumes = "linkedin_career_mcp.workflows.matching:reg
 linkedin-career-regenerate-cover-letters = "linkedin_career_mcp.workflows.matching:regenerate_cover_letters_main"
 linkedin-career-regenerate-all = "linkedin_career_mcp.workflows.matching:regenerate_all_main"
 linkedin-career-refresh-static-artifacts = "linkedin_career_mcp.artifact_refresh:refresh_static_artifacts_main"
+linkedin-career-stylize-resume = "linkedin_career_mcp.artifact_refresh:stylize_resume_main"
+linkedin-career-stylize-cover-letter = "linkedin_career_mcp.artifact_refresh:stylize_cover_letter_main"
 linkedin-career-webapp = "linkedin_career_mcp.webapp:main"
 
 [project.urls]
