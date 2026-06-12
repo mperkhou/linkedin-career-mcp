@@ -1,8 +1,9 @@
 # linkedin-career-mcp CHANGELOG
 
-## 1.26.0 - PR #26: Add standalone resume stylizer
+## 1.26.0 - PR #26: Add standalone resume and cover letter stylizers
 
 * commit `2a20329`: Add standalone resume stylizer
+* commit `ff5d019`: Add standalone cover letter stylizer
 
 ## 1.25.0 - PR #25: Add webapp regeneration actions
 
