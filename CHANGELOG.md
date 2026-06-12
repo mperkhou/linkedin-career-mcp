@@ -1,5 +1,9 @@
 # linkedin-career-mcp CHANGELOG
 
+## 1.27.0 - PR #27: Preserve hyperlinks in stylized PDFs
+
+* commit `1e0b844`: Preserve hyperlinks in stylized PDFs
+
 ## 1.26.0 - PR #26: Add standalone resume and cover letter stylizers
 
 * commit `2a20329`: Add standalone resume stylizer
