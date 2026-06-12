@@ -1,5 +1,9 @@
 # linkedin-career-mcp CHANGELOG
 
+## 1.26.0 - PR #26: Add standalone resume stylizer
+
+* commit `2a20329`: Add standalone resume stylizer
+
 ## 1.25.0 - PR #25: Add webapp regeneration actions
 
 * commit `5d79e39`: Add webapp regeneration actions
