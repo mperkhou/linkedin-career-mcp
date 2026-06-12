@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlparse
 
 from pypdf import PdfReader, PdfWriter
 from pypdf.annotations import Link
@@ -122,6 +123,23 @@ class _LinkLocation:
     y: float
     font_name: str
     font_size: float
+
+
+@dataclass(frozen=True)
+class _UriLink:
+    label: str
+    url: str
+    page_number: int
+    source_order: int
+
+
+@dataclass(frozen=True)
+class _PdfTextToken:
+    text: str
+    x0: float
+    y0: float
+    x1: float
+    y1: float
 
 
 def refresh_static_artifacts(
@@ -321,12 +339,19 @@ def _stylized_resume_output_path(path: Path, *, output_suffix: str) -> Path:
 
 
 def _stylized_resume_text_from_pdf(reader: PdfReader) -> str:
-    text = _extract_pdf_layout_text(reader)
+    layout_pages = _extract_pdf_layout_pages(reader)
+    text = "\n".join(layout_pages)
     lines = _normalize_stylized_resume_pdf_lines(text)
+    links = _extract_pdf_uri_links(reader=reader, layout_pages=layout_pages)
+    lines = _apply_uri_links_to_lines(lines=lines, links=links)
     return "\n".join(lines).strip()
 
 
 def _extract_pdf_layout_text(reader: PdfReader) -> str:
+    return "\n".join(_extract_pdf_layout_pages(reader))
+
+
+def _extract_pdf_layout_pages(reader: PdfReader) -> list[str]:
     page_text: list[str] = []
     for page in reader.pages:
         try:
@@ -334,7 +359,7 @@ def _extract_pdf_layout_text(reader: PdfReader) -> str:
         except TypeError:
             text = page.extract_text() or ""
         page_text.append(text)
-    return "\n".join(page_text)
+    return page_text
 
 
 def _normalize_stylized_resume_pdf_lines(text: str) -> list[str]:
@@ -368,6 +393,220 @@ def _normalize_stylized_resume_pdf_line(raw_line: str) -> str:
     if bullet_match:
         line = f"- {raw_line[bullet_match.end():]}"
     return _clean_inline_pdf_text(line)
+
+
+def _extract_pdf_uri_links(*, reader: PdfReader, layout_pages: list[str]) -> list[_UriLink]:
+    links: list[_UriLink] = []
+    source_order = 0
+    for page_number, page in enumerate(reader.pages):
+        page_layout_text = layout_pages[page_number] if page_number < len(layout_pages) else ""
+        for annotation_ref in page.get("/Annots") or []:
+            annotation = annotation_ref.get_object()
+            action = annotation.get("/A")
+            uri = action.get("/URI") if action is not None else None
+            if not uri:
+                continue
+
+            url = str(uri)
+            coordinate_label = _link_label_from_annotation(page=page, annotation=annotation)
+            fallback_label = _link_label_from_uri(url=url, page_text=page_layout_text)
+            label = _preferred_uri_link_label(
+                coordinate_label=coordinate_label,
+                fallback_label=fallback_label,
+                url=url,
+            )
+            if not label:
+                continue
+
+            links.append(
+                _UriLink(
+                    label=label,
+                    url=url,
+                    page_number=page_number,
+                    source_order=source_order,
+                )
+            )
+            source_order += 1
+    return links
+
+
+def _preferred_uri_link_label(
+    *,
+    coordinate_label: str | None,
+    fallback_label: str | None,
+    url: str,
+) -> str | None:
+    if coordinate_label and fallback_label and not _label_matches_uri(
+        label=coordinate_label,
+        url=url,
+    ):
+        return fallback_label
+    return coordinate_label or fallback_label
+
+
+def _label_matches_uri(*, label: str, url: str) -> bool:
+    normalized_label = label.casefold()
+    for candidate in _uri_label_candidates(url):
+        normalized_candidate = candidate.casefold()
+        if normalized_label in normalized_candidate or normalized_candidate in normalized_label:
+            return True
+    return False
+
+
+def _link_label_from_annotation(*, page: Any, annotation: Any) -> str | None:
+    rectangle = annotation.get("/Rect")
+    if rectangle is None or len(rectangle) < 4:
+        return None
+
+    rect = tuple(float(value) for value in rectangle[:4])
+    tokens = [
+        token
+        for token in _page_text_tokens(page)
+        if _rectangle_contains_token_center(token=token, rectangle=rect)
+    ]
+    if not tokens:
+        return None
+
+    tokens.sort(key=lambda token: (-token.y0, token.x0))
+    return _clean_inline_pdf_text(" ".join(token.text for token in tokens)) or None
+
+
+def _page_text_tokens(page: Any) -> list[_PdfTextToken]:
+    tokens: list[_PdfTextToken] = []
+
+    def visitor(
+        text: str,
+        current_matrix: list[float],
+        text_matrix: list[float],
+        font_dictionary: dict[str, Any] | None,
+        font_size: float,
+    ) -> None:
+        if not text.strip():
+            return
+
+        font_name = "Helvetica"
+        if font_dictionary is not None:
+            base_font = str(font_dictionary.get("/BaseFont", "")).lstrip("/")
+            if base_font:
+                font_name = base_font
+
+        x = float(current_matrix[4]) + float(text_matrix[4])
+        y = float(current_matrix[5]) + float(text_matrix[5])
+        for match in re.finditer(r"\S+", text):
+            prefix = text[: match.start()]
+            token_text = match.group(0)
+            token_x0 = x + _safe_string_width(prefix, font_name, font_size)
+            token_x1 = token_x0 + _safe_string_width(token_text, font_name, font_size)
+            tokens.append(
+                _PdfTextToken(
+                    text=token_text,
+                    x0=token_x0,
+                    y0=y - 2,
+                    x1=token_x1,
+                    y1=y + float(font_size) + 2,
+                )
+            )
+
+    page.extract_text(visitor_text=visitor)
+    return tokens
+
+
+def _rectangle_contains_token_center(
+    *,
+    token: _PdfTextToken,
+    rectangle: tuple[float, float, float, float],
+) -> bool:
+    x0, y0, x1, y1 = rectangle
+    token_center_x = (token.x0 + token.x1) / 2
+    token_center_y = (token.y0 + token.y1) / 2
+    return x0 <= token_center_x <= x1 and y0 <= token_center_y <= y1
+
+
+def _link_label_from_uri(*, url: str, page_text: str) -> str | None:
+    normalized_page_text = _clean_inline_pdf_text(page_text)
+    if not normalized_page_text:
+        return None
+
+    for candidate in _uri_label_candidates(url):
+        if _text_has_link_label_candidate(text=normalized_page_text, candidate=candidate):
+            return candidate
+    return None
+
+
+def _text_has_link_label_candidate(*, text: str, candidate: str) -> bool:
+    candidate_pattern = re.escape(candidate)
+    return bool(
+        re.search(
+            rf"(?<![A-Za-z0-9_-]){candidate_pattern}(?![A-Za-z0-9_-])",
+            text,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
+def _uri_label_candidates(url: str) -> list[str]:
+    parsed = urlparse(url)
+    decoded_url = unquote(url)
+    decoded_path = unquote(parsed.path or "").strip("/")
+    candidates = [
+        decoded_url,
+        decoded_url.removeprefix("https://").removeprefix("http://"),
+    ]
+    if parsed.netloc:
+        host = parsed.netloc.removeprefix("www.")
+        candidates.append(host)
+        if decoded_path:
+            candidates.extend(
+                [
+                    f"{parsed.netloc}/{decoded_path}",
+                    f"{host}/{decoded_path}",
+                    decoded_path,
+                ]
+            )
+    if decoded_path:
+        path_parts = [part for part in decoded_path.split("/") if part]
+        candidates.extend(path_parts)
+        if len(path_parts) >= 2:
+            candidates.append("/".join(path_parts[-2:]))
+
+    unique_candidates: list[str] = []
+    for candidate in sorted(candidates, key=len, reverse=True):
+        candidate = candidate.strip()
+        if len(candidate) < 6 or candidate in unique_candidates:
+            continue
+        unique_candidates.append(candidate)
+    return unique_candidates
+
+
+def _apply_uri_links_to_lines(*, lines: list[str], links: list[_UriLink]) -> list[str]:
+    linked_lines = list(lines)
+    ordered_links = sorted(
+        links,
+        key=lambda link: (-len(link.label), link.page_number, link.source_order),
+    )
+    for link in ordered_links:
+        for index, line in enumerate(linked_lines):
+            linked_line = _link_first_plain_occurrence(
+                line=line,
+                label=link.label,
+                url=link.url,
+            )
+            if linked_line != line:
+                linked_lines[index] = linked_line
+                break
+    return linked_lines
+
+
+def _link_first_plain_occurrence(*, line: str, label: str, url: str) -> str:
+    protected_spans = [match.span() for match in re.finditer(r"\[[^\]]+]\(https?://[^)]+\)", line)]
+    for match in re.finditer(re.escape(label), line):
+        if any(
+            match.start() < protected_end and match.end() > protected_start
+            for protected_start, protected_end in protected_spans
+        ):
+            continue
+        return f"{line[: match.start()]}[{label}]({url}){line[match.end() :]}"
+    return line
 
 
 def stylize_cover_letter_pdf(
@@ -412,8 +651,11 @@ def stylize_cover_letter_pdf(
 
 
 def _stylized_cover_letter_text_from_pdf(reader: PdfReader) -> str:
-    text = _extract_pdf_layout_text(reader)
+    layout_pages = _extract_pdf_layout_pages(reader)
+    text = "\n".join(layout_pages)
     paragraphs = _normalize_stylized_cover_letter_pdf_paragraphs(text)
+    links = _extract_pdf_uri_links(reader=reader, layout_pages=layout_pages)
+    paragraphs = _apply_uri_links_to_lines(lines=paragraphs, links=links)
     return "\n\n".join(paragraphs).strip()
 
 
@@ -876,13 +1118,33 @@ def _font_name_from_operand(operand: Any) -> str:
     return "Helvetica"
 
 
+def _safe_string_width(text: str, font_name: str, font_size: float) -> float:
+    candidates = [font_name]
+    if "+" in font_name:
+        candidates.append(font_name.split("+", 1)[1])
+    if "Arial" in font_name:
+        candidates.append("Helvetica-Bold" if "Bold" in font_name else "Helvetica")
+    candidates.append("Helvetica")
+
+    tried: set[str] = set()
+    for candidate in candidates:
+        if candidate in tried:
+            continue
+        tried.add(candidate)
+        try:
+            return stringWidth(text, candidate, font_size)
+        except (KeyError, ValueError):
+            continue
+    return stringWidth(text, "Helvetica", font_size)
+
+
 def _add_resume_link_annotation(
     *,
     writer: PdfWriter,
     page_number: int,
     hit: _TextHit,
 ) -> None:
-    link_x = hit.x + stringWidth(RESUME_CONTACT_PREFIX, hit.font_name, hit.font_size)
+    link_x = hit.x + _safe_string_width(RESUME_CONTACT_PREFIX, hit.font_name, hit.font_size)
     location = _LinkLocation(
         x=link_x,
         y=hit.y,
@@ -904,7 +1166,7 @@ def _add_link_annotation(
     location: _LinkLocation,
     font_label: str,
 ) -> None:
-    width = stringWidth(font_label, location.font_name, location.font_size)
+    width = _safe_string_width(font_label, location.font_name, location.font_size)
     writer.add_annotation(
         page_number,
         Link(

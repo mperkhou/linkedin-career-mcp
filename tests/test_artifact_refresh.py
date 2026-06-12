@@ -87,14 +87,18 @@ def test_stylize_resume_pdf_writes_emerald_copy_without_rewriting_source(
     path = tmp_path / "resume-input.pdf"
     pdf = canvas.Canvas(str(path), pagesize=LETTER)
     pdf.setFont("Helvetica", 10)
+    case_study_url = "https://example.com/work/ai-enablement"
+    project_url = "https://github.com/mperkhou/linkedin-career-mcp"
     y = 740
-    lines = [
+    lines: list[str] = [
         "Max Perkhounkov",
         "Staff Engineer | AI Enablement & Platform Automation",
         "Professional Summary",
         "Analytical Staff Engineer focused on practical AI enablement.",
         "Core Technical Skills",
         "\u2022 MCP, agentic workflows, Python automation",
+        "\u2022 linkedin-career-mcp: Developed a career automation pipeline",
+        "\u2022 Case study: AI enablement writeup",
         "Professional Experience",
         "Oracle | Remote",
         "Senior Technical Lead - Cloud Automation Engineer | Feb 2022 - Present",
@@ -104,7 +108,17 @@ def test_stylize_resume_pdf_writes_emerald_copy_without_rewriting_source(
     ]
     for line in lines:
         pdf.drawString(60, y, line)
+        if line == "\u2022 Case study: AI enablement writeup":
+            label_prefix = "\u2022 Case study: "
+            label = "AI enablement writeup"
+            label_x = 60 + pdf.stringWidth(label_prefix, "Helvetica", 10)
+            pdf.linkURL(
+                case_study_url,
+                (label_x, y - 2, label_x + pdf.stringWidth(label, "Helvetica", 10), y + 10),
+                relative=0,
+            )
         y -= 16
+    pdf.linkURL(project_url, (10, 10, 30, 24), relative=0)
     pdf.save()
     original_bytes = path.read_bytes()
 
@@ -118,7 +132,12 @@ def test_stylize_resume_pdf_writes_emerald_copy_without_rewriting_source(
     text = _extract_text(reader)
     assert "Staff Engineer | AI Enablement & Platform Automation" in text
     assert "Analytical Staff Engineer focused on practical AI enablement." in text
+    assert "linkedin-career-mcp" in text
+    assert "Developed a career automation pipeline" in text
+    assert "AI enablement writeup" in text
     assert "Built AI-assisted delivery workflows" in text
+    assert _has_uri(reader, case_study_url)
+    assert _has_uri(reader, project_url)
     assert _has_emerald_color(reader)
 
 

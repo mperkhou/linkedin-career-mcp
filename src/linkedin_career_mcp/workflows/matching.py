@@ -3389,32 +3389,59 @@ def _cover_letter_markup(paragraph: str) -> str:
 
 def _bullet_markup(line: str) -> str:
     line = _strip_markdown_emphasis(line)
-    if ":" in line:
-        label, rest = line.split(":", 1)
+    label_parts = _split_unprotected_separator(line, ":")
+    if label_parts is not None:
+        label, rest = label_parts
         if 2 <= len(label) <= 60:
+            if _has_markdown_link(label):
+                return f"{_paragraph_markup(label)}:{_paragraph_markup(rest)}"
             return f"<b>{_paragraph_markup(label)}:</b>{_paragraph_markup(rest)}"
-    if "|" in line:
-        label, rest = line.split("|", 1)
+    label_parts = _split_unprotected_separator(line, "|")
+    if label_parts is not None:
+        label, rest = label_parts
         if 2 <= len(label) <= 80:
+            if _has_markdown_link(label):
+                return f"{_paragraph_markup(label.strip())} |{_paragraph_markup(rest)}"
             return f"<b>{_paragraph_markup(label.strip())}</b> |{_paragraph_markup(rest)}"
     return _paragraph_markup(line)
 
 
 def _nested_bullet_markup(line: str) -> str:
     line = _strip_markdown_emphasis(line)
-    if ":" in line:
-        label, rest = line.split(":", 1)
+    label_parts = _split_unprotected_separator(line, ":")
+    if label_parts is not None:
+        label, rest = label_parts
         if 2 <= len(label) <= 60:
+            if _has_markdown_link(label):
+                return f"{_paragraph_markup(label)}:{_paragraph_markup(rest)}"
             return f"<i>{_paragraph_markup(label)}:</i>{_paragraph_markup(rest)}"
     return _paragraph_markup(line)
 
 
 def _title_markup(line: str) -> str:
     line = _strip_markdown_emphasis(line)
-    if "|" not in line:
+    title_parts = _split_unprotected_separator(line, "|")
+    if title_parts is None:
         return _paragraph_markup(line)
-    title, dates = line.split("|", 1)
+    title, dates = title_parts
+    if _has_markdown_link(title):
+        return f"{_paragraph_markup(title.strip())} | <i>{_paragraph_markup(dates.strip())}</i>"
     return f"<b>{_paragraph_markup(title.strip())}</b> | <i>{_paragraph_markup(dates.strip())}</i>"
+
+
+def _split_unprotected_separator(line: str, separator: str) -> tuple[str, str] | None:
+    protected_spans = [match.span() for match in re.finditer(r"\[[^\]]+]\(https?://[^)]+\)", line)]
+    for index, character in enumerate(line):
+        if character != separator:
+            continue
+        if any(start <= index < end for start, end in protected_spans):
+            continue
+        return line[:index], line[index + 1 :]
+    return None
+
+
+def _has_markdown_link(text: str) -> bool:
+    return bool(re.search(r"\[[^\]]+]\(https?://[^)]+\)", text))
 
 
 def _strip_markdown_emphasis(text: str) -> str:
