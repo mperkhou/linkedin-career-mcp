@@ -140,6 +140,7 @@ class _PdfTextToken:
     y0: float
     x1: float
     y1: float
+    bold: bool
 
 
 def refresh_static_artifacts(
@@ -504,6 +505,7 @@ def _page_text_tokens(page: Any) -> list[_PdfTextToken]:
                     y0=y - 2,
                     x1=token_x1,
                     y1=y + float(font_size) + 2,
+                    bold=_is_bold_font_name(font_name),
                 )
             )
 
@@ -609,6 +611,79 @@ def _link_first_plain_occurrence(*, line: str, label: str, url: str) -> str:
     return line
 
 
+def _extract_pdf_bold_phrases(reader: PdfReader) -> list[str]:
+    phrases: list[str] = []
+    for page in reader.pages:
+        current_line_y: float | None = None
+        current_line_tokens: list[_PdfTextToken] = []
+        for token in sorted(_page_text_tokens(page), key=lambda item: (-item.y0, item.x0)):
+            if current_line_y is None or abs(token.y0 - current_line_y) <= 3:
+                current_line_tokens.append(token)
+                current_line_y = token.y0 if current_line_y is None else current_line_y
+                continue
+            phrases.extend(_bold_phrases_from_line(current_line_tokens))
+            current_line_tokens = [token]
+            current_line_y = token.y0
+        phrases.extend(_bold_phrases_from_line(current_line_tokens))
+
+    unique_phrases: list[str] = []
+    for phrase in phrases:
+        if phrase and phrase not in unique_phrases:
+            unique_phrases.append(phrase)
+    return unique_phrases
+
+
+def _bold_phrases_from_line(tokens: list[_PdfTextToken]) -> list[str]:
+    phrases: list[str] = []
+    current_tokens: list[str] = []
+    for token in sorted(tokens, key=lambda item: item.x0):
+        if token.bold:
+            current_tokens.append(token.text)
+            continue
+        if current_tokens:
+            phrases.append(_clean_inline_pdf_text(" ".join(current_tokens)))
+            current_tokens = []
+    if current_tokens:
+        phrases.append(_clean_inline_pdf_text(" ".join(current_tokens)))
+    return phrases
+
+
+def _is_bold_font_name(font_name: str) -> bool:
+    normalized = font_name.casefold()
+    return "bold" in normalized or "black" in normalized or "heavy" in normalized
+
+
+def _apply_bold_phrases_to_lines(*, lines: list[str], bold_phrases: list[str]) -> list[str]:
+    bold_lines = list(lines)
+    for phrase in sorted(bold_phrases, key=len, reverse=True):
+        for index, line in enumerate(bold_lines):
+            bold_line = _bold_first_plain_occurrence(line=line, phrase=phrase)
+            if bold_line != line:
+                bold_lines[index] = bold_line
+                break
+    return bold_lines
+
+
+def _bold_first_plain_occurrence(*, line: str, phrase: str) -> str:
+    protected_spans = _markdown_link_spans(line) + _markdown_bold_spans(line)
+    for match in re.finditer(re.escape(phrase), line):
+        if any(
+            match.start() < protected_end and match.end() > protected_start
+            for protected_start, protected_end in protected_spans
+        ):
+            continue
+        return f"{line[: match.start()]}**{phrase}**{line[match.end() :]}"
+    return line
+
+
+def _markdown_link_spans(text: str) -> list[tuple[int, int]]:
+    return [match.span() for match in re.finditer(r"\[[^\]]+]\(https?://[^)]+\)", text)]
+
+
+def _markdown_bold_spans(text: str) -> list[tuple[int, int]]:
+    return [match.span() for match in re.finditer(r"\*\*.+?\*\*", text)]
+
+
 def stylize_cover_letter_pdf(
     *,
     input_path: Path,
@@ -656,6 +731,8 @@ def _stylized_cover_letter_text_from_pdf(reader: PdfReader) -> str:
     paragraphs = _normalize_stylized_cover_letter_pdf_paragraphs(text)
     links = _extract_pdf_uri_links(reader=reader, layout_pages=layout_pages)
     paragraphs = _apply_uri_links_to_lines(lines=paragraphs, links=links)
+    bold_phrases = _extract_pdf_bold_phrases(reader)
+    paragraphs = _apply_bold_phrases_to_lines(lines=paragraphs, bold_phrases=bold_phrases)
     return "\n\n".join(paragraphs).strip()
 
 

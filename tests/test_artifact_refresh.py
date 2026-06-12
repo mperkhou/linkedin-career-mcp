@@ -146,7 +146,7 @@ def test_stylize_cover_letter_pdf_writes_emerald_copy_without_rewriting_source(
 ) -> None:
     path = tmp_path / "cover-letter-input.pdf"
     pdf = canvas.Canvas(str(path), pagesize=LETTER)
-    pdf.setFont("Helvetica", 10)
+    project_url = "https://github.com/mperkhou/linkedin-career-mcp"
     y = 740
     lines = [
         "Subject: AI enablement platform automation",
@@ -164,9 +164,42 @@ def test_stylize_cover_letter_pdf_writes_emerald_copy_without_rewriting_source(
         "Maxim Perkhounkov",
     ]
     for line in lines:
-        if line:
+        if line == "Subject: AI enablement platform automation":
+            pdf.setFont("Helvetica-Bold", 10)
+            pdf.drawString(60, y, line)
+            pdf.setFont("Helvetica", 10)
+        elif line == "\u2022 OCI Automation: Built agentic infrastructure workflows.":
+            bullet = "\u2022 "
+            label = "OCI Automation"
+            rest = ": Built agentic infrastructure workflows."
+            pdf.setFont("Helvetica", 10)
+            pdf.drawString(60, y, bullet)
+            label_x = 60 + pdf.stringWidth(bullet, "Helvetica", 10)
+            pdf.setFont("Helvetica-Bold", 10)
+            pdf.drawString(label_x, y, label)
+            rest_x = label_x + pdf.stringWidth(label, "Helvetica-Bold", 10)
+            pdf.setFont("Helvetica", 10)
+            pdf.drawString(rest_x, y, rest)
+        elif line == "Maxim Perkhounkov":
+            pdf.setFont("Helvetica-Bold", 10)
+            pdf.drawString(60, y, line)
+            pdf.setFont("Helvetica", 10)
+        elif line:
+            pdf.setFont("Helvetica", 10)
             pdf.drawString(60, y, line)
         y -= 16
+    pdf.drawString(60, y, "Project: linkedin-career-mcp")
+    label_x = 60 + pdf.stringWidth("Project: ", "Helvetica", 10)
+    pdf.linkURL(
+        project_url,
+        (
+            label_x,
+            y - 2,
+            label_x + pdf.stringWidth("linkedin-career-mcp", "Helvetica", 10),
+            y + 10,
+        ),
+        relative=0,
+    )
     pdf.save()
     original_bytes = path.read_bytes()
 
@@ -182,6 +215,10 @@ def test_stylize_cover_letter_pdf_writes_emerald_copy_without_rewriting_source(
     assert "MCP connectivity gives agents the context they need." in text
     assert "OCI Automation: Built agentic infrastructure workflows." in text
     assert "Sincerely," in text
+    assert _has_uri(reader, project_url)
+    assert _has_bold_text(reader, "Subject:")
+    assert _has_bold_text(reader, "OCI Automation")
+    assert _has_bold_text(reader, "Maxim Perkhounkov")
     assert _has_emerald_color(reader)
 
 
@@ -293,6 +330,30 @@ def _has_uri(reader: PdfReader, url: str) -> bool:
             action = annotation.get("/A")
             if action is not None and action.get("/URI") == url:
                 return True
+    return False
+
+
+def _has_bold_text(reader: PdfReader, needle: str) -> bool:
+    found = False
+
+    def visitor(
+        text: str,
+        _current_matrix: list[float],
+        _text_matrix: list[float],
+        font_dictionary: dict[str, object] | None,
+        _font_size: float,
+    ) -> None:
+        nonlocal found
+        if needle not in text or font_dictionary is None:
+            return
+        font_name = str(font_dictionary.get("/BaseFont", ""))
+        if "Bold" in font_name:
+            found = True
+
+    for page in reader.pages:
+        page.extract_text(visitor_text=visitor)
+        if found:
+            return True
     return False
 
 

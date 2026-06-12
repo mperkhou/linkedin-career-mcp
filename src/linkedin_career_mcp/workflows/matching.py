@@ -3368,14 +3368,20 @@ def _clean_resume_text(text: str) -> str:
     return text.replace("```", "").strip()
 
 
+INLINE_MARKUP_RE = re.compile(r"\[([^\]]+)\]\((https?://[^)]+)\)|\*\*(.+?)\*\*")
+
+
 def _paragraph_markup(line: str) -> str:
     parts: list[str] = []
     cursor = 0
-    for match in re.finditer(r"\[([^\]]+)\]\((https?://[^)]+)\)", line):
+    for match in INLINE_MARKUP_RE.finditer(line):
         parts.append(escape(line[cursor : match.start()]))
-        label = escape(match.group(1))
-        url = escape(match.group(2), quote=True)
-        parts.append(f'<a href="{url}" color="blue">{label}</a>')
+        if match.group(1) is not None:
+            label = escape(match.group(1))
+            url = escape(match.group(2), quote=True)
+            parts.append(f'<a href="{url}" color="blue">{label}</a>')
+        else:
+            parts.append(f"<b>{_paragraph_markup(match.group(3))}</b>")
         cursor = match.end()
     parts.append(escape(line[cursor:]))
     return "".join(parts)
