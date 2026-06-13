@@ -27,8 +27,8 @@ isolation, testable workflows, practical automation, and human-in-the-loop guard
 - **Tailored resume and cover-letter generation**: renders job-specific PDF resumes from a
   structured local template, then generates cover letters from static template sections plus
   targeted LLM-written opening, Oracle-current-role, and prior-experience fragments. Prompts
-  use a cleaned role-focused job description that removes obvious company boilerplate before
-  LLM calls.
+  use a cleaned role-focused job description with ML-assisted chunk ranking to remove obvious
+  company, compensation, benefits, privacy, and hiring-process boilerplate before LLM calls.
 - **ATS-informed resume repair**: after the first resume draft is rendered and scored, the
   workflow checks missing high-value JOD terms against the source resume, then runs a compact
   source-evidence repair loop when factual improvements are available.
@@ -80,6 +80,8 @@ system. It gives the workflow a repeatable way to inspect generated resumes befo
 in the tracker:
 
 - extract text from the generated PDF and compare it against the cleaned JOD
+- keep the raw JOD as source of truth while using a lightweight local classifier/ranker to
+  preserve responsibility and qualification chunks and drop boilerplate chunks from prompt JODs
 - calculate an overall proxy score plus parsing, keyword, semantic, and formatting-risk
   sub-scores
 - surface missing high-value terms in the Flask tracker so the gap is visible during review
