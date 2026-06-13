@@ -265,6 +265,7 @@ TRAILING_BOILERPLATE_HEADINGS = (
     "Applications for this job",
     "This posting is for",
     "NVIDIA uses AI tools",
+    "About The Team",
 )
 ROLE_RELEVANT_PREFIX_MARKERS = (
     "you will",
@@ -295,22 +296,34 @@ JOD_HARD_DROP_MARKERS = (
     "base salary",
     "salary range",
     "compensation",
+    "competitive compensation",
+    "target incentive compensation",
+    "on-target-earnings",
+    "internal pay equity",
     "benefits",
+    "wellness benefits",
+    "pay transparency",
     "medical, dental",
     "401(k)",
     "parental leave",
     "equal opportunity",
+    "equal employment opportunity",
     "affirmative action",
     "reasonable accommodation",
+    "accommodation requests",
     "privacy policy",
     "applicant privacy",
     "personal information",
     "e-verify",
     "recruiter will share",
     "hiring process",
+    "interview process",
     "application process",
+    "starting pay",
     "we may use artificial intelligence",
     "we may use ai tools",
+    "401k",
+    "paid company holidays",
 )
 JOD_HARD_KEEP_MARKERS = (
     "responsibil",
@@ -319,17 +332,58 @@ JOD_HARD_KEEP_MARKERS = (
     "key responsibilities",
     "job summary",
     "role summary",
-    "the role",
-    "about the role",
     "required qualifications",
     "minimum qualifications",
     "basic qualifications",
-    "qualifications",
-    "requirements",
     "skills and experience",
 )
 JOD_CHUNK_KEEP_THRESHOLD = -0.75
 JOD_CHUNK_MIN_MEANINGFUL_LENGTH = 24
+INLINE_TRAILING_BOILERPLATE_BOUNDARY_RE = re.compile(
+    r"\s+(?=(?:"
+    r"Benefits\s+Compensation|"
+    r"Benefits\b|"
+    r"Salary\s+Ranges?|"
+    r"Salary\s+&\s+Benefits|"
+    r"Pay\s+Disclai\\s*mer|"
+    r"Pay\s+Range|"
+    r"In\s+the\s+spirit\s+of\s+pay\s+transparency|"
+    r"Actual\s+placement\s+in\s+range|"
+    r"What\s+[A-Z][A-Za-z0-9]+\s+Offers\s+You|"
+    r"Competitive\s+compensation|"
+    r"To\s+determine\s+a\s+successful\s+candidate|"
+    r"It\s+is\s+the\s+policy\s+of|"
+    r"Accommodation\s+requests|"
+    r"Disclai\s*me\s*r|"
+    r"EE\s*O\b|"
+    r"We\s+offer\s+a\s+401k|"
+    r"Additional\s+factors\s+considered|"
+    r"Actual\s+compensation|"
+    r"Individual\s+total\s+compensation|"
+    r"The\s+base\s+compensation\s+range|"
+    r"Compensation\s+(?:The\s+salary\s+range|for|of|&\s+Benefits|\$)|"
+    r"Compensation\b"
+    r")\b)",
+)
+JOD_BOILERPLATE_START_RE = re.compile(
+    r"^(?:"
+    r"actual compensation|"
+    r"actual placement in range|"
+    r"benefits\b|"
+    r"competitive compensation|"
+    r"compensation\b|"
+    r"in the spirit of pay transparency|"
+    r"individual total compensation|"
+    r"it is the policy of .{0,80}?equal employment opportunity|"
+    r"to determine a successful candidate|"
+    r"we offer a 401k|"
+    r"the base compensation range|"
+    r"the opportunity to work alongside .{0,160}?compensation|"
+    r"what [a-z0-9]+ offers you|"
+    r"[a-z0-9 .,'&-]{0,80}? is an equal opportunity employer"
+    r")",
+    re.IGNORECASE,
+)
 JOD_CHUNK_TRAINING_EXAMPLES = (
     (
         "keep",
@@ -357,6 +411,21 @@ JOD_CHUNK_TRAINING_EXAMPLES = (
         "engineering, observability, and infrastructure as code.",
     ),
     (
+        "keep",
+        "The elevator pitch is owning automation that makes manual processes disappear "
+        "through Python tooling, endpoint management, monitoring, and permanent systems fixes.",
+    ),
+    (
+        "keep",
+        "Hammerspace delivers a global data environment spanning data centers, Linux systems, "
+        "AWS, Azure, Google cloud infrastructure, networking, storage, and distributed systems.",
+    ),
+    (
+        "keep",
+        "Modern AI workloads place different demands on infrastructure, including LLM inference, "
+        "agent runtimes, vector stores, GPU economics, and real-time computer vision pipelines.",
+    ),
+    (
         "drop",
         "Benefits include comprehensive medical dental and vision coverage, wellness "
         "stipends, parental leave, paid time off, and retirement savings.",
@@ -380,6 +449,21 @@ JOD_CHUNK_TRAINING_EXAMPLES = (
         "drop",
         "A recruiter will share more details about hiring process logistics, interview "
         "steps, application review, and employment eligibility.",
+    ),
+    (
+        "drop",
+        "Actual compensation awarded to successful candidates is based on market, location, "
+        "scope, individual qualifications, and interview process assessment.",
+    ),
+    (
+        "drop",
+        "Individual total compensation will vary based on qualifications, skill level, "
+        "competencies, role location, salary range, and work location.",
+    ),
+    (
+        "drop",
+        "The opportunity includes a competitive compensation package, 401(k), health, dental, "
+        "vision coverage, paid vacation days, office perks, and social events.",
     ),
 )
 DEFAULT_CORE_TECHNICAL_SKILLS: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -2432,10 +2516,13 @@ def _job_description_chunks(description: str) -> list[str]:
 
 
 def _split_job_description_segment(segment: str) -> list[str]:
-    pieces = [
-        piece.strip(" :-\n")
-        for piece in re.split(r"(?<=[.!?])\s+(?=[A-Z0-9])", segment)
-    ]
+    segments = INLINE_TRAILING_BOILERPLATE_BOUNDARY_RE.split(segment)
+    pieces = []
+    for subsegment in segments:
+        pieces.extend(
+            piece.strip(" :-\n")
+            for piece in re.split(r"(?<=[.!?])\s+(?=[A-Z0-9])", subsegment)
+        )
     chunks: list[str] = []
     for piece in pieces:
         if not piece:
@@ -2471,6 +2558,8 @@ def _keep_job_description_chunk(
         or _contains_any_casefolded(text, JOD_HARD_KEEP_MARKERS)
     )
     role_marker_count = _role_relevant_marker_count(text)
+    if hard_drop and JOD_BOILERPLATE_START_RE.search(text):
+        return False
     if preserve_company_context and not hard_drop:
         return True
     if hard_drop and not hard_keep and role_marker_count < 2:

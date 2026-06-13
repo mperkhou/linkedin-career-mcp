@@ -362,6 +362,19 @@ LinkedIn details for older rows that do not have either description, waiting two
 those fallback LinkedIn lookups by default. Each regeneration command accepts `all`, one job ID,
 space-separated job IDs, or a comma-separated list of job IDs.
 
+Audit cleaned prompt JODs against the live tracker DB without writing changes:
+
+```bash
+.venv/bin/linkedin-career-audit-jods --database output/tracking/applications.sqlite3
+```
+
+Apply the cleaned prompt JODs back into `prompt_job_description`, creating a timestamped database
+backup first and recalculating ATS scores for rows that have resume PDFs:
+
+```bash
+.venv/bin/linkedin-career-audit-jods --database output/tracking/applications.sqlite3 --apply
+```
+
 Long-running match and regeneration commands print the active job title, company, and job ID to
 stderr while they work, then print an artifact audit showing resume and cover-letter coverage.
 Cover-letter generation gets one post-run retry by default for jobs still missing a cover letter;
