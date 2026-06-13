@@ -1851,8 +1851,15 @@ def _write_text_pdf(*, text: str, path: Path) -> None:
             continue
         previous_line_blank = False
 
-        if line in RESUME_SECTION_HEADINGS:
-            if line in {"Professional Experience", "Education & Certifications"}:
+        extra_section_heading = _looks_like_extra_resume_section_heading(
+            line,
+            current_section=current_section,
+        )
+        if line in RESUME_SECTION_HEADINGS or extra_section_heading:
+            if (
+                line in {"Professional Experience", "Education & Certifications"}
+                or extra_section_heading
+            ):
                 story.append(Spacer(1, 5))
                 story.append(_resume_rule())
                 story.append(Spacer(1, 8))
@@ -3526,6 +3533,44 @@ def _looks_like_heading(line: str) -> bool:
         return False
     letters = [char for char in line if char.isalpha()]
     return bool(letters) and sum(char.isupper() for char in letters) / len(letters) > 0.75
+
+
+def _looks_like_extra_resume_section_heading(line: str, *, current_section: str | None) -> bool:
+    if current_section is None or current_section == "Professional Experience":
+        return False
+    if (
+        current_section in RESUME_SECTION_HEADINGS
+        and current_section != "Education & Certifications"
+    ):
+        return False
+    if line in RESUME_SECTION_HEADINGS or line.startswith(("- ", "  - ", "Note:")):
+        return False
+    if len(line) > 80 or any(separator in line for separator in (":", "|")):
+        return False
+    if line.endswith((".", ",", ";")):
+        return False
+
+    words = re.findall(r"[A-Za-z][A-Za-z0-9+/.-]*", line)
+    if len(words) < 2:
+        return False
+    lowercase_allowed = {
+        "a",
+        "an",
+        "and",
+        "as",
+        "for",
+        "in",
+        "of",
+        "on",
+        "or",
+        "the",
+        "to",
+        "with",
+    }
+    meaningful_words = [word for word in words if word.casefold() not in lowercase_allowed]
+    if len(meaningful_words) < 2:
+        return False
+    return all(word[:1].isupper() or word.isupper() for word in meaningful_words)
 
 
 def _ensure_tracking_headers(sheet: Worksheet) -> None:

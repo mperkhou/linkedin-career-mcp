@@ -1,5 +1,9 @@
 # linkedin-career-mcp CHANGELOG
 
+## 1.26.0 - PR #26: Detect dynamic resume sections during stylizing
+
+* commit `6573e2e`: Detect extra resume sections during stylizing
+
 ## 1.25.0 - PR #25: Add webapp regeneration actions and artifact stylizers
 
 * commit `5d79e39`: Add webapp regeneration actions
