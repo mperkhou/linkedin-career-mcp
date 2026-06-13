@@ -105,6 +105,10 @@ def test_stylize_resume_pdf_writes_emerald_copy_without_rewriting_source(
         "\u2022 Built AI-assisted delivery workflows",
         "Education & Certifications",
         "\u2022 Bachelor of Science in Physics & Mathematics",
+        "\u2022 Oracle Cloud Infrastructure AI Foundations Associate | 2026",
+        "Personal Projects & Open Source",
+        "\u2022 linkedin-career-mcp: Developed an automated career-data pipeline",
+        " using a custom MCP server and LLM search planner.",
     ]
     for line in lines:
         pdf.drawString(60, y, line)
@@ -136,6 +140,10 @@ def test_stylize_resume_pdf_writes_emerald_copy_without_rewriting_source(
     assert "Developed a career automation pipeline" in text
     assert "AI enablement writeup" in text
     assert "Built AI-assisted delivery workflows" in text
+    assert "Oracle Cloud Infrastructure AI Foundations Associate | 2026" in text
+    assert "Personal Projects & Open Source" in text
+    assert "custom MCP server and LLM search planner" in text
+    assert "2026 Personal Projects" not in text
     assert _has_uri(reader, case_study_url)
     assert _has_uri(reader, project_url)
     assert _has_emerald_color(reader)

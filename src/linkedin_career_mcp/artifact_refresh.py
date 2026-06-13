@@ -26,6 +26,7 @@ from linkedin_career_mcp.workflows.matching import (
     RESUME_HEADER_NAME,
     RESUME_SECTION_HEADINGS,
     _looks_like_employer_line,
+    _looks_like_extra_resume_section_heading,
     _looks_like_title_line,
     _write_cover_letter_text_pdf,
     _write_text_pdf,
@@ -370,7 +371,10 @@ def _normalize_stylized_resume_pdf_lines(text: str) -> list[str]:
         line = _normalize_stylized_resume_pdf_line(raw_line)
         if not line:
             continue
-        if line in RESUME_SECTION_HEADINGS:
+        if line in RESUME_SECTION_HEADINGS or _looks_like_extra_resume_section_heading(
+            line,
+            current_section=current_section,
+        ):
             current_section = line
             normalized_lines.append(line)
             continue
@@ -810,7 +814,10 @@ def _normalize_resume_pdf_lines(text: str) -> list[str]:
         elif line.startswith("Note: This resume is custom tailored"):
             line = AI_GENERATION_NOTE
 
-        if line in RESUME_SECTION_HEADINGS:
+        if line in RESUME_SECTION_HEADINGS or _looks_like_extra_resume_section_heading(
+            line,
+            current_section=current_section,
+        ):
             current_section = line
             normalized_lines.append(line)
             continue
@@ -851,7 +858,11 @@ def _should_append_resume_continuation(
 ) -> bool:
     if not previous_line:
         return False
-    if line in RESUME_SECTION_HEADINGS or line.startswith(("Note:", "- ", "  - ")):
+    if (
+        line in RESUME_SECTION_HEADINGS
+        or _looks_like_extra_resume_section_heading(line, current_section=current_section)
+        or line.startswith(("Note:", "- ", "  - "))
+    ):
         return False
     if previous_line in RESUME_SECTION_HEADINGS:
         return False
