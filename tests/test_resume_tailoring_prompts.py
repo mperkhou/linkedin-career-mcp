@@ -465,6 +465,90 @@ def test_job_description_context_uses_chunk_ranker_to_drop_boilerplate():
     assert "hiring process" not in context
 
 
+def test_job_description_context_drops_compensation_chunks_with_qualification_words():
+    job = JobDetails(
+        job_id="4419879314",
+        title="Senior Cloud Engineer",
+        company="Capgemini",
+        description=(
+            "Your Role Develop and maintain Chef cookbooks, recipes, and policies to enforce "
+            "Linux OS baseline configurations and compliance. Automate onboarding of Linux "
+            "systems into Chef, including bootstrapping and compliance validation. "
+            "5-8+ years of hands on experience in Linux systems engineering and OS hardening. "
+            "The base compensation range listed for this position reflects the minimum and "
+            "maximum target compensation Capgemini may pay for the role at the time of this "
+            "posting. These amounts vary based on geographic location, education and "
+            "qualifications, certifications, relevant experience and skills, seniority and "
+            "performance, market considerations, and internal pay equity. Benefits Capgemini "
+            "offers comprehensive medical, dental, vision, retirement, and paid time off."
+        ),
+    )
+
+    context = _job_description_context(job)
+
+    assert "Develop and maintain Chef cookbooks" in context
+    assert "Linux systems engineering and OS hardening" in context
+    assert "base compensation range" not in context.casefold()
+    assert "internal pay equity" not in context.casefold()
+    assert "Benefits Capgemini" not in context
+
+
+def test_job_description_context_splits_inline_benefits_after_role_content():
+    job = JobDetails(
+        job_id="4383502230",
+        title="Senior Software Engineer, Platform",
+        company="Hover",
+        description=(
+            "About the role Build platform systems for modern AI workloads. Modern AI "
+            "workloads place fundamentally different demands on infrastructure than "
+            "traditional services do, from LLM inference and agent runtimes to vector stores, "
+            "GPU economics, and real-time 3D and computer vision pipelines. You think about "
+            "reliability, observability, failure modes, and scalability when designing systems. "
+            "Experience collaborating with engineers across teams to build platform "
+            "capabilities or improve developer experience. Comfort working across multiple "
+            "layers of the infrastructure stack and learning new tools and technologies as "
+            "the platform evolves Benefits Compensation - Competitive salary and meaningful "
+            "equity in a fast-growing company Healthcare - Comprehensive medical, dental, "
+            "and vision coverage for you and dependents Paid Time Off - Unlimited vacation."
+        ),
+    )
+
+    context = _job_description_context(job)
+
+    assert "Modern AI workloads" in context
+    assert "LLM inference and agent runtimes" in context
+    assert "improve developer experience" in context
+    assert "Benefits Compensation" not in context
+    assert "Comprehensive medical" not in context
+
+
+def test_job_description_context_keeps_linux_datacenter_signals_before_benefits():
+    job = JobDetails(
+        job_id="4338400238",
+        title="Infrastructure Application & Automation Software Engineer",
+        company="Hammerspace",
+        description=(
+            "Hammerspace delivers a Global Data Environment that spans data centers, AWS, "
+            "Azure, and Google cloud infrastructure. With origins in Linux, NFS, open "
+            "standards, deep file system and data management technology leadership, "
+            "Hammerspace connects global users with their data and applications. Be the "
+            "go-to Linux admin for networking, storage, virtualization, and distributed "
+            "systems. Linux internals muscle: Bonding/VLANs, IP tables, BGP basics, RAID, "
+            "LVM, NFS, iSCSI, KVM, Docker, CI/CD pipelines, and chat-ops integrations. "
+            "Perks Equity in a storage startup, top-tier health, dental, 401(k), flexible "
+            "time off. The anticipated compensation range for this role is $150,000-175,000."
+        ),
+    )
+
+    context = _job_description_context(job)
+
+    assert "data centers, AWS, Azure" in context
+    assert "go-to Linux admin" in context
+    assert "CI/CD pipelines" in context
+    assert "anticipated compensation range" not in context.casefold()
+    assert "401(k)" not in context
+
+
 def test_render_resume_template_preserves_static_sections():
     text = _render_resume_template(
         tailored_scjdir=(

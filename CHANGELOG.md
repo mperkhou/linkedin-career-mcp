@@ -1,5 +1,10 @@
 # linkedin-career-mcp CHANGELOG
 
+## 1.28.0 - PR #28: Tune JOD cleaner from live tracker audit
+
+* Tune ML-assisted JOD chunk selection with live keep/drop examples.
+* Add a reusable tracker JOD audit and backfill command.
+
 ## 1.27.0 - PR #27: Add ML-assisted JOD chunk ranking
 
 * commit `27a5176`: Add ML-assisted JOD chunk ranking
