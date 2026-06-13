@@ -3,8 +3,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import math
 import re
 import sys
+from collections import Counter
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
@@ -263,6 +265,122 @@ TRAILING_BOILERPLATE_HEADINGS = (
     "Applications for this job",
     "This posting is for",
     "NVIDIA uses AI tools",
+)
+ROLE_RELEVANT_PREFIX_MARKERS = (
+    "you will",
+    "you'll",
+    "responsibil",
+    "build",
+    "design",
+    "develop",
+    "automate",
+    "platform",
+    "infrastructure",
+    "cloud",
+    "api",
+    "monitor",
+    "observability",
+    "terraform",
+    "kubernetes",
+    "aws",
+    "python",
+    "ci/cd",
+    "sagemaker",
+    "snowflake",
+    "splunk",
+    "software engineering expectations",
+    "developer productivity",
+)
+JOD_HARD_DROP_MARKERS = (
+    "base salary",
+    "salary range",
+    "compensation",
+    "benefits",
+    "medical, dental",
+    "401(k)",
+    "parental leave",
+    "equal opportunity",
+    "affirmative action",
+    "reasonable accommodation",
+    "privacy policy",
+    "applicant privacy",
+    "personal information",
+    "e-verify",
+    "recruiter will share",
+    "hiring process",
+    "application process",
+    "we may use artificial intelligence",
+    "we may use ai tools",
+)
+JOD_HARD_KEEP_MARKERS = (
+    "responsibil",
+    "what you'll do",
+    "what you will do",
+    "key responsibilities",
+    "job summary",
+    "role summary",
+    "the role",
+    "about the role",
+    "required qualifications",
+    "minimum qualifications",
+    "basic qualifications",
+    "qualifications",
+    "requirements",
+    "skills and experience",
+)
+JOD_CHUNK_KEEP_THRESHOLD = -0.75
+JOD_CHUNK_MIN_MEANINGFUL_LENGTH = 24
+JOD_CHUNK_TRAINING_EXAMPLES = (
+    (
+        "keep",
+        "Job Summary Build scalable platform services, APIs, automation, observability, "
+        "and infrastructure used by engineering teams.",
+    ),
+    (
+        "keep",
+        "Responsibilities Design and develop cloud automation, CI/CD pipelines, monitoring, "
+        "and distributed systems for production workloads.",
+    ),
+    (
+        "keep",
+        "Required Qualifications Experience with Python, Terraform, AWS, Kubernetes, Linux, "
+        "security, APIs, and operational troubleshooting.",
+    ),
+    (
+        "keep",
+        "What You'll Do Own developer tooling, reliability, data pipelines, integrations, "
+        "and automation frameworks across teams.",
+    ),
+    (
+        "keep",
+        "Preferred Qualifications Experience with LLM workflows, AI tooling, platform "
+        "engineering, observability, and infrastructure as code.",
+    ),
+    (
+        "drop",
+        "Benefits include comprehensive medical dental and vision coverage, wellness "
+        "stipends, parental leave, paid time off, and retirement savings.",
+    ),
+    (
+        "drop",
+        "The base salary range for this role depends on location, market data, equity, "
+        "bonus eligibility, and other compensation factors.",
+    ),
+    (
+        "drop",
+        "We are an equal opportunity employer and provide reasonable accommodation during "
+        "the application and interview process.",
+    ),
+    (
+        "drop",
+        "Applicant privacy notice explains how personal information is processed, retained, "
+        "and shared under our privacy policy.",
+    ),
+    (
+        "drop",
+        "A recruiter will share more details about hiring process logistics, interview "
+        "steps, application review, and employment eligibility.",
+    ),
 )
 DEFAULT_CORE_TECHNICAL_SKILLS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
@@ -2171,6 +2289,49 @@ def _posted_date_value(value: Any) -> str | None:
     return text
 
 
+class _JodChunkClassifier:
+    def __init__(
+        self,
+        *,
+        class_counts: Counter[str],
+        token_counts: dict[str, Counter[str]],
+    ) -> None:
+        self.class_counts = class_counts
+        self.token_counts = token_counts
+        self.vocabulary = {
+            token for counts in token_counts.values() for token in counts
+        }
+        self.token_totals = {
+            label: sum(counts.values()) for label, counts in token_counts.items()
+        }
+
+    @classmethod
+    def train(cls, examples: tuple[tuple[str, str], ...]) -> _JodChunkClassifier:
+        class_counts: Counter[str] = Counter()
+        token_counts: dict[str, Counter[str]] = {"keep": Counter(), "drop": Counter()}
+        for label, text in examples:
+            class_counts[label] += 1
+            token_counts.setdefault(label, Counter()).update(_jod_chunk_feature_tokens(text))
+        return cls(class_counts=class_counts, token_counts=token_counts)
+
+    def keep_log_odds(self, text: str) -> float:
+        tokens = _jod_chunk_feature_tokens(text)
+        keep_log = self._label_log_probability(label="keep", tokens=tokens)
+        drop_log = self._label_log_probability(label="drop", tokens=tokens)
+        return keep_log - drop_log
+
+    def _label_log_probability(self, *, label: str, tokens: list[str]) -> float:
+        label_count = self.class_counts.get(label, 0)
+        total_classes = sum(self.class_counts.values())
+        class_prior = (label_count + 1) / (total_classes + max(len(self.class_counts), 1))
+        token_counts = self.token_counts.get(label, Counter())
+        denominator = self.token_totals.get(label, 0) + max(len(self.vocabulary), 1)
+        score = math.log(class_prior)
+        for token in tokens:
+            score += math.log((token_counts.get(token, 0) + 1) / denominator)
+        return score
+
+
 def _job_description_context(job: JobDetails) -> str:
     description = _clean_job_description_for_prompt(
         job.description or NO_PUBLIC_JOB_DESCRIPTION
@@ -2185,6 +2346,7 @@ def _clean_job_description_for_prompt(description: str) -> str:
 
     cleaned = _trim_low_signal_preamble(original)
     cleaned = _trim_trailing_boilerplate(cleaned)
+    cleaned = _select_relevant_job_description_chunks(cleaned)
     return cleaned.strip() or original
 
 
@@ -2195,7 +2357,9 @@ def _trim_low_signal_preamble(description: str) -> str:
 
     prefix = description[: role_start.start()]
     has_low_signal_prefix = _first_heading_match(prefix, LOW_SIGNAL_PREAMBLE_HEADINGS) is not None
-    if has_low_signal_prefix or len(prefix) > 3_000:
+    if has_low_signal_prefix:
+        return description[role_start.start() :].lstrip(" :-\n")
+    if len(prefix) > 3_000 and _role_relevant_marker_count(prefix) < 3:
         return description[role_start.start() :].lstrip(" :-\n")
     return description
 
@@ -2215,6 +2379,130 @@ def _trim_trailing_boilerplate(description: str) -> str:
     if boilerplate is None:
         return description
     return description[: boilerplate.start()].rstrip(" :-\n")
+
+
+def _select_relevant_job_description_chunks(description: str) -> str:
+    if not _contains_any_casefolded(description, JOD_HARD_DROP_MARKERS):
+        return description
+
+    chunks = _job_description_chunks(description)
+    if len(chunks) <= 1:
+        return description
+
+    kept_chunks: list[str] = []
+    dropped_count = 0
+    seen_role_chunk = False
+    for chunk in chunks:
+        contains_role_heading = _contains_role_relevant_heading(chunk)
+        if _keep_job_description_chunk(
+            chunk,
+            preserve_company_context=not seen_role_chunk,
+        ):
+            kept_chunks.append(chunk)
+        else:
+            dropped_count += 1
+        seen_role_chunk = seen_role_chunk or contains_role_heading
+
+    selected = "\n".join(kept_chunks).strip()
+    if dropped_count == 0 or not selected:
+        return description
+    if len(selected) < min(900, len(description) * 0.35):
+        return description
+    return selected
+
+
+def _job_description_chunks(description: str) -> list[str]:
+    boundary_headings = (
+        *ROLE_RELEVANT_START_HEADINGS,
+        *LOW_SIGNAL_PREAMBLE_HEADINGS,
+        *TRAILING_BOILERPLATE_HEADINGS,
+    )
+    boundaries = {0, len(description)}
+    for match in _heading_matches(description, boundary_headings):
+        boundaries.add(match.start())
+
+    chunks: list[str] = []
+    sorted_boundaries = sorted(boundaries)
+    for index, start in enumerate(sorted_boundaries[:-1]):
+        end = sorted_boundaries[index + 1]
+        segment = description[start:end].strip(" :-\n")
+        if segment:
+            chunks.extend(_split_job_description_segment(segment))
+    return chunks
+
+
+def _split_job_description_segment(segment: str) -> list[str]:
+    pieces = [
+        piece.strip(" :-\n")
+        for piece in re.split(r"(?<=[.!?])\s+(?=[A-Z0-9])", segment)
+    ]
+    chunks: list[str] = []
+    for piece in pieces:
+        if not piece:
+            continue
+        chunks.extend(_split_oversized_job_description_piece(piece))
+    return chunks
+
+
+def _split_oversized_job_description_piece(piece: str) -> list[str]:
+    if len(piece) <= 900:
+        return [piece]
+    parts = [part.strip(" :-\n") for part in re.split(r";\s+", piece) if part.strip()]
+    if len(parts) > 1:
+        return parts
+    return [piece]
+
+
+def _keep_job_description_chunk(
+    chunk: str,
+    *,
+    preserve_company_context: bool = False,
+) -> bool:
+    text = " ".join(chunk.split())
+    if len(text) < JOD_CHUNK_MIN_MEANINGFUL_LENGTH:
+        return False
+
+    hard_drop = _contains_any_casefolded(text, JOD_HARD_DROP_MARKERS) or (
+        _first_heading_match(text, TRAILING_BOILERPLATE_HEADINGS, strict_single_word=True)
+        is not None
+    )
+    hard_keep = (
+        _contains_role_relevant_heading(text)
+        or _contains_any_casefolded(text, JOD_HARD_KEEP_MARKERS)
+    )
+    role_marker_count = _role_relevant_marker_count(text)
+    if preserve_company_context and not hard_drop:
+        return True
+    if hard_drop and not hard_keep and role_marker_count < 2:
+        return False
+    if hard_keep or role_marker_count >= 2:
+        return True
+    return _JOD_CHUNK_CLASSIFIER.keep_log_odds(text) >= JOD_CHUNK_KEEP_THRESHOLD
+
+
+def _contains_role_relevant_heading(text: str) -> bool:
+    return _first_heading_match(text, ROLE_RELEVANT_START_HEADINGS) is not None
+
+
+def _role_relevant_marker_count(text: str) -> int:
+    normalized = text.casefold()
+    return sum(1 for marker in ROLE_RELEVANT_PREFIX_MARKERS if marker in normalized)
+
+
+def _contains_any_casefolded(text: str, markers: tuple[str, ...]) -> bool:
+    normalized = text.casefold()
+    return any(marker.casefold() in normalized for marker in markers)
+
+
+def _jod_chunk_feature_tokens(text: str) -> list[str]:
+    return [
+        token
+        for token in re.findall(r"[a-z][a-z0-9.+#/-]+", text.casefold())
+        if len(token) > 2
+    ]
+
+
+_JOD_CHUNK_CLASSIFIER = _JodChunkClassifier.train(JOD_CHUNK_TRAINING_EXAMPLES)
 
 
 def _first_heading_match(

@@ -1,5 +1,9 @@
 # linkedin-career-mcp CHANGELOG
 
+## 1.27.0 - PR #27: Add ML-assisted JOD chunk ranking
+
+* commit `27a5176`: Add ML-assisted JOD chunk ranking
+
 ## 1.26.0 - PR #26: Detect dynamic resume sections during stylizing
 
 * commit `6573e2e`: Detect extra resume sections during stylizing

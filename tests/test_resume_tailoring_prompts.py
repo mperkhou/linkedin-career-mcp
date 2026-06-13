@@ -398,6 +398,73 @@ def test_job_description_context_keeps_role_details_after_internal_compensation_
     assert "Design and Development" in context
 
 
+def test_job_description_context_preserves_long_role_prefix_before_qualifications():
+    job = JobDetails(
+        job_id="4423025523",
+        title="Platform Engineer",
+        company="DTCC",
+        description=(
+            "Are you ready to make an impact at DTCC? We are looking for a Platform Engineer "
+            "to build cloud automation and AI infrastructure. This role designs and maintains "
+            "AWS accounts, CI/CD workflows, and infrastructure governance. "
+            "Responsibilities include building secure data access controls across accounts, "
+            "developing monitoring and compliance reporting for AI/ML systems, and automating "
+            "infrastructure provisioning using Terraform. Deploy machine learning models using "
+            "AWS SageMaker and configure Snowflake integrations across environments. Create "
+            "customized CloudWatch alarms and configure log ingestion pipelines from CloudWatch "
+            "to Splunk. "
+            + " ".join(
+                [
+                    "This platform role continues to build, design, automate, monitor, and "
+                    "operate cloud infrastructure, APIs, Python tooling, and developer "
+                    "productivity workflows across production systems."
+                    for _ in range(12)
+                ]
+            )
+            + " Qualifications Minimum of 4 years of related experience. Bachelor's degree "
+            "preferred or equivalent experience. The salary range is indicative for roles at "
+            "the same level across all US locations. Equal opportunity employer statement."
+        ),
+    )
+
+    context = _job_description_context(job)
+
+    assert not context.startswith("Qualifications")
+    assert "Deploy machine learning models using AWS SageMaker" in context
+    assert "automating infrastructure provisioning using Terraform" in context
+    assert "CloudWatch to Splunk" in context
+    assert "Qualifications Minimum of 4 years" in context
+    assert "salary range" not in context.casefold()
+    assert "equal opportunity" not in context.casefold()
+
+
+def test_job_description_context_uses_chunk_ranker_to_drop_boilerplate():
+    job = JobDetails(
+        job_id="4417171151",
+        title="Senior Software Engineer, Engineering Acceleration",
+        company="OpenAI",
+        description=(
+            "About the Role Build engineering acceleration tools for consumer devices. "
+            "Responsibilities Design Python services, developer workflows, CI/CD automation, "
+            "observability dashboards, and API integrations for hardware engineering teams. "
+            "Required Qualifications Experience with Python, cloud infrastructure, distributed "
+            "systems, monitoring, and developer productivity. Benefits include medical, dental, "
+            "vision, parental leave, wellness benefits, and paid time off. OpenAI Global "
+            "Applicant Privacy Policy explains how personal information is processed. We may "
+            "use AI tools to support parts of the hiring process."
+        ),
+    )
+
+    context = _job_description_context(job)
+
+    assert "Build engineering acceleration tools" in context
+    assert "developer workflows" in context
+    assert "Required Qualifications" in context
+    assert "Benefits include" not in context
+    assert "Applicant Privacy Policy" not in context
+    assert "hiring process" not in context
+
+
 def test_render_resume_template_preserves_static_sections():
     text = _render_resume_template(
         tailored_scjdir=(
