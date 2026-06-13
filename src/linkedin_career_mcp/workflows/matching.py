@@ -3858,33 +3858,45 @@ def _resume_rule(*, top: bool = False) -> HRFlowable:
     )
 
 
+RESUME_DATE_MARKERS = (
+    "Present",
+    "Jan ",
+    "January ",
+    "Feb ",
+    "February ",
+    "Mar ",
+    "March ",
+    "Apr ",
+    "April ",
+    "May ",
+    "Jun ",
+    "June ",
+    "Jul ",
+    "July ",
+    "Aug ",
+    "August ",
+    "Sep ",
+    "Sept ",
+    "September ",
+    "Oct ",
+    "October ",
+    "Nov ",
+    "November ",
+    "Dec ",
+    "December ",
+)
+
+
 def _looks_like_employer_line(line: str) -> bool:
     if line.startswith("- ") or " | " not in line:
         return False
-    return not any(date in line for date in ("Jan ", "Feb ", "Mar ", "Apr ", "May ", "Jun "))
+    return not any(marker in line for marker in RESUME_DATE_MARKERS)
 
 
 def _looks_like_title_line(line: str) -> bool:
     if line.startswith("- ") or " | " not in line:
         return False
-    return any(
-        marker in line
-        for marker in (
-            "Present",
-            "Jan ",
-            "Feb ",
-            "Mar ",
-            "Apr ",
-            "May ",
-            "Jun ",
-            "Jul ",
-            "Aug ",
-            "Sep ",
-            "Oct ",
-            "Nov ",
-            "Dec ",
-        )
-    )
+    return any(marker in line for marker in RESUME_DATE_MARKERS)
 
 
 def _looks_like_recommendations(text: str) -> bool:
