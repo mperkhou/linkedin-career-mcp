@@ -19,10 +19,8 @@ MAX_QUERIES ?= 6
 MAX_JOBS ?= 10
 RESUME_PATH ?=
 COVER_LETTER_PATH ?=
-STYLIZED_RESUME_SUFFIX ?= emerald
-STYLIZED_COVER_LETTER_SUFFIX ?= emerald
 
-.PHONY: install install-python install-ollama ollama-model venv skill-link match-jobs regenerate-resumes regenerate-cover-letters regenerate-all refresh-static-artifacts stylize-resume stylize-cover-letter launch-website stop-website restart-website test lint clean
+.PHONY: install install-python install-ollama ollama-model venv skill-link match-jobs regenerate-resumes regenerate-cover-letters regenerate-all refresh-static-artifacts launch-website stop-website restart-website test lint clean
 
 install: install-python install-ollama ollama-model skill-link
 
@@ -75,14 +73,6 @@ regenerate-all: venv
 
 refresh-static-artifacts: venv
 	$(VENV)/bin/linkedin-career-refresh-static-artifacts $(JOB_IDS)
-
-stylize-resume: venv
-	@test -n "$(RESUME_PATH)" || (echo "Usage: make stylize-resume RESUME_PATH=~/Downloads/resume.pdf [STYLIZED_RESUME_SUFFIX=emerald]" >&2; exit 2)
-	$(VENV)/bin/linkedin-career-stylize-resume "$(RESUME_PATH)" --suffix "$(STYLIZED_RESUME_SUFFIX)"
-
-stylize-cover-letter: venv
-	@test -n "$(COVER_LETTER_PATH)" || (echo "Usage: make stylize-cover-letter COVER_LETTER_PATH=~/Downloads/cover-letter.pdf [STYLIZED_COVER_LETTER_SUFFIX=emerald]" >&2; exit 2)
-	$(VENV)/bin/linkedin-career-stylize-cover-letter "$(COVER_LETTER_PATH)" --suffix "$(STYLIZED_COVER_LETTER_SUFFIX)"
 
 launch-website: venv
 	$(VENV)/bin/linkedin-career-webapp --host "$(WEBSITE_HOST)" --port "$(WEBSITE_PORT)" --open-browser

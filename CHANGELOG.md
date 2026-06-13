@@ -1,5 +1,11 @@
 # linkedin-career-mcp CHANGELOG
 
+## 1.29.0 - PR #29: Remove standalone artifact stylizers
+
+* Remove the standalone resume and cover-letter PDF stylizer commands from this repo.
+* Keep static artifact refresh focused on targeted link/text patches instead of PDF restyling.
+* Recognize full month names in generated resume job-date rows.
+
 ## 1.28.0 - PR #28: Tune JOD cleaner from live tracker audit
 
 * Tune ML-assisted JOD chunk selection with live keep/drop examples.

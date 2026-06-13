@@ -49,8 +49,6 @@ linkedin-career-regenerate-resumes = "linkedin_career_mcp.workflows.matching:reg
 linkedin-career-regenerate-cover-letters = "linkedin_career_mcp.workflows.matching:regenerate_cover_letters_main"
 linkedin-career-regenerate-all = "linkedin_career_mcp.workflows.matching:regenerate_all_main"
 linkedin-career-refresh-static-artifacts = "linkedin_career_mcp.artifact_refresh:refresh_static_artifacts_main"
-linkedin-career-stylize-resume = "linkedin_career_mcp.artifact_refresh:stylize_resume_main"
-linkedin-career-stylize-cover-letter = "linkedin_career_mcp.artifact_refresh:stylize_cover_letter_main"
 linkedin-career-audit-jods = "linkedin_career_mcp.jod_cleaner_audit:main"
 linkedin-career-webapp = "linkedin_career_mcp.webapp:main"
 
