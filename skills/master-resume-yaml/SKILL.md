@@ -49,7 +49,8 @@ Keep the object renderer-friendly:
 - Every core skill bucket has `jod_matched_items: []`.
 - Do not add static `rendered_text` for core skills; the renderer computes it from `items.primary` plus valid `jod_matched_items`.
 - Every `professional_experience.jobs[*]` has `render`, `min_bullet_points`, and `max_bullet_points`.
-- Every job bullet has `text`, `render`, `categories`, and `skills`.
+- Every job bullet has `text`, `bullet_point_total_match_count`, `render`, `categories`, and `skills`.
+- Initialize `bullet_point_total_match_count: 0` until a JOD-specific matching pass calculates a real value.
 
 ### 3. Structure Experience Categories
 
@@ -74,12 +75,15 @@ skills:
   matched:
   - Systems Architecture
   - production troubleshooting
+  jod_match_count: 0
 ```
 
 Rules:
 
 - Every `skills[*].category` must also appear in `categories.matched`.
 - Every matched skill must exist in that category's `items.primary` or `items.additional`.
+- Every `skills[*]` entry must include `jod_match_count: 0` until a JOD-specific matching pass calculates a real value.
+- Every bullet must include `bullet_point_total_match_count: 0` until a JOD-specific matching pass calculates a real value.
 - Prefer exact factual matches from the bullet text.
 - Use broader skills only when the bullet clearly supports them.
 - Do not invent technologies or responsibilities to make matches look stronger.
@@ -112,7 +116,7 @@ make lint
 For category and skill linkage changes, also run a structured inventory check:
 
 ```bash
-ruby -ryaml -e "data=YAML.load_file('profile/MASTER-RESUME.yml'); inv=data.dig('core_technical_skills','bullet_points').to_h { |bp| [bp['category'], bp.dig('items','primary').to_a + bp.dig('items','additional').to_a] }; bad=[]; empty=[]; data.dig('professional_experience','jobs').to_a.each { |j| j['bullet_points'].to_a.each { |b| empty << [j['order'], b['order']] if b['skills'].to_a.empty? || b.dig('categories','matched').to_a.empty?; b['skills'].to_a.each { |s| s['matched'].to_a.each { |item| bad << [j['order'], b['order'], s['category'], item] unless inv.fetch(s['category'], []).include?(item) } } } }; puts \"empty matches=#{empty.size}\"; puts \"invalid matched skills=#{bad.size}\"; exit 1 unless empty.empty? && bad.empty?"
+ruby -ryaml -e "data=YAML.load_file('profile/MASTER-RESUME.yml'); inv=data.dig('core_technical_skills','bullet_points').to_h { |bp| [bp['category'], bp.dig('items','primary').to_a + bp.dig('items','additional').to_a] }; bad=[]; empty=[]; missing_counts=[]; data.dig('professional_experience','jobs').to_a.each { |j| j['bullet_points'].to_a.each { |b| empty << [j['order'], b['order']] if b['skills'].to_a.empty? || b.dig('categories','matched').to_a.empty?; missing_counts << [j['order'], b['order'], 'bullet_point_total_match_count'] unless b.key?('bullet_point_total_match_count'); b['skills'].to_a.each { |s| missing_counts << [j['order'], b['order'], s['category'], 'jod_match_count'] unless s.key?('jod_match_count'); s['matched'].to_a.each { |item| bad << [j['order'], b['order'], s['category'], item] unless inv.fetch(s['category'], []).include?(item) } } } }; puts \"empty matches=#{empty.size}\"; puts \"invalid matched skills=#{bad.size}\"; puts \"missing count fields=#{missing_counts.size}\"; exit 1 unless empty.empty? && bad.empty? && missing_counts.empty?"
 ```
 
 ## Handoff
@@ -123,6 +127,7 @@ When done, report:
 - Target YAML path updated.
 - Whether Core Technical Skills were changed.
 - Number of professional-experience bullets checked.
+- Whether `jod_match_count` and `bullet_point_total_match_count` placeholders were initialized or updated.
 - Validation commands run and their result.
 
 Leave search planning and tailored artifact generation for the next workflow phase.

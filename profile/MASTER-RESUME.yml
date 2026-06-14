@@ -363,6 +363,7 @@ professional_experience:
         - operational reporting APIs
         - repository workflow automation
         - production troubleshooting
+        jod_match_count: 0
       - category: AI Tools
         matched:
         - MCP (Model Context Protocol)
@@ -371,9 +372,11 @@ professional_experience:
         - MCP server development
         - AI-assisted debugging
         - AI-assisted operational reporting
+        jod_match_count: 0
       text: Architected AI-native engineering workflows utilizing custom Model Context
         Protocol (MCP) servers and agentic frameworks to automate infrastructure forensics,
         repository management, and operational reporting.
+      bullet_point_total_match_count: 0
       render: false
     - order: 2
       categories:
@@ -391,15 +394,19 @@ professional_experience:
         - API Integration
         - infrastructure platform engineering
         - validation frameworks
+        jod_match_count: 0
       - category: Security & Compliance
         matched:
         - audit-oriented testing
+        jod_match_count: 0
       - category: AI Tools
         matched:
         - MCP (Model Context Protocol)
+        jod_match_count: 0
       text: Engineered production-grade MCP integrations featuring explicit environment
         routing, read/write isolation, and audit-centric validation to ensure secure
         infrastructure operations.
+      bullet_point_total_match_count: 0
       render: false
     - order: 3
       categories:
@@ -415,15 +422,19 @@ professional_experience:
       - category: Languages & Frameworks
         matched:
         - data transformation scripts
+        jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - validation frameworks
+        jod_match_count: 0
       - category: AI Tools
         matched:
         - Codex skills
+        jod_match_count: 0
       text: Systematized ad hoc AI development into repeatable practices by deploying
         portable skill bundles equipped with deterministic scripts and rigorous validation
         commands.
+      bullet_point_total_match_count: 0
       render: false
     - order: 4
       categories:
@@ -441,22 +452,28 @@ professional_experience:
       - category: Languages & Frameworks
         matched:
         - pytest
+        jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - API Integration
+        jod_match_count: 0
       - category: Automation & IaC
         matched:
         - CI/CD automation
+        jod_match_count: 0
       - category: Security & Compliance
         matched:
         - Secure Coding Practices
+        jod_match_count: 0
       - category: AI Tools
         matched:
         - autonomous AI agents
         - tool-using AI agents
         - AI-assisted TDD
+        jod_match_count: 0
       text: Optimized TDD cycles by integrating AI agents with focused pytest execution,
         linting gates, and project-specific coding standards.
+      bullet_point_total_match_count: 0
       render: false
     - order: 5
       categories:
@@ -474,14 +491,17 @@ professional_experience:
         - remediation tooling
         - production troubleshooting
         - technical documentation
+        jod_match_count: 0
       - category: AI Tools
         matched:
         - applied AI tooling
         - agentic workflows
         - AI-assisted debugging
+        jod_match_count: 0
       text: Leveraged agentic investigation patterns to diagnose platform failures,
         synthesizing evidence into remediation-focused technical briefs for engineering
         leadership.
+      bullet_point_total_match_count: 0
       render: false
     - order: 6
       categories:
@@ -498,21 +518,26 @@ professional_experience:
       - category: Platform & API Engineering
         matched:
         - operational reporting APIs
+        jod_match_count: 0
       - category: Automation & IaC
         matched:
         - production rollout automation
+        jod_match_count: 0
       - category: Data & Observability
         matched:
         - Data Pipelines
         - host coverage analysis
+        jod_match_count: 0
       - category: AI Tools
         matched:
         - MCP (Model Context Protocol)
         - MCP server development
         - AI-assisted operational reporting
+        jod_match_count: 0
       text: Developed reusable MCP-backed reporting pipelines to inspect automation
         health and host coverage, significantly reducing manual review overhead during
         rollouts.
+      bullet_point_total_match_count: 0
       render: false
     - order: 7
       categories:
@@ -528,12 +553,15 @@ professional_experience:
         matched:
         - service orchestration
         - repository workflow automation
+        jod_match_count: 0
       - category: AI Tools
         matched:
         - applied AI tooling
         - agentic workflows
+        jod_match_count: 0
       text: Standardized repository lifecycle workflows, focusing on atomic commits,
         automated changelogs, and reviewable merge requests within AI-assisted environments.
+      bullet_point_total_match_count: 0
       render: false
     - order: 8
       categories:
@@ -549,16 +577,20 @@ professional_experience:
       - category: Automation & IaC
         matched:
         - dry-run workflows
+        jod_match_count: 0
       - category: Security & Compliance
         matched:
         - production write controls
         - human approval workflows
         - dry-run validation
+        jod_match_count: 0
       - category: AI Tools
         matched:
         - Codex skills
+        jod_match_count: 0
       text: Established secure operational skills with read-only defaults and dry-run
         previews, enforcing explicit confirmation for all production-level modifications.
+      bullet_point_total_match_count: 0
       render: false
     - order: 9
       categories:
@@ -574,6 +606,7 @@ professional_experience:
         matched:
         - infrastructure platform engineering
         - service orchestration
+        jod_match_count: 0
       - category: AI Tools
         matched:
         - MCP (Model Context Protocol)
@@ -581,9 +614,11 @@ professional_experience:
         - agentic workflows
         - autonomous AI agents
         - MCP server development
+        jod_match_count: 0
       text: Achieved an 80% increase in team engineering velocity through the strategic
         deployment of MCP servers and autonomous agentic workflows for infrastructure
         management.
+      bullet_point_total_match_count: 0
       render: false
     - order: 10
       categories:
@@ -599,15 +634,19 @@ professional_experience:
       - category: Languages & Frameworks
         matched:
         - Ruby on Rails
+        jod_match_count: 0
       - category: Security & Compliance
         matched:
         - production guardrails
+        jod_match_count: 0
       - category: AI Tools
         matched:
         - governance-as-code
         - Human-in-the-Loop (HITL) guardrails
+        jod_match_count: 0
       text: Developed "governance-as-code" frameworks incorporating Human-in-the-Loop
         (HITL) guardrails to manage autonomous operations across 40,000+ endpoints.
+      bullet_point_total_match_count: 0
       render: false
     - order: 11
       categories:
@@ -626,14 +665,17 @@ professional_experience:
         - service orchestration
         - JIRA API integrations
         - production troubleshooting
+        jod_match_count: 0
       - category: AI Tools
         matched:
         - LLM Prompting
         - LLM orchestration
         - AI-assisted incident response
         - AI-assisted ticket automation
+        jod_match_count: 0
       text: Integrated LLM orchestration with JIRA APIs to autonomously summarize
         troubleshooting sessions into structured technical stories and real-time updates.
+      bullet_point_total_match_count: 0
       render: false
     - order: 12
       categories:
@@ -649,14 +691,17 @@ professional_experience:
         matched:
         - Secure Coding Practices
         - sensitive path validation
+        jod_match_count: 0
       - category: AI Tools
         matched:
         - Codex
         - Cline
         - AI governance
         - secure AI development environments
+        jod_match_count: 0
       text: Directed enterprise AI governance by migrating teams to secure, SSO-backed
         Codex/Cline environments, ensuring robust data protection for sensitive codebases.
+      bullet_point_total_match_count: 0
       render: false
     - order: 13
       categories:
@@ -673,15 +718,19 @@ professional_experience:
         - service orchestration
         - production troubleshooting
         - stakeholder enablement
+        jod_match_count: 0
       - category: Automation & IaC
         matched:
         - dynamic inventory
         - credential automation
+        jod_match_count: 0
       - category: Security & Compliance
         matched:
         - credential redaction
+        jod_match_count: 0
       text: Managed global automation workflows for dynamic inventory generation,
         credential orchestration, and production stakeholder support.
+      bullet_point_total_match_count: 0
       render: false
     - order: 14
       categories:
@@ -697,17 +746,22 @@ professional_experience:
       - category: Distributed Systems & Cloud
         matched:
         - execution environments
+        jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - infrastructure platform engineering
+        jod_match_count: 0
       - category: Automation & IaC
         matched:
         - execution environment builds
+        jod_match_count: 0
       - category: Data & Observability
         matched:
         - Observability Dashboards
+        jod_match_count: 0
       text: Modernized configuration-as-code across platform services, observability
         stacks, and centralized execution environments.
+      bullet_point_total_match_count: 0
       render: false
     - order: 15
       categories:
@@ -723,16 +777,20 @@ professional_experience:
         matched:
         - Oracle Cloud Infrastructure (OCI)
         - OCI Artifact Registry
+        jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - release engineering
+        jod_match_count: 0
       - category: Automation & IaC
         matched:
         - Chef (Cookbooks/Policies)
         - cookbook migration
         - artifact migration
+        jod_match_count: 0
       text: Led the migration of production cookbooks to OCI-native artifact sources,
         streamlining release paths and reducing dependency on legacy storage.
+      bullet_point_total_match_count: 0
       render: false
     - order: 16
       categories:
@@ -747,12 +805,15 @@ professional_experience:
         matched:
         - validation frameworks
         - release engineering
+        jod_match_count: 0
       - category: Automation & IaC
         matched:
         - Chef (Cookbooks/Policies)
         - policyfile automation
+        jod_match_count: 0
       text: Enhanced policy distribution by optimizing ownership routing, dependency
         pinning, and automated publishing validation.
+      bullet_point_total_match_count: 0
       render: false
     - order: 17
       categories:
@@ -767,11 +828,14 @@ professional_experience:
         matched:
         - alert routing
         - alert-noise reduction
+        jod_match_count: 0
       - category: Security & Compliance
         matched:
         - incident management
+        jod_match_count: 0
       text: Minimized operational noise through the refinement of monitoring thresholds
         and incident routing across core service families.
+      bullet_point_total_match_count: 0
       render: false
     - order: 18
       categories:
@@ -787,16 +851,20 @@ professional_experience:
         matched:
         - Python
         - Python 3
+        jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - service orchestration
         - remediation tooling
+        jod_match_count: 0
       - category: Automation & IaC
         matched:
         - Python automation scripts
         - credential automation
+        jod_match_count: 0
       text: Developed Python-based utilities for inventory pruning, token handling,
         and autonomous repair of operational workflows.
+      bullet_point_total_match_count: 0
       render: false
     - order: 19
       categories:
@@ -810,11 +878,14 @@ professional_experience:
       - category: Platform & API Engineering
         matched:
         - runbook authoring
+        jod_match_count: 0
       - category: Automation & IaC
         matched:
         - runbook automation
+        jod_match_count: 0
       text: Replaced fragile manual processes with robust automation frameworks and
         comprehensive, validated runbooks.
+      bullet_point_total_match_count: 0
       render: false
     - order: 20
       categories:
@@ -830,20 +901,25 @@ professional_experience:
       - category: Languages & Frameworks
         matched:
         - Python
+        jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - infrastructure platform engineering
         - metadata services
+        jod_match_count: 0
       - category: Automation & IaC
         matched:
         - Ansible
         - network automation
         - secrets automation
+        jod_match_count: 0
       - category: Security & Compliance
         matched:
         - secrets management
+        jod_match_count: 0
       text: Delivered a large-scale network automation platform utilizing Ansible
         and Python, incorporating secure secret handling and metadata collection.
+      bullet_point_total_match_count: 0
       render: false
     - order: 21
       categories:
@@ -859,23 +935,28 @@ professional_experience:
       - category: Languages & Frameworks
         matched:
         - Python
+        jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - service orchestration
         - metadata services
         - restore workflow design
         - restore-point metadata
+        jod_match_count: 0
       - category: Automation & IaC
         matched:
         - network device automation
         - restore automation
         - configuration backup automation
+        jod_match_count: 0
       - category: Security & Compliance
         matched:
         - source-control sanitization
         - restore readiness
+        jod_match_count: 0
       text: Hardened Python services for the sanitization and storage of device configurations,
         enabling reliable restore workflows and versioned metadata tracking.
+      bullet_point_total_match_count: 0
       render: false
     - order: 22
       categories:
@@ -892,15 +973,19 @@ professional_experience:
         - Systems Architecture
         - API Integration
         - vendor-extensible service design
+        jod_match_count: 0
       - category: Automation & IaC
         matched:
         - multi-vendor automation
         - vendor-extensible automation
+        jod_match_count: 0
       - category: Data & Observability
         matched:
         - Data Pipelines
+        jod_match_count: 0
       text: Architected a vendor-extensible extraction pipeline, allowing for the
         seamless integration of new device families without refactoring core logic.
+      bullet_point_total_match_count: 0
       render: false
     - order: 23
       categories:
@@ -915,8 +1000,10 @@ professional_experience:
         - network automation
         - network device automation
         - multi-vendor automation
+        jod_match_count: 0
       text: Expanded automated management to a diverse fleet of 11,000+ network devices
         across multiple hardware vendors.
+      bullet_point_total_match_count: 0
       render: false
     - order: 24
       categories:
@@ -931,19 +1018,23 @@ professional_experience:
       - category: Platform & API Engineering
         matched:
         - production troubleshooting
+        jod_match_count: 0
       - category: Automation & IaC
         matched:
         - Ansible playbook development
         - job scheduling automation
         - network fact collection
+        jod_match_count: 0
       - category: Data & Observability
         matched:
         - device fact collection
         - normalized metadata pipelines
         - automation schedule reporting
         - failure classification
+        jod_match_count: 0
       text: Created playbook frameworks to normalize device facts, classify failures,
         and generate executive summaries for large-scale scheduled operations.
+      bullet_point_total_match_count: 0
       render: false
     - order: 25
       categories:
@@ -960,18 +1051,22 @@ professional_experience:
         - JSON
         - CSV
         - data transformation scripts
+        jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - JSON/XML
         - API Integration
         - asset inventory systems
+        jod_match_count: 0
       - category: Data & Observability
         matched:
         - network telemetry
         - asset inventory data pipelines
         - asset metadata modeling
+        jod_match_count: 0
       text: Implemented asset-inventory integrations by transforming telemetry data
         into structured records using reusable JSON/CSV payloads.
+      bullet_point_total_match_count: 0
       render: false
     - order: 26
       categories:
@@ -986,16 +1081,20 @@ professional_experience:
       - category: Platform & API Engineering
         matched:
         - production troubleshooting
+        jod_match_count: 0
       - category: Automation & IaC
         matched:
         - job scheduling automation
         - automation schedule tuning
+        jod_match_count: 0
       - category: Data & Observability
         matched:
         - host coverage analysis
         - failure classification
+        jod_match_count: 0
       text: Operationalized complex data collection schedules for thousands of switch
         and router hosts, tuning expensive paths based on failure analysis.
+      bullet_point_total_match_count: 0
       render: false
     - order: 27
       categories:
@@ -1011,16 +1110,20 @@ professional_experience:
         matched:
         - source-control automation
         - release engineering
+        jod_match_count: 0
       - category: Automation & IaC
         matched:
         - scheduled backup automation
         - source-control publishing automation
+        jod_match_count: 0
       - category: Security & Compliance
         matched:
         - secure source-control workflows
         - production guardrails
+        jod_match_count: 0
       text: Resolved production backup instability by optimizing source-control publishing
         behavior and concurrent job handling.
+      bullet_point_total_match_count: 0
       render: false
     - order: 28
       categories:
@@ -1033,8 +1136,10 @@ professional_experience:
       - category: Data & Observability
         matched:
         - fact-cache analysis
+        jod_match_count: 0
       text: Rectified fact-cache reliability issues by implementing executor timezone
         corrections across the automation fleet.
+      bullet_point_total_match_count: 0
       render: false
     - order: 29
       categories:
@@ -1052,14 +1157,18 @@ professional_experience:
         - restore workflow design
         - technical documentation
         - stakeholder enablement
+        jod_match_count: 0
       - category: Automation & IaC
         matched:
         - restore automation
+        jod_match_count: 0
       - category: Security & Compliance
         matched:
         - restore readiness
+        jod_match_count: 0
       text: Authored technical documentation and provided executive demos for enterprise
         backup and recovery workflows.
+      bullet_point_total_match_count: 0
       render: false
     - order: 30
       categories:
@@ -1077,6 +1186,7 @@ professional_experience:
         - ElasticSearch
         - OpenSearch
         - OCI Search Service
+        jod_match_count: 0
       - category: Data & Observability
         matched:
         - Logstash
@@ -1084,8 +1194,10 @@ professional_experience:
         - Data Pipelines
         - Observability Dashboards
         - ELK-to-OpenSearch migrations
+        jod_match_count: 0
       text: Led the transition of enterprise observability from self-hosted ELK to
         OCI OpenSearch, maintaining continuity for Logstash and critical dashboards.
+      bullet_point_total_match_count: 0
       render: false
     - order: 31
       categories:
@@ -1100,13 +1212,16 @@ professional_experience:
       - category: Platform & API Engineering
         matched:
         - validation frameworks
+        jod_match_count: 0
       - category: Data & Observability
         matched:
         - search-index migrations
         - historical data migration
         - document-count validation
+        jod_match_count: 0
       text: Automated search-index validation and historical data replication, ensuring
         document-count integrity during large-scale migrations.
+      bullet_point_total_match_count: 0
       render: false
     - order: 32
       categories:
@@ -1122,16 +1237,20 @@ professional_experience:
       - category: Distributed Systems & Cloud
         matched:
         - OpenSearch
+        jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - remediation tooling
+        jod_match_count: 0
       - category: Data & Observability
         matched:
         - OpenSearch
         - data quality remediation
         - shard-count monitoring
+        jod_match_count: 0
       text: Improved OpenSearch operational readiness by developing shard-monitoring
         tools, data-quality guides, and health remediations.
+      bullet_point_total_match_count: 0
       render: false
     - order: 33
       categories:
@@ -1147,17 +1266,21 @@ professional_experience:
       - category: Distributed Systems & Cloud
         matched:
         - OpenSearch
+        jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - infrastructure platform engineering
         - stakeholder enablement
+        jod_match_count: 0
       - category: Data & Observability
         matched:
         - OpenSearch
         - Observability Dashboards
         - network telemetry
+        jod_match_count: 0
       text: Consolidated automation and platform telemetry into OpenSearch-backed
         visualizations for enhanced stakeholder visibility.
+      bullet_point_total_match_count: 0
       render: false
     - order: 34
       categories:
@@ -1176,18 +1299,23 @@ professional_experience:
         - Python
         - Python 3
         - data transformation scripts
+        jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - service orchestration
+        jod_match_count: 0
       - category: Data & Observability
         matched:
         - Filebeat
         - Logstash
+        jod_match_count: 0
       - category: Security & Compliance
         matched:
         - incident management
+        jod_match_count: 0
       text: Refactored legacy monitoring scripts into Python-based incident workflows
         for Logstash, Filebeat, and search service health.
+      bullet_point_total_match_count: 0
       render: false
     - order: 35
       categories:
@@ -1202,6 +1330,7 @@ professional_experience:
       - category: Platform & API Engineering
         matched:
         - infrastructure platform engineering
+        jod_match_count: 0
       - category: Data & Observability
         matched:
         - Data Pipelines
@@ -1209,8 +1338,10 @@ professional_experience:
         - dead-letter queue monitoring
         - log ingestion pipelines
         - network telemetry
+        jod_match_count: 0
       text: Optimized pipeline reliability through dead-letter queue monitoring and
         network-flow analysis for logging infrastructure.
+      bullet_point_total_match_count: 0
       render: false
     - order: 36
       categories:
@@ -1225,8 +1356,10 @@ professional_experience:
         matched:
         - Observability Dashboards
         - managed database monitoring
+        jod_match_count: 0
       text: Designed and tuned dashboards for cluster health and database performance
         monitoring.
+      bullet_point_total_match_count: 0
       render: false
     - order: 37
       categories:
@@ -1241,12 +1374,15 @@ professional_experience:
       - category: Platform & API Engineering
         matched:
         - remediation tooling
+        jod_match_count: 0
       - category: Data & Observability
         matched:
         - alert routing
         - alert-noise reduction
+        jod_match_count: 0
       text: Mitigated alert fatigue by refining monitor logic and documenting precise
         remediation channels.
+      bullet_point_total_match_count: 0
       render: false
     - order: 38
       categories:
@@ -1261,11 +1397,14 @@ professional_experience:
       - category: Distributed Systems & Cloud
         matched:
         - cloud-hosted automation clusters
+        jod_match_count: 0
       - category: Automation & IaC
         matched:
         - rolling upgrade automation
+        jod_match_count: 0
       text: Ensured reliability of cloud-native automation clusters through rolling
         upgrades and systematic restoration of production services.
+      bullet_point_total_match_count: 0
       render: false
     - order: 39
       categories:
@@ -1287,18 +1426,23 @@ professional_experience:
         - cross-tenancy policies
         - cloud monitoring
         - cloud notification routing
+        jod_match_count: 0
       - category: Automation & IaC
         matched:
         - Chef (Cookbooks/Policies)
         - policyfile automation
+        jod_match_count: 0
       - category: Data & Observability
         matched:
         - OCI metrics monitoring
+        jod_match_count: 0
       - category: Security & Compliance
         matched:
         - cross-tenancy policy governance
+        jod_match_count: 0
       text: Optimized OCI metrics and cross-tenancy notification policies to enhance
         global cloud monitoring coverage.
+      bullet_point_total_match_count: 0
       render: false
     - order: 40
       categories:
@@ -1313,6 +1457,7 @@ professional_experience:
       - category: Distributed Systems & Cloud
         matched:
         - OCI Functions
+        jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - RESTful APIs
@@ -1322,8 +1467,10 @@ professional_experience:
         - metadata services
         - asset-cache services
         - API front ends
+        jod_match_count: 0
       text: Built serverless cloud functions and API endpoints to facilitate infrastructure
         metadata and asset-cache workflows.
+      bullet_point_total_match_count: 0
       render: false
     - order: 41
       categories:
@@ -1339,12 +1486,15 @@ professional_experience:
         matched:
         - managed PostgreSQL
         - production/staging environments
+        jod_match_count: 0
       - category: Data & Observability
         matched:
         - managed database monitoring
         - disk usage monitoring
+        jod_match_count: 0
       text: Enhanced monitoring for managed databases and disk utilization across
         production and staging environments.
+      bullet_point_total_match_count: 0
       render: false
     - order: 42
       categories:
@@ -1361,14 +1511,18 @@ professional_experience:
         matched:
         - execution environments
         - regulated cloud environments
+        jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - infrastructure platform engineering
+        jod_match_count: 0
       - category: Automation & IaC
         matched:
         - execution environment builds
+        jod_match_count: 0
       text: Contributed to the deployment of regulated infrastructure, implementing
         inventory tracking and audit logs for execution environments.
+      bullet_point_total_match_count: 0
       render: false
     - order: 43
       categories:
@@ -1384,15 +1538,19 @@ professional_experience:
       - category: Languages & Frameworks
         matched:
         - data transformation scripts
+        jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - remediation tooling
         - runbook authoring
+        jod_match_count: 0
       - category: Data & Observability
         matched:
         - remediation guides
+        jod_match_count: 0
       text: Transformed recurring operational friction into scalable automation and
         documented remediation guides for engineering teams.
+      bullet_point_total_match_count: 0
       render: false
     - order: 44
       categories:
@@ -1408,8 +1566,10 @@ professional_experience:
         - technical documentation
         - operational handoffs
         - stakeholder enablement
+        jod_match_count: 0
       text: Maintained executive-level operational documentation, Confluence resources,
         and handoff materials for global stakeholders.
+      bullet_point_total_match_count: 0
       render: false
     - order: 45
       categories:
@@ -1425,11 +1585,14 @@ professional_experience:
         matched:
         - infrastructure platform engineering
         - production troubleshooting
+        jod_match_count: 0
       - category: AI Tools
         matched:
         - AI-assisted debugging
+        jod_match_count: 0
       text: Provided sustained production forensics and support for mission-critical
         automation failures and platform upgrades.
+      bullet_point_total_match_count: 0
       render: false
     - order: 46
       categories:
@@ -1444,8 +1607,10 @@ professional_experience:
         matched:
         - Observability Dashboards
         - on-call dashboards
+        jod_match_count: 0
       text: Balanced intensive on-call rotations with long-term project delivery across
         automation, cloud reliability, and observability domains.
+      bullet_point_total_match_count: 0
       render: false
     - order: 47
       categories:
@@ -1460,11 +1625,14 @@ professional_experience:
       - category: Platform & API Engineering
         matched:
         - infrastructure platform engineering
+        jod_match_count: 0
       - category: Data & Observability
         matched:
         - Observability Dashboards
+        jod_match_count: 0
       text: Successfully resolved 700+ technical issues across observability and platform
         modernization during the 2023-2026 performance period.
+      bullet_point_total_match_count: 0
       render: false
   - order: 2
     render: true
@@ -1490,17 +1658,21 @@ professional_experience:
         - Python
         - AutoIT
         - data transformation scripts
+        jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - infrastructure platform engineering
+        jod_match_count: 0
       - category: Automation & IaC
         matched:
         - Python automation scripts
         - AutoIT automation scripts
         - mass patch orchestration
+        jod_match_count: 0
       text: Adhered to strict software development lifecycles to build custom Python
         and AutoIT automation scripts, streamlining system upgrades across hundreds
         of mission-critical platform nodes as full-cycle software engineering work.
+      bullet_point_total_match_count: 0
       render: false
     - order: 2
       categories:
@@ -1512,12 +1684,15 @@ professional_experience:
       - category: Languages & Frameworks
         matched:
         - React.js
+        jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - Systems Architecture
         - DICOM over IPv4
+        jod_match_count: 0
       text: Collaborated on the structural design and implementation of a DICOM anonymization
         server utilizing a modern React.js frontend interface as web application development.
+      bullet_point_total_match_count: 0
       render: false
     - order: 3
       categories:
@@ -1531,13 +1706,16 @@ professional_experience:
         - healthcare application support
         - infrastructure platform engineering
         - production troubleshooting
+        jod_match_count: 0
       - category: Automation & IaC
         matched:
         - remote software deployment
         - mass patch orchestration
+        jod_match_count: 0
       text: Conducted performance troubleshooting, defect handling, and remote patch
         deployments on highly regulated medical platform surfaces through deep debugging
         and patching.
+      bullet_point_total_match_count: 0
       render: false
     - order: 4
       categories:
@@ -1550,9 +1728,11 @@ professional_experience:
         - PACS administration
         - EHR/HCIS systems
         - healthcare application support
+        jod_match_count: 0
       text: Administered IT and HIS systems for the department of radiology, including
         Philips Vue PACS and interconnected applications/software used by regulated
         clinical teams as radiology systems administration.
+      bullet_point_total_match_count: 0
       render: false
     - order: 5
       categories:
@@ -1564,8 +1744,10 @@ professional_experience:
         matched:
         - EHR/HCIS systems
         - healthcare application support
+        jod_match_count: 0
       text: Provided technical support for HCIS radiology servers and computer systems
         across mission-critical hospital environments across the support scope.
+      bullet_point_total_match_count: 0
       render: false
     - order: 6
       categories:
@@ -1579,6 +1761,7 @@ professional_experience:
         - Python
         - AutoIT
         - data transformation scripts
+        jod_match_count: 0
       - category: Automation & IaC
         matched:
         - Python automation scripts
@@ -1586,9 +1769,11 @@ professional_experience:
         - remote software deployment
         - mass patch orchestration
         - production rollout automation
+        jod_match_count: 0
       text: Wrote Python and AutoIT scripts for remote software/update deployment
         and performed mass patch rollouts across hundreds of systems as automation
         detail.
+      bullet_point_total_match_count: 0
       render: false
     - order: 7
       categories:
@@ -1600,11 +1785,14 @@ professional_experience:
       - category: Languages & Frameworks
         matched:
         - React.js
+        jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - DICOM over IPv4
+        jod_match_count: 0
       text: Helped implement a DICOM anonymization server over IPv4 with a React.js
         frontend as DICOM detail.
+      bullet_point_total_match_count: 0
       render: false
   - order: 3
     render: true
@@ -1628,13 +1816,16 @@ professional_experience:
         matched:
         - Azure
         - VMware ESX/vSphere
+        jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - Systems Architecture
         - infrastructure platform engineering
+        jod_match_count: 0
       text: Led the engineering lifecycle to modernize 7+ year old core infrastructure
         systems, executing legacy virtualization overhauls via ESX/VMware and migrating
         services to Azure Cloud as cloud migrations and architecture work.
+      bullet_point_total_match_count: 0
       render: false
     - order: 2
       categories:
@@ -1647,15 +1838,18 @@ professional_experience:
         matched:
         - Azure
         - SharePoint/OneDrive
+        jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - RESTful APIs
         - API Integration
         - custom PHP plugins
         - service orchestration
+        jod_match_count: 0
       text: Built custom PHP plugins and integrated secure Azure SharePoint document-control
         workflows to boost internal process cross-functional alignment as API and
         workflow integration.
+      bullet_point_total_match_count: 0
       render: false
     - order: 3
       categories:
@@ -1669,21 +1863,26 @@ professional_experience:
       - category: Platform & API Engineering
         matched:
         - ticketing API integrations
+        jod_match_count: 0
       - category: Data & Observability
         matched:
         - Observability Dashboards
         - automated ticketing dashboards
         - automated reporting
         - incident dashboards
+        jod_match_count: 0
       - category: Security & Compliance
         matched:
         - incident management
+        jod_match_count: 0
       - category: AI Tools
         matched:
         - AI-assisted ticket automation
+        jod_match_count: 0
       text: Launched an enterprise ticketing and incident-tracking system, designing
         centralized health monitoring dashboards and automated analytical reporting
         tools as observability dashboards work.
+      bullet_point_total_match_count: 0
       render: false
     - order: 4
       categories:
@@ -1695,9 +1894,11 @@ professional_experience:
         matched:
         - EHR/HCIS systems
         - healthcare application support
+        jod_match_count: 0
       text: Administered IT and HIS systems for an orthopedic clinic with 20+ providers,
         80 employees, and 5 remote clinics while providing tier 1-3 support within
         clinical IT scope.
+      bullet_point_total_match_count: 0
       render: false
     - order: 5
       categories:
@@ -1708,9 +1909,11 @@ professional_experience:
       - category: Distributed Systems & Cloud
         matched:
         - VMware ESX/vSphere
+        jod_match_count: 0
       text: Replaced phone, fax, print, firewall, antivirus, and remote-access systems;
         deployed ESX servers; upgraded Windows Server 2008 systems; and migrated workloads
         to VMware where applicable as modernization detail.
+      bullet_point_total_match_count: 0
       render: false
     - order: 6
       categories:
@@ -1723,9 +1926,11 @@ professional_experience:
         - VMware ESX/vSphere
         - Active Directory/DNS
         - private cloud VMware clusters
+        jod_match_count: 0
       text: Added load balancing, extended Active Directory for redundancy, and duplicated
         selected services in an offsite private-cloud VMware cluster as resilience
         detail.
+      bullet_point_total_match_count: 0
       render: false
     - order: 7
       categories:
@@ -1738,17 +1943,21 @@ professional_experience:
       - category: Platform & API Engineering
         matched:
         - operational reporting APIs
+        jod_match_count: 0
       - category: Security & Compliance
         matched:
         - HIPAA compliance
         - incident management
         - business continuity planning
+        jod_match_count: 0
       - category: AI Tools
         matched:
         - AI-assisted operational reporting
+        jod_match_count: 0
       text: Implemented change and incident-management practices to support HIPAA
         compliance, business continuity, and operational reporting for compliance
         and continuity.
+      bullet_point_total_match_count: 0
       render: false
     - order: 8
       categories:
@@ -1760,8 +1969,10 @@ professional_experience:
         matched:
         - service orchestration
         - stakeholder enablement
+        jod_match_count: 0
       text: Deployed MModal Fluency Direct cloud dictation software and trained providers
         on the new workflow as provider tooling.
+      bullet_point_total_match_count: 0
       render: false
     - order: 9
       categories:
@@ -1773,13 +1984,16 @@ professional_experience:
       - category: Distributed Systems & Cloud
         matched:
         - SharePoint/OneDrive
+        jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - WordPress
         - custom PHP plugins
         - service orchestration
+        jod_match_count: 0
       text: Helped launch a WordPress website, configured custom PHP plugins, and
         built SharePoint/OneDrive document-control workflows as web and workflow support.
+      bullet_point_total_match_count: 0
       render: false
   - order: 4
     render: true
@@ -1802,9 +2016,11 @@ professional_experience:
         matched:
         - Systems Architecture
         - infrastructure platform engineering
+        jod_match_count: 0
       text: Partnered with cross-functional leadership to architect and execute a
         multi-million dollar infrastructure upgrade, maximizing capacity and network
         availability as infrastructure optimization.
+      bullet_point_total_match_count: 0
       render: false
     - order: 2
       categories:
@@ -1816,9 +2032,11 @@ professional_experience:
         matched:
         - Azure
         - Exchange Online
+        jod_match_count: 0
       text: Spearheaded on-premise Exchange migrations to Azure cloud environments
         while ensuring strict alignment with enterprise information security standards
         as cloud ecosystem deployment.
+      bullet_point_total_match_count: 0
       render: false
     - order: 3
       categories:
@@ -1831,9 +2049,11 @@ professional_experience:
         - internal and external web servers
         - client databases
         - infrastructure platform engineering
+        jod_match_count: 0
       text: Administered company IT systems and network infrastructure for 150+ employees
         and contractors, including internal/external web servers, client databases,
         security solutions, and Windows environments across administration scope.
+      bullet_point_total_match_count: 0
       render: false
     - order: 4
       categories:
@@ -1845,9 +2065,11 @@ professional_experience:
         matched:
         - Palo Alto firewalls
         - Carbon Black Defense
+        jod_match_count: 0
       text: Deployed Palo Alto firewalls across all sites, rolled out Carbon Black
         Defense across servers and workstations, and conducted a company-wide software
         inventory audit as security modernization.
+      bullet_point_total_match_count: 0
       render: false
     - order: 5
       categories:
@@ -1858,8 +2080,10 @@ professional_experience:
       - category: Languages & Frameworks
         matched:
         - data transformation scripts
+        jod_match_count: 0
       text: Reduced IT operating costs by 30% by identifying and removing unnecessary
         subscriptions and products through cost optimization.
+      bullet_point_total_match_count: 0
       render: false
     - order: 6
       categories:
@@ -1874,19 +2098,24 @@ professional_experience:
         matched:
         - Node.js
         - Django
+        jod_match_count: 0
       - category: Distributed Systems & Cloud
         matched:
         - Docker/Kubernetes
         - container images
+        jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - SQL servers
         - infrastructure platform engineering
+        jod_match_count: 0
       - category: Data & Observability
         matched:
         - SQL
+        jod_match_count: 0
       text: Managed 15+ client Django and Node.js websites plus SQL servers running
         in Dockerized environments as web platform support.
+      bullet_point_total_match_count: 0
       render: false
     - order: 7
       categories:
@@ -1900,12 +2129,15 @@ professional_experience:
         - Python
         - AutoIT
         - data transformation scripts
+        jod_match_count: 0
       - category: Automation & IaC
         matched:
         - Python automation scripts
         - AutoIT automation scripts
+        jod_match_count: 0
       text: Provided tier 1-3 technical support and wrote Python/AutoIT automation
         scripts for recurring IT tasks as support and automation work.
+      bullet_point_total_match_count: 0
       render: false
   - order: 5
     render: true
@@ -1930,17 +2162,21 @@ professional_experience:
         matched:
         - Python
         - data transformation scripts
+        jod_match_count: 0
       - category: Automation & IaC
         matched:
         - Python automation scripts
+        jod_match_count: 0
       - category: Data & Observability
         matched:
         - Data Pipelines
         - Dell SAN/NAS systems
         - CT/MR image data processing
+        jod_match_count: 0
       text: Wrote highly scalable Python data-transfer scripts optimizing the ingestion
         and transit of massive CT imagery cache structures between Linux environments
         and SAN/NAS storage arrays as algorithmic data engineering.
+      bullet_point_total_match_count: 0
       render: false
     - order: 2
       categories:
@@ -1952,12 +2188,15 @@ professional_experience:
       - category: Languages & Frameworks
         matched:
         - Django
+        jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - WordPress
         - infrastructure platform engineering
+        jod_match_count: 0
       text: Rebuilt corporate web platforms entirely from WordPress to a robust, secure
         Django framework to improve backend structural integrity as framework refactoring.
+      bullet_point_total_match_count: 0
       render: false
     - order: 3
       categories:
@@ -1969,9 +2208,11 @@ professional_experience:
         matched:
         - Systems Architecture
         - infrastructure platform engineering
+        jod_match_count: 0
       text: Architected, deployed, and administered storage, networking, security,
         Windows, Linux, and web infrastructure during company growth from roughly
         20 to 60+ employees as infrastructure ownership.
+      bullet_point_total_match_count: 0
       render: false
     - order: 4
       categories:
@@ -1984,14 +2225,17 @@ professional_experience:
         matched:
         - vulnerability scanning
         - AlienVault SIEM
+        jod_match_count: 0
       - category: Security & Compliance
         matched:
         - Vulnerability Mitigation
         - HIPAA compliance
         - next-generation endpoint security
+        jod_match_count: 0
       text: Deployed administration tools, vulnerability scanning, AlienVault SIEM,
         firewalls, and endpoint-security tooling; helped reach HIPAA compliance within
         6 months and pass later audits through security and compliance work.
+      bullet_point_total_match_count: 0
       render: false
     - order: 5
       categories:
@@ -2005,8 +2249,10 @@ professional_experience:
         - incident management
         - disaster recovery planning
         - business continuity planning
+        jod_match_count: 0
       text: Implemented change/incident management, disaster-recovery planning, and
         business-continuity practices for mission-critical systems as continuity planning.
+      bullet_point_total_match_count: 0
       render: false
     - order: 6
       categories:
@@ -2017,8 +2263,10 @@ professional_experience:
       - category: Platform & API Engineering
         matched:
         - infrastructure platform engineering
+        jod_match_count: 0
       text: Replaced faulty and end-of-life equipment with enterprise-grade SAN, file-server,
         switch, firewall, and router infrastructure as infrastructure overhaul.
+      bullet_point_total_match_count: 0
       render: false
     - order: 7
       categories:
@@ -2033,13 +2281,16 @@ professional_experience:
         - Azure Office 365
         - SharePoint/OneDrive
         - Active Directory/DNS
+        jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - infrastructure platform engineering
         - service orchestration
+        jod_match_count: 0
       text: Migrated applicable infrastructure to Azure, extended Microsoft Active
         Directory to cloud services, migrated Exchange to Office 365, and built Azure
         SharePoint document/version-control workflows as cloud and identity modernization.
+      bullet_point_total_match_count: 0
       render: false
     - order: 8
       categories:
@@ -2050,8 +2301,10 @@ professional_experience:
       - category: Distributed Systems & Cloud
         matched:
         - VMware ESX/vSphere
+        jod_match_count: 0
       text: Designed, deployed, and managed VMware networks and helped set up branch-office
         locations across VMware and branch offices.
+      bullet_point_total_match_count: 0
       render: false
     - order: 9
       categories:
@@ -2062,8 +2315,10 @@ professional_experience:
       - category: Platform & API Engineering
         matched:
         - stakeholder enablement
+        jod_match_count: 0
       text: Oversaw budget, supervised IT work, and mentored/trained IT staff through
         leadership.
+      bullet_point_total_match_count: 0
       render: false
     - order: 10
       categories:
@@ -2074,8 +2329,10 @@ professional_experience:
       - category: Data & Observability
         matched:
         - Dell SAN/NAS systems
+        jod_match_count: 0
       text: Automated transfer of large CT image data caches between Linux backup
         servers and Dell SAN/NAS storage arrays for medical imaging data.
+      bullet_point_total_match_count: 0
       render: false
   - order: 6
     render: true
@@ -2100,13 +2357,16 @@ professional_experience:
         - Python
         - R
         - MATLAB
+        jod_match_count: 0
       - category: Data & Observability
         matched:
         - CT/MR image data processing
         - statistical image analysis
+        jod_match_count: 0
       text: Developed Python, MATLAB, and R software tools for automated CT/MR image
         preprocessing, segmentation, intensity analysis, and 3D visualization of organs
         and anatomical structures as research software engineering.
+      bullet_point_total_match_count: 0
       render: false
     - order: 2
       categories:
@@ -2118,12 +2378,15 @@ professional_experience:
       - category: Platform & API Engineering
         matched:
         - healthcare application support
+        jod_match_count: 0
       - category: Data & Observability
         matched:
         - statistical image analysis
+        jod_match_count: 0
       text: Ran statistical analysis to evaluate nanoparticle drug-delivery efficacy
         in pre-clinical cancer models; results were used in successful NIH/SBIR grant
         proposals as quantitative analysis.
+      bullet_point_total_match_count: 0
       render: false
     - order: 3
       categories:
@@ -2140,15 +2403,19 @@ professional_experience:
         - MIPAV
         - ImageJ
         - Slicer 3D
+        jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - infrastructure platform engineering
         - service orchestration
+        jod_match_count: 0
       - category: Data & Observability
         matched:
         - CT/MR image data processing
+        jod_match_count: 0
       text: Used MIPAV, ImageJ, Slicer 3D, ITK, and SimpleITK/Python workflows for
         medical-image processing across imaging platforms.
+      bullet_point_total_match_count: 0
       render: false
     - order: 4
       categories:
@@ -2159,8 +2426,10 @@ professional_experience:
       - category: Platform & API Engineering
         matched:
         - healthcare application support
+        jod_match_count: 0
       text: Assisted with experimental design, data collection, analysis, and report
         preparation for pre-clinical studies across research operations.
+      bullet_point_total_match_count: 0
       render: false
     - order: 5
       categories:
@@ -2172,8 +2441,10 @@ professional_experience:
         matched:
         - Ruby
         - Ruby on Rails
+        jod_match_count: 0
       text: Assisted in building and maintaining the company website using Ruby on
         Rails through web development.
+      bullet_point_total_match_count: 0
       render: false
     - order: 6
       categories:
@@ -2184,8 +2455,10 @@ professional_experience:
       - category: Platform & API Engineering
         matched:
         - production troubleshooting
+        jod_match_count: 0
       text: Supported network security, storage, network, and Windows administration
         responsibilities through IT administration.
+      bullet_point_total_match_count: 0
       render: false
     - order: 7
       categories:
@@ -2196,7 +2469,9 @@ professional_experience:
       - category: Platform & API Engineering
         matched:
         - stakeholder enablement
+        jod_match_count: 0
       text: Supervised, mentored, and trained student researchers through mentorship.
+      bullet_point_total_match_count: 0
       render: false
   - order: 7
     render: true
@@ -2224,12 +2499,15 @@ professional_experience:
         - JavaScript/jQuery
         - XML
         - data transformation scripts
+        jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - JSON/XML
+        jod_match_count: 0
       text: Revised and maintained an intranet site, frequently adding pages and GUI
         features with HTML, CSS, JavaScript/jQuery, XML, and Adobe Photoshop through
         web support.
+      bullet_point_total_match_count: 0
       render: false
     - order: 2
       categories:
@@ -2241,8 +2519,10 @@ professional_experience:
         matched:
         - technical documentation
         - stakeholder enablement
+        jod_match_count: 0
       text: Worked with users and administrators to update pages and improve intranet
         content through user collaboration.
+      bullet_point_total_match_count: 0
       render: false
     - order: 3
       categories:
@@ -2255,11 +2535,14 @@ professional_experience:
         matched:
         - Systems Architecture
         - metadata services
+        jod_match_count: 0
       - category: Data & Observability
         matched:
         - Data Pipelines
+        jod_match_count: 0
       text: Optimized file categorization and retrieval methods and wrote a custom
         search engine for search and retrieval.
+      bullet_point_total_match_count: 0
       render: false
 education:
   header_text: Education
