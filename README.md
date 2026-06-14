@@ -10,6 +10,11 @@ companies and duplicate jobs, fetches job descriptions, generates tailored resum
 generates cover-letter PDFs, stores artifacts locally, and presents the application queue
 in a fast local web UI.
 
+The resume generation layer is being reworked around an Application Resume Object (ARO):
+instead of sending broad, unstructured profile context into every artifact prompt, the new
+path starts from `profile/MASTER-RESUME.yml`, applies compact JOD-specific skill matches,
+and lets local code score and prune the structured resume object before rendering.
+
 The resume note points here because the project demonstrates the same engineering habits
 I try to bring to production systems: clear boundaries, typed domain models, provider
 isolation, testable workflows, practical automation, and human-in-the-loop guardrails.
@@ -24,6 +29,9 @@ isolation, testable workflows, practical automation, and human-in-the-loop guard
 - **Contextual query optimization**: scores planned and historically successful LinkedIn
   queries with a lightweight local bandit-style ranking pass, balancing profile fit, expected
   fresh yield, acceptance history, ATS quality, and exploration.
+- **Structured ARO resume redesign**: initializes each application resume as a hard copy of
+  `profile/MASTER-RESUME.yml`, asks the LLM only to match Core Technical Skills against the
+  trimmed JOD, then locally scores professional-experience bullets from those matches.
 - **Tailored resume and cover-letter generation**: renders job-specific PDF resumes from a
   structured local template, then generates cover letters from static template sections plus
   targeted LLM-written opening, Oracle-current-role, and prior-experience fragments. Prompts
@@ -113,12 +121,30 @@ profile/MP-MASTER-RESUME.txt
   -> duplicate/company filters
   -> explicit internship/entry-level and on-site filters
   -> public job detail fetch
-  -> LLM resume and cover-letter generation
-  -> ReportLab PDF renderer
-  -> output/resumes/*
-  -> output/cover_letters/*
+  -> trimmed JOD stored in SQLite
+  -> Application Resume Object initialized from profile/MASTER-RESUME.yml
+  -> Core Technical Skills JOD-match prompt
+  -> deterministic professional-experience JOD match counts
+  -> future ARO pruning, section selection, and artifact rendering
   -> output/tracking/applications.sqlite3
   -> local Flask application tracker
+```
+
+The older `match-jobs` resume and cover-letter artifact generator still exists for the local
+tracker and regression tests, but it is now treated as the legacy path while the ARO workflow
+is rebuilt around structured resume data.
+
+ARO pass one can be exercised without wiring it into the legacy workflow:
+
+```bash
+.venv/bin/python scripts/application_resume_pass_one.py \
+  --trimmed-jod tmp/trimmed-jod.txt \
+  --prompt-output tmp/aro-core-skills-prompt.txt
+
+.venv/bin/python scripts/application_resume_pass_one.py \
+  --trimmed-jod tmp/trimmed-jod.txt \
+  --core-skill-response tmp/aro-core-skills-response.json \
+  --output tmp/application-resume-object.yml
 ```
 
 The workflow is designed to spend requests where they matter. Existing LinkedIn job IDs
@@ -294,14 +320,15 @@ Run the MCP stdio server:
 .venv/bin/linkedin-career-mcp
 ```
 
-Run the matching workflow:
+Run the legacy matching workflow:
 
 ```bash
 make match-jobs
 ```
 
-By default, `match-jobs` generates both a tailored resume and cover letter for each fresh
-job, up to `MAX_JOBS=10`. To cap a run:
+By default, `match-jobs` still generates both a tailored resume and cover letter for each
+fresh job, up to `MAX_JOBS=10`. This is the pre-ARO artifact path and remains available while
+the structured resume workflow is rebuilt. To cap a run:
 
 ```bash
 make match-jobs MAX_JOBS=2
@@ -462,7 +489,7 @@ produced from the same payload.
 
 ### `find_matching_linkedin_jobs`
 
-Run the end-to-end profile-aware matching workflow:
+Run the current legacy end-to-end profile-aware matching workflow:
 
 1. Read supported files from `profile/`.
 2. Generate LinkedIn search queries from the profile context.
@@ -472,7 +499,7 @@ Run the end-to-end profile-aware matching workflow:
 6. Filter blacklisted companies.
 7. Skip LinkedIn job IDs that already exist in SQLite with requested artifacts.
 8. Fetch public details for fresh jobs.
-9. Generate and render tailored resume and cover-letter PDFs.
+9. Generate and render tailored resume and cover-letter PDFs through the pre-ARO artifact path.
 10. Append workbook rows and upsert SQLite tracker records.
 
 The optional `artifact_mode` argument accepts `all`, `resumes-only`, or
@@ -482,6 +509,7 @@ The optional `artifact_mode` argument accepts `all`, `resumes-only`, or
 
 ```text
 src/linkedin_career_mcp/
+  application_resume.py     Application Resume Object initialization, prompting, and scoring
   api_client.py              OpenAI-compatible LLM client
   config.py                  environment-driven settings
   models.py                  typed domain models
@@ -494,6 +522,9 @@ src/linkedin_career_mcp/
   webapp.py                  Flask + SQLite application tracker
   workflows/
     matching.py              profile-aware search and application-artifact workflow
+scripts/
+  application_resume_pass_one.py  manual ARO prompt/response/scoring helper
+  render_resume_html.py       MASTER-RESUME.yml HTML preview renderer
 ```
 
 ## Inputs
@@ -505,7 +536,9 @@ resume/cover-letter generation.
 
 `profile/MASTER-RESUME.yml` is the factual inventory for later tailoring and ATS-informed
 repair, so keep it expanded with skills, experience, education, certifications, and project
-details you are comfortable using as tailoring evidence.
+details you are comfortable using as tailoring evidence. The master file should keep
+`jod_matched_items` empty and JOD match counts at zero; job-specific ARO copies fill those
+fields from the trimmed JOD.
 
 Supported profile file types:
 

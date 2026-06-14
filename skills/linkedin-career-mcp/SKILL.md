@@ -14,8 +14,8 @@ This skill supports the local Python MCP server in the repository that contains 
 - From the repository root, run `make install` to create `.venv`, install the package with development requirements, install Ollama, pull `qwen3:4b`, and link repository skills into `~/.codex/skills`.
 - The MCP server executable is `.venv/bin/linkedin-career-mcp` after installation.
 - Run tests with `make test` and lint with `make lint`.
-- Run the local matching workflow with `make match-jobs`; it generates both resumes and
-  cover letters by default.
+- Run the legacy local matching workflow with `make match-jobs`; it still generates both
+  resumes and cover letters by default while the ARO workflow is being rebuilt.
 
 ## MCP Client Configuration
 
@@ -39,6 +39,14 @@ The current tools search public LinkedIn job listings and fetch public job detai
 
 - Before search planning or artifact tailoring, use the `master-resume-yaml` skill to create
   or refine `profile/MASTER-RESUME.yml` from `profile/MP-MASTER-RESUME.txt`.
+- The new resume-generation path starts from an Application Resume Object (ARO), initialized
+  as a hard copy of `profile/MASTER-RESUME.yml`, then applies compact JOD-specific Core
+  Technical Skills matches before local professional-experience scoring.
+- Use `scripts/application_resume_pass_one.py` to manually generate the Core Technical
+  Skills prompt, apply a saved JSON response, and write a scored ARO YAML while the broader
+  workflow is being redesigned.
+- Treat the old full-context resume/cover-letter generation path as legacy during ARO
+  refactoring; keep it available for regression tests and tracker workflows until replaced.
 - Keep tracked master profile inputs in `profile/`.
 - The workflow reads supported profile files, asks local Ollama with `qwen3:4b` to generate LinkedIn search parameters, and searches both remote and hybrid jobs.
 - Company patterns in `.blacklist` are matched case-insensitively against company names. `Raytheon*` excludes companies whose names start with `Raytheon`.

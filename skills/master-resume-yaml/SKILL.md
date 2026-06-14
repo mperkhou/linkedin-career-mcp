@@ -46,8 +46,12 @@ Keep the object renderer-friendly:
 
 - `core_technical_skills.bullet_points[*].items.primary` contains the always-rendered skills.
 - `core_technical_skills.bullet_points[*].items.additional` contains factual optional skills that may be selected later.
-- Every core skill bucket has `jod_matched_items: []`.
-- Do not add static `rendered_text` for core skills; the renderer computes it from `items.primary` plus valid `jod_matched_items`.
+- Every core skill bucket in the master YAML has `jod_matched_items: []`.
+- Job-specific ARO copies may fill `jod_matched_items` with matching `primary` and
+  `additional` skills so local code can score professional-experience bullets.
+- Do not add static `rendered_text` for core skills; the renderer computes visible rows from
+  `items.primary` plus valid matched `items.additional` entries, avoiding duplicate primary
+  skills.
 - Every `professional_experience.jobs[*]` has `render`, `min_bullet_points`, and `max_bullet_points`.
 - Every job bullet has `text`, `bullet_point_total_match_count`, `render`, `categories`, and `skills`.
 - Initialize `bullet_point_total_match_count: 0` until a JOD-specific matching pass calculates a real value.
@@ -101,6 +105,21 @@ This work is expected to happen across a few review loops:
 5. Human review and small correction passes.
 
 After each major pass, summarize what changed and call out ambiguous mappings rather than hiding them.
+
+### 6. Hand Off To The ARO Pass
+
+After a trimmed JOD exists for a specific job, use
+`scripts/application_resume_pass_one.py` or the Application Resume Object helpers in
+`src/linkedin_career_mcp/application_resume.py` instead of editing the master YAML directly:
+
+1. Initialize an ARO as a reset hard copy of `profile/MASTER-RESUME.yml`.
+2. Build a compact Core Technical Skills prompt from the ARO plus the trimmed JOD.
+3. Apply the returned `jod_matched_items` to the ARO.
+4. Let local code calculate `skills[*].jod_match_count` and
+   `bullet_point_total_match_count` across all professional-experience bullets.
+
+Keep the master YAML neutral: empty `jod_matched_items`, zero count fields, and no
+job-specific pruning.
 
 ## Validation
 
