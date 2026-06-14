@@ -1,0 +1,142 @@
+Max Perkhounkov
+Iowa City, IA | 641-781-0477 | mperkhounkov1@gmail.com | [linkedin.com/in/maxim-perkhounkov](https://www.linkedin.com/in/maxim-perkhounkov/)
+Professional Summary
+Analytical and metrics-driven Senior Platform Software Engineer with over 10 years of multi-disciplinary experience architecting scalable distributed systems, developer tooling, and cloud automation frameworks. Proven track record leading enterprise-level integrations, optimizing platform resilience, and implementing secure API and observability pipelines across 40,000+ devices. Combines a strong background in advanced mathematics and algorithmic problem-solving with hands-on expertise in CI/CD, Infrastructure as Code (IaC), and modern multi-tenant cloud architectures.
+Note: This resume is custom tailored for every job position using my automated agentic workflow found at: mperkhou/linkedin-career-mcp
+Core Technical Skills
+- Languages & Frameworks: Python, Ruby, JavaScript, Node.js, React.js, Go, Bash, PowerShell, Ruby on Rails, Django
+- Distributed Systems & Cloud: AWS, Azure, Oracle Cloud Infrastructure (OCI), ElasticSearch, OpenSearch
+- Platform & API Engineering: RESTful APIs, Systems Architecture, Microservices, JSON/XML, API Integration
+- Automation & IaC: Chef (Cookbooks/Policies), Ansible, Terraform, Jenkins, CloudLab CI/CD Pipelines
+- Data & Observability: Filebeat, Logstash, Kafka, Grafana, Prometheus, OpenSearch, PostgreSQL, MongoDB, SQL, Data Pipelines, Observability Dashboards
+- Security & Compliance: Secure Coding Practices, Vulnerability Mitigation, Role-Based Access Control (RBAC)
+- AI Tools: Codex, Oracle Code Assist (OCA), Cline, OpenRouter, ChatGPT, LLM Prompting
+- Additional Languages & Frameworks: R, MATLAB, AutoIT, HTML, CSS, JavaScript/jQuery, XML, ITK/SimpleITK, MIPAV, ImageJ, Slicer 3D, nginx
+- Additional Distributed Systems & Cloud: VMware ESX/vSphere, Azure Office 365, SharePoint/OneDrive, Exchange Online, Active Directory/DNS, AWS S3, AWS EC2, Docker/Kubernetes, Kaseya SaaS IT management, private cloud VMware clusters
+- Additional Platform & API Engineering: DICOM over IPv4, PACS administration, EHR/HCIS systems, internal and external web servers, client databases, WordPress, custom PHP plugins, SQL servers, healthcare application support
+- Additional Automation & IaC: Oracle Linux Automation Manager (OLAM), AWX, Tower, Python automation scripts, AutoIT automation scripts, Bash automation, PowerShell automation, remote software deployment, mass patch orchestration
+- Additional Data & Observability: Dell SAN/NAS systems, Dell Storage Manager, automated ticketing dashboards, automated reporting, vulnerability scanning, AlienVault SIEM, network monitoring, CT/MR image data processing, statistical image analysis
+- Additional Security & Compliance: HIPAA compliance, risk assessment/change management, incident management, disaster recovery planning, business continuity planning, Palo Alto firewalls, WatchGuard firewalls, SonicWall firewalls, Carbon Black Defense, next-generation endpoint security, security policy deployment
+- Additional AI Tools: Claude, applied AI tooling
+Professional Experience
+Oracle | Remote / International Datacenters
+Senior Technical Lead - Cloud Automation Engineer | Feb 2022 - Present
+Category: AI-Assisted Engineering, MCP, and Developer Productivity
+- Architected AI-native engineering workflows utilizing custom Model Context Protocol (MCP) servers and agentic frameworks to automate infrastructure forensics, repository management, and operational reporting.
+- Engineered production-grade MCP integrations featuring explicit environment routing, read/write isolation, and audit-centric validation to ensure secure infrastructure operations.
+- Systematized ad hoc AI development into repeatable practices by deploying portable skill bundles equipped with deterministic scripts and rigorous validation commands.
+- Optimized TDD cycles by integrating AI agents with focused pytest execution, linting gates, and project-specific coding standards.
+- Leveraged agentic investigation patterns to diagnose platform failures, synthesizing evidence into remediation-focused technical briefs for engineering leadership.
+- Developed reusable MCP-backed reporting pipelines to inspect automation health and host coverage, significantly reducing manual review overhead during rollouts.
+- Standardized repository lifecycle workflows, focusing on atomic commits, automated changelogs, and reviewable merge requests within AI-assisted environments.
+- Established secure operational skills with read-only defaults and dry-run previews, enforcing explicit confirmation for all production-level modifications.
+- Achieved an 80% increase in team engineering velocity through the strategic deployment of MCP servers and autonomous agentic workflows for infrastructure management.
+- Developed "governance-as-code" frameworks incorporating Human-in-the-Loop (HITL) guardrails to manage autonomous operations across 40,000+ endpoints.
+- Integrated LLM orchestration with JIRA APIs to autonomously summarize troubleshooting sessions into structured technical stories and real-time updates.
+- Directed enterprise AI governance by migrating teams to secure, SSO-backed Codex/Cline environments, ensuring robust data protection for sensitive codebases.
+Category: Infrastructure Automation and Configuration Management
+- Managed global automation workflows for dynamic inventory generation, credential orchestration, and production stakeholder support.
+- Modernized configuration-as-code across platform services, observability stacks, and centralized execution environments.
+- Led the migration of production cookbooks to OCI-native artifact sources, streamlining release paths and reducing dependency on legacy storage.
+- Enhanced policy distribution by optimizing ownership routing, dependency pinning, and automated publishing validation.
+- Minimized operational noise through the refinement of monitoring thresholds and incident routing across core service families.
+- Developed Python-based utilities for inventory pruning, token handling, and autonomous repair of operational workflows.
+- Replaced fragile manual processes with robust automation frameworks and comprehensive, validated runbooks.
+Category: Network Automation and Multi-Vendor Device Management
+- Delivered a large-scale network automation platform utilizing Ansible and Python, incorporating secure secret handling and metadata collection.
+- Hardened Python services for the sanitization and storage of device configurations, enabling reliable restore workflows and versioned metadata tracking.
+- Architected a vendor-extensible extraction pipeline, allowing for the seamless integration of new device families without refactoring core logic.
+- Expanded automated management to a diverse fleet of 11,000+ network devices across multiple hardware vendors.
+- Created playbook frameworks to normalize device facts, classify failures, and generate executive summaries for large-scale scheduled operations.
+- Implemented asset-inventory integrations by transforming telemetry data into structured records using reusable JSON/CSV payloads.
+- Operationalized complex data collection schedules for thousands of switch and router hosts, tuning expensive paths based on failure analysis.
+- Resolved production backup instability by optimizing source-control publishing behavior and concurrent job handling.
+- Rectified fact-cache reliability issues by implementing executor timezone corrections across the automation fleet.
+- Authored technical documentation and provided executive demos for enterprise backup and recovery workflows.
+Category: Observability, OpenSearch, and Logging
+- Led the transition of enterprise observability from self-hosted ELK to OCI OpenSearch, maintaining continuity for Logstash and critical dashboards.
+- Automated search-index validation and historical data replication, ensuring document-count integrity during large-scale migrations.
+- Improved OpenSearch operational readiness by developing shard-monitoring tools, data-quality guides, and health remediations.
+- Consolidated automation and platform telemetry into OpenSearch-backed visualizations for enhanced stakeholder visibility.
+- Refactored legacy monitoring scripts into Python-based incident workflows for Logstash, Filebeat, and search service health.
+- Optimized pipeline reliability through dead-letter queue monitoring and network-flow analysis for logging infrastructure.
+- Designed and tuned dashboards for cluster health and database performance monitoring.
+- Mitigated alert fatigue by refining monitor logic and documenting precise remediation channels.
+Category: Cloud Infrastructure, OCI, and Platform Reliability
+- Ensured reliability of cloud-native automation clusters through rolling upgrades and systematic restoration of production services.
+- Optimized OCI metrics and cross-tenancy notification policies to enhance global cloud monitoring coverage.
+- Built serverless cloud functions and API endpoints to facilitate infrastructure metadata and asset-cache workflows.
+- Enhanced monitoring for managed databases and disk utilization across production and staging environments.
+- Contributed to the deployment of regulated infrastructure, implementing inventory tracking and audit logs for execution environments.
+Category: Engineering Practices, Delivery, and Stakeholder Support
+- Transformed recurring operational friction into scalable automation and documented remediation guides for engineering teams.
+- Maintained executive-level operational documentation, Confluence resources, and handoff materials for global stakeholders.
+- Provided sustained production forensics and support for mission-critical automation failures and platform upgrades.
+- Balanced intensive on-call rotations with long-term project delivery across automation, cloud reliability, and observability domains.
+- Successfully resolved 700+ technical issues across observability and platform modernization during the 2023-2026 performance period.
+University of Iowa Hospitals and Clinics | Iowa City, IA
+Engineering Support Specialist | Jan 2020 - May 2021
+- Adhered to strict software development lifecycles to build custom Python and AutoIT automation scripts, streamlining system upgrades across hundreds of mission-critical platform nodes as full-cycle software engineering work.
+- Collaborated on the structural design and implementation of a DICOM anonymization server utilizing a modern React.js frontend interface as web application development.
+- Conducted performance troubleshooting, defect handling, and remote patch deployments on highly regulated medical platform surfaces through deep debugging and patching.
+- Administered IT and HIS systems for the department of radiology, including Philips Vue PACS and interconnected applications/software used by regulated clinical teams as radiology systems administration.
+- Provided technical support for HCIS radiology servers and computer systems across mission-critical hospital environments across the support scope.
+- Wrote Python and AutoIT scripts for remote software/update deployment and performed mass patch rollouts across hundreds of systems as automation detail.
+- Helped implement a DICOM anonymization server over IPv4 with a React.js frontend as DICOM detail.
+Steindler Orthopedic Clinic | Iowa City, IA
+IT Administrator / Systems Engineer | Mar 2019 - Nov 2019
+- Led the engineering lifecycle to modernize 7+ year old core infrastructure systems, executing legacy virtualization overhauls via ESX/VMware and migrating services to Azure Cloud as cloud migrations and architecture work.
+- Built custom PHP plugins and integrated secure Azure SharePoint document-control workflows to boost internal process cross-functional alignment as API and workflow integration.
+- Launched an enterprise ticketing and incident-tracking system, designing centralized health monitoring dashboards and automated analytical reporting tools as observability dashboards work.
+- Administered IT and HIS systems for an orthopedic clinic with 20+ providers, 80 employees, and 5 remote clinics while providing tier 1-3 support within clinical IT scope.
+- Replaced phone, fax, print, firewall, antivirus, and remote-access systems; deployed ESX servers; upgraded Windows Server 2008 systems; and migrated workloads to VMware where applicable as modernization detail.
+- Added load balancing, extended Active Directory for redundancy, and duplicated selected services in an offsite private-cloud VMware cluster as resilience detail.
+- Implemented change and incident-management practices to support HIPAA compliance, business continuity, and operational reporting for compliance and continuity.
+- Deployed MModal Fluency Direct cloud dictation software and trained providers on the new workflow as provider tooling.
+- Helped launch a WordPress website, configured custom PHP plugins, and built SharePoint/OneDrive document-control workflows as web and workflow support.
+Stamats Communications | Cedar Rapids, IA
+Systems Administrator (Contract) | Apr 2018 - Oct 2018
+- Partnered with cross-functional leadership to architect and execute a multi-million dollar infrastructure upgrade, maximizing capacity and network availability as infrastructure optimization.
+- Spearheaded on-premise Exchange migrations to Azure cloud environments while ensuring strict alignment with enterprise information security standards as cloud ecosystem deployment.
+- Administered company IT systems and network infrastructure for 150+ employees and contractors, including internal/external web servers, client databases, security solutions, and Windows environments across administration scope.
+- Deployed Palo Alto firewalls across all sites, rolled out Carbon Black Defense across servers and workstations, and conducted a company-wide software inventory audit as security modernization.
+- Reduced IT operating costs by 30% by identifying and removing unnecessary subscriptions and products through cost optimization.
+- Managed 15+ client Django and Node.js websites plus SQL servers running in Dockerized environments as web platform support.
+- Provided tier 1-3 technical support and wrote Python/AutoIT automation scripts for recurring IT tasks as support and automation work.
+VIDA Diagnostics | Coralville, IA
+Systems Engineer | Mar 2014 - Mar 2018
+- Wrote highly scalable Python data-transfer scripts optimizing the ingestion and transit of massive CT imagery cache structures between Linux environments and SAN/NAS storage arrays as algorithmic data engineering.
+- Rebuilt corporate web platforms entirely from WordPress to a robust, secure Django framework to improve backend structural integrity as framework refactoring.
+- Architected, deployed, and administered storage, networking, security, Windows, Linux, and web infrastructure during company growth from roughly 20 to 60+ employees as infrastructure ownership.
+- Deployed administration tools, vulnerability scanning, AlienVault SIEM, firewalls, and endpoint-security tooling; helped reach HIPAA compliance within 6 months and pass later audits through security and compliance work.
+- Implemented change/incident management, disaster-recovery planning, and business-continuity practices for mission-critical systems as continuity planning.
+- Replaced faulty and end-of-life equipment with enterprise-grade SAN, file-server, switch, firewall, and router infrastructure as infrastructure overhaul.
+- Migrated applicable infrastructure to Azure, extended Microsoft Active Directory to cloud services, migrated Exchange to Office 365, and built Azure SharePoint document/version-control workflows as cloud and identity modernization.
+- Designed, deployed, and managed VMware networks and helped set up branch-office locations across VMware and branch offices.
+- Oversaw budget, supervised IT work, and mentored/trained IT staff through leadership.
+- Automated transfer of large CT image data caches between Linux backup servers and Dell SAN/NAS storage arrays for medical imaging data.
+NanoMedTrix, LLC | Coralville, IA
+Image Processing Specialist | Nov 2012 - May 2014
+- Developed Python, MATLAB, and R software tools for automated CT/MR image preprocessing, segmentation, intensity analysis, and 3D visualization of organs and anatomical structures as research software engineering.
+- Ran statistical analysis to evaluate nanoparticle drug-delivery efficacy in pre-clinical cancer models; results were used in successful NIH/SBIR grant proposals as quantitative analysis.
+- Used MIPAV, ImageJ, Slicer 3D, ITK, and SimpleITK/Python workflows for medical-image processing across imaging platforms.
+- Assisted with experimental design, data collection, analysis, and report preparation for pre-clinical studies across research operations.
+- Assisted in building and maintaining the company website using Ruby on Rails through web development.
+- Supported network security, storage, network, and Windows administration responsibilities through IT administration.
+- Supervised, mentored, and trained student researchers through mentorship.
+The University of Iowa Health Care | Iowa City, IA
+Student Clerk | May 2011 - Jun 2012
+- Revised and maintained an intranet site, frequently adding pages and GUI features with HTML, CSS, JavaScript/jQuery, XML, and Adobe Photoshop through web support.
+- Worked with users and administrators to update pages and improve intranet content through user collaboration.
+- Optimized file categorization and retrieval methods and wrote a custom search engine for search and retrieval.
+Education
+University of Iowa | Iowa City, IA
+Bachelor of Science in Physics & Mathematics | 2009 - 2013
+- Emphasis on graduate-level mathematics, applied statistics, and algorithmic logic.
+- University Chess Club President (2009-2012).
+Certifications
+- AlienVault Certified Security Engineer (AVCSE) | Certification (September, 2015)
+- Oracle Cloud Infrastructure (OCI) Engineer | Certification (August, 2024)
+- Oracle Cloud Infrastructure AI Foundations Associate | Certification (May, 2026)
+Portfolio
+[LinkedIn Career MCP](https://github.com/mperkhou/linkedin-career-mcp): a local MCP workflow that turns a candidate profile into efficient LinkedIn searches, fetches high-fit postings, and tracks each opportunity through a SQLite/workbook-backed local UI. For each role, it cleans the job description, generates tailored resumes and cover letters, then uses ATS scoring and repair loops to iteratively improve the resume against the posting.

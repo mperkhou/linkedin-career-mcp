@@ -1,0 +1,2300 @@
+schema_version: resume_application.v0.1-draft
+source:
+  pdf_path: profile/MP-MASTER-RESUME.pdf
+  text_path: profile/MP-MASTER-RESUME.txt
+  page_count: 6
+  extraction_method: manual text-source parsing for Jinja-ready resume YAML
+section_order:
+- header_top
+- professional_summary
+- core_technical_skills
+- professional_experience
+- education
+- certifications
+- portfolio
+header_top:
+  line_1_name_header_text: Max Perkhounkov
+  line_2_applicant_info_text: Iowa City, IA | 641-781-0477 | mperkhounkov1@gmail.com
+    | linkedin.com/in/maxim-perkhounkov
+  contact_items:
+  - Iowa City, IA
+  - 641-781-0477
+  - mperkhounkov1@gmail.com
+  - linkedin.com/in/maxim-perkhounkov
+  links:
+  - label: linkedin.com/in/maxim-perkhounkov
+    url: https://linkedin.com/in/maxim-perkhounkov
+professional_summary:
+  header_text: Professional Summary
+  paragraph: Analytical and metrics-driven Senior Platform Software Engineer with
+    over 10 years of multi-disciplinary experience architecting scalable distributed
+    systems, developer tooling, and cloud automation frameworks. Proven track record
+    leading enterprise-level integrations, optimizing platform resilience, and implementing
+    secure API and observability pipelines across 40,000+ devices. Combines a strong
+    background in advanced mathematics and algorithmic problem-solving with hands-on
+    expertise in CI/CD, Infrastructure as Code (IaC), and modern multi-tenant cloud
+    architectures.
+  summary_note: 'Note: This resume is custom tailored for every job position using
+    my automated agentic workflow found at: mperkhou/linkedin-career-mcp'
+core_technical_skills:
+  header_text: Core Technical Skills
+  bullet_points:
+  - order: 1
+    category: Languages & Frameworks
+    items:
+      primary:
+      - Python
+      - Ruby
+      - JavaScript
+      - Node.js
+      - React.js
+      - Go
+      - Bash
+      - PowerShell
+      - Ruby on Rails
+      - Django
+      additional:
+      - R
+      - MATLAB
+      - AutoIT
+      - HTML
+      - CSS
+      - JavaScript/jQuery
+      - XML
+      - ITK/SimpleITK
+      - MIPAV
+      - ImageJ
+      - Slicer 3D
+      - nginx
+      - Python 3
+      - pytest
+      - pytest-mock
+      - Jinja2
+      - YAML
+      - JSON
+      - CSV
+      - CLI tooling
+      - unit testing frameworks
+      - data transformation scripts
+    jod_matched_items: []
+  - order: 2
+    category: Distributed Systems & Cloud
+    items:
+      primary:
+      - AWS
+      - Azure
+      - Oracle Cloud Infrastructure (OCI)
+      - ElasticSearch
+      - OpenSearch
+      additional:
+      - VMware ESX/vSphere
+      - Azure Office 365
+      - SharePoint/OneDrive
+      - Exchange Online
+      - Active Directory/DNS
+      - AWS S3
+      - AWS EC2
+      - Docker/Kubernetes
+      - Kaseya SaaS IT management
+      - private cloud VMware clusters
+      - OCI Search Service
+      - OCI Functions
+      - OCI Metrics
+      - OCI Alarms
+      - OCI Notification Service
+      - OCI Artifact Registry
+      - cross-tenancy policies
+      - managed PostgreSQL
+      - cloud-hosted automation clusters
+      - execution environments
+      - container images
+      - production/staging environments
+      - regulated cloud environments
+      - cloud monitoring
+      - cloud notification routing
+    jod_matched_items: []
+  - order: 3
+    category: Platform & API Engineering
+    items:
+      primary:
+      - RESTful APIs
+      - Systems Architecture
+      - Microservices
+      - JSON/XML
+      - API Integration
+      additional:
+      - DICOM over IPv4
+      - PACS administration
+      - EHR/HCIS systems
+      - internal and external web servers
+      - client databases
+      - WordPress
+      - custom PHP plugins
+      - SQL servers
+      - healthcare application support
+      - infrastructure platform engineering
+      - service orchestration
+      - metadata services
+      - asset inventory systems
+      - asset-cache services
+      - API front ends
+      - source-control automation
+      - restore workflow design
+      - operational reporting APIs
+      - JIRA API integrations
+      - ticketing API integrations
+      - validation frameworks
+      - remediation tooling
+      - repository workflow automation
+      - release engineering
+      - production troubleshooting
+      - technical documentation
+      - runbook authoring
+      - operational handoffs
+      - stakeholder enablement
+      - vendor-extensible service design
+      - restore-point metadata
+      - source-control backed backups
+    jod_matched_items: []
+  - order: 4
+    category: Automation & IaC
+    items:
+      primary:
+      - Chef (Cookbooks/Policies)
+      - Ansible
+      - Terraform
+      - Jenkins
+      - CloudLab CI/CD Pipelines
+      additional:
+      - Oracle Linux Automation Manager (OLAM)
+      - AWX
+      - Tower
+      - Python automation scripts
+      - AutoIT automation scripts
+      - Bash automation
+      - PowerShell automation
+      - remote software deployment
+      - mass patch orchestration
+      - Ansible playbook development
+      - AWX job templates
+      - network automation
+      - network device automation
+      - multi-vendor automation
+      - scheduled backup automation
+      - restore automation
+      - configuration backup automation
+      - secrets automation
+      - dynamic inventory
+      - credential automation
+      - job scheduling automation
+      - execution environment builds
+      - CI/CD automation
+      - cookbook migration
+      - policyfile automation
+      - artifact migration
+      - rolling upgrade automation
+      - production rollout automation
+      - source-control publishing automation
+      - dry-run workflows
+      - vendor-extensible automation
+      - SCM-backed backup workflows
+      - Ansible Vault automation
+      - network fact collection
+      - automation schedule tuning
+      - runbook automation
+    jod_matched_items: []
+  - order: 5
+    category: Data & Observability
+    items:
+      primary:
+      - Filebeat
+      - Logstash
+      - Kafka
+      - Grafana
+      - Prometheus
+      - OpenSearch
+      - PostgreSQL
+      - MongoDB
+      - SQL
+      - Data Pipelines
+      - Observability Dashboards
+      additional:
+      - Dell SAN/NAS systems
+      - Dell Storage Manager
+      - automated ticketing dashboards
+      - automated reporting
+      - vulnerability scanning
+      - AlienVault SIEM
+      - network monitoring
+      - CT/MR image data processing
+      - statistical image analysis
+      - ELK-to-OpenSearch migrations
+      - search-index migrations
+      - historical data migration
+      - document-count validation
+      - data quality remediation
+      - shard-count monitoring
+      - field-count monitoring
+      - dead-letter queue monitoring
+      - log ingestion pipelines
+      - Logstash pipelines
+      - Filebeat prospectors
+      - workflow logging
+      - scheduled-job dashboards
+      - managed database monitoring
+      - disk usage monitoring
+      - stuck-job detection
+      - alert routing
+      - alert-noise reduction
+      - incident dashboards
+      - network telemetry
+      - device fact collection
+      - normalized metadata pipelines
+      - asset inventory data pipelines
+      - Prometheus alert migration
+      - OCI metrics monitoring
+      - automation schedule reporting
+      - host coverage analysis
+      - resource timing analysis
+      - failure classification
+      - fact-cache analysis
+      - asset metadata modeling
+      - remediation guides
+      - on-call dashboards
+    jod_matched_items: []
+  - order: 6
+    category: Security & Compliance
+    items:
+      primary:
+      - Secure Coding Practices
+      - Vulnerability Mitigation
+      - Role-Based Access Control (RBAC)
+      additional:
+      - HIPAA compliance
+      - risk assessment/change management
+      - incident management
+      - disaster recovery planning
+      - business continuity planning
+      - Palo Alto firewalls
+      - WatchGuard firewalls
+      - SonicWall firewalls
+      - Carbon Black Defense
+      - next-generation endpoint security
+      - security policy deployment
+      - secrets management
+      - encrypted secret storage
+      - secret redaction
+      - source-control sanitization
+      - secure source-control workflows
+      - audit-oriented testing
+      - sensitive path validation
+      - credential redaction
+      - least-privilege operations
+      - production write controls
+      - human approval workflows
+      - dry-run validation
+      - change-management controls
+      - production guardrails
+      - cross-tenancy policy governance
+      - incident response lifecycle
+      - restore readiness
+      - encrypted backups
+    jod_matched_items: []
+  - order: 7
+    category: AI Tools
+    items:
+      primary:
+      - Codex
+      - Oracle Code Assist (OCA)
+      - Cline
+      - OpenRouter
+      - ChatGPT
+      - LLM Prompting
+      - MCP (Model Context Protocol)
+      additional:
+      - Claude
+      - applied AI tooling
+      - agentic workflows
+      - autonomous AI agents
+      - MCP server development
+      - Codex skills
+      - Cline rules
+      - LLM orchestration
+      - tool-using AI agents
+      - AI-assisted TDD
+      - AI-assisted debugging
+      - AI-assisted incident response
+      - AI-assisted ticket automation
+      - AI-assisted operational reporting
+      - AI governance
+      - governance-as-code
+      - Human-in-the-Loop (HITL) guardrails
+      - secure AI development environments
+    jod_matched_items: []
+professional_experience:
+  header_text: Professional Experience
+  jobs:
+  - order: 1
+    render: true
+    min_bullet_points: 6
+    max_bullet_points: 10
+    line_1:
+      company_name_text: Oracle | Remote / International Datacenters
+      position_name_text: Senior Technical Lead - Cloud Automation Engineer
+      position_dates_text: Feb 2022 - Present
+    line_2:
+      position_intro_text: 
+    bullet_points:
+    - order: 1
+      categories:
+        assigned:
+        - AI-Assisted Engineering
+        - MCP
+        - Developer Productivity
+        matched:
+        - Platform & API Engineering
+        - AI Tools
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - Systems Architecture
+        - infrastructure platform engineering
+        - service orchestration
+        - operational reporting APIs
+        - repository workflow automation
+        - production troubleshooting
+      - category: AI Tools
+        matched:
+        - MCP (Model Context Protocol)
+        - applied AI tooling
+        - agentic workflows
+        - MCP server development
+        - AI-assisted debugging
+        - AI-assisted operational reporting
+      text: Architected AI-native engineering workflows utilizing custom Model Context
+        Protocol (MCP) servers and agentic frameworks to automate infrastructure forensics,
+        repository management, and operational reporting.
+      render: false
+    - order: 2
+      categories:
+        assigned:
+        - AI-Assisted Engineering
+        - MCP
+        - Developer Productivity
+        matched:
+        - Platform & API Engineering
+        - Security & Compliance
+        - AI Tools
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - API Integration
+        - infrastructure platform engineering
+        - validation frameworks
+      - category: Security & Compliance
+        matched:
+        - audit-oriented testing
+      - category: AI Tools
+        matched:
+        - MCP (Model Context Protocol)
+      text: Engineered production-grade MCP integrations featuring explicit environment
+        routing, read/write isolation, and audit-centric validation to ensure secure
+        infrastructure operations.
+      render: false
+    - order: 3
+      categories:
+        assigned:
+        - AI-Assisted Engineering
+        - MCP
+        - Developer Productivity
+        matched:
+        - Languages & Frameworks
+        - Platform & API Engineering
+        - AI Tools
+      skills:
+      - category: Languages & Frameworks
+        matched:
+        - data transformation scripts
+      - category: Platform & API Engineering
+        matched:
+        - validation frameworks
+      - category: AI Tools
+        matched:
+        - Codex skills
+      text: Systematized ad hoc AI development into repeatable practices by deploying
+        portable skill bundles equipped with deterministic scripts and rigorous validation
+        commands.
+      render: false
+    - order: 4
+      categories:
+        assigned:
+        - AI-Assisted Engineering
+        - MCP
+        - Developer Productivity
+        matched:
+        - Languages & Frameworks
+        - Platform & API Engineering
+        - Automation & IaC
+        - Security & Compliance
+        - AI Tools
+      skills:
+      - category: Languages & Frameworks
+        matched:
+        - pytest
+      - category: Platform & API Engineering
+        matched:
+        - API Integration
+      - category: Automation & IaC
+        matched:
+        - CI/CD automation
+      - category: Security & Compliance
+        matched:
+        - Secure Coding Practices
+      - category: AI Tools
+        matched:
+        - autonomous AI agents
+        - tool-using AI agents
+        - AI-assisted TDD
+      text: Optimized TDD cycles by integrating AI agents with focused pytest execution,
+        linting gates, and project-specific coding standards.
+      render: false
+    - order: 5
+      categories:
+        assigned:
+        - AI-Assisted Engineering
+        - MCP
+        - Developer Productivity
+        matched:
+        - Platform & API Engineering
+        - AI Tools
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - infrastructure platform engineering
+        - remediation tooling
+        - production troubleshooting
+        - technical documentation
+      - category: AI Tools
+        matched:
+        - applied AI tooling
+        - agentic workflows
+        - AI-assisted debugging
+      text: Leveraged agentic investigation patterns to diagnose platform failures,
+        synthesizing evidence into remediation-focused technical briefs for engineering
+        leadership.
+      render: false
+    - order: 6
+      categories:
+        assigned:
+        - AI-Assisted Engineering
+        - MCP
+        - Developer Productivity
+        matched:
+        - Platform & API Engineering
+        - Automation & IaC
+        - Data & Observability
+        - AI Tools
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - operational reporting APIs
+      - category: Automation & IaC
+        matched:
+        - production rollout automation
+      - category: Data & Observability
+        matched:
+        - Data Pipelines
+        - host coverage analysis
+      - category: AI Tools
+        matched:
+        - MCP (Model Context Protocol)
+        - MCP server development
+        - AI-assisted operational reporting
+      text: Developed reusable MCP-backed reporting pipelines to inspect automation
+        health and host coverage, significantly reducing manual review overhead during
+        rollouts.
+      render: false
+    - order: 7
+      categories:
+        assigned:
+        - AI-Assisted Engineering
+        - MCP
+        - Developer Productivity
+        matched:
+        - Platform & API Engineering
+        - AI Tools
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - service orchestration
+        - repository workflow automation
+      - category: AI Tools
+        matched:
+        - applied AI tooling
+        - agentic workflows
+      text: Standardized repository lifecycle workflows, focusing on atomic commits,
+        automated changelogs, and reviewable merge requests within AI-assisted environments.
+      render: false
+    - order: 8
+      categories:
+        assigned:
+        - AI-Assisted Engineering
+        - MCP
+        - Developer Productivity
+        matched:
+        - Automation & IaC
+        - Security & Compliance
+        - AI Tools
+      skills:
+      - category: Automation & IaC
+        matched:
+        - dry-run workflows
+      - category: Security & Compliance
+        matched:
+        - production write controls
+        - human approval workflows
+        - dry-run validation
+      - category: AI Tools
+        matched:
+        - Codex skills
+      text: Established secure operational skills with read-only defaults and dry-run
+        previews, enforcing explicit confirmation for all production-level modifications.
+      render: false
+    - order: 9
+      categories:
+        assigned:
+        - AI-Assisted Engineering
+        - MCP
+        - Developer Productivity
+        matched:
+        - Platform & API Engineering
+        - AI Tools
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - infrastructure platform engineering
+        - service orchestration
+      - category: AI Tools
+        matched:
+        - MCP (Model Context Protocol)
+        - applied AI tooling
+        - agentic workflows
+        - autonomous AI agents
+        - MCP server development
+      text: Achieved an 80% increase in team engineering velocity through the strategic
+        deployment of MCP servers and autonomous agentic workflows for infrastructure
+        management.
+      render: false
+    - order: 10
+      categories:
+        assigned:
+        - AI-Assisted Engineering
+        - MCP
+        - Developer Productivity
+        matched:
+        - Languages & Frameworks
+        - Security & Compliance
+        - AI Tools
+      skills:
+      - category: Languages & Frameworks
+        matched:
+        - Ruby on Rails
+      - category: Security & Compliance
+        matched:
+        - production guardrails
+      - category: AI Tools
+        matched:
+        - governance-as-code
+        - Human-in-the-Loop (HITL) guardrails
+      text: Developed "governance-as-code" frameworks incorporating Human-in-the-Loop
+        (HITL) guardrails to manage autonomous operations across 40,000+ endpoints.
+      render: false
+    - order: 11
+      categories:
+        assigned:
+        - AI-Assisted Engineering
+        - MCP
+        - Developer Productivity
+        matched:
+        - Platform & API Engineering
+        - AI Tools
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - RESTful APIs
+        - API Integration
+        - service orchestration
+        - JIRA API integrations
+        - production troubleshooting
+      - category: AI Tools
+        matched:
+        - LLM Prompting
+        - LLM orchestration
+        - AI-assisted incident response
+        - AI-assisted ticket automation
+      text: Integrated LLM orchestration with JIRA APIs to autonomously summarize
+        troubleshooting sessions into structured technical stories and real-time updates.
+      render: false
+    - order: 12
+      categories:
+        assigned:
+        - AI-Assisted Engineering
+        - MCP
+        - Developer Productivity
+        matched:
+        - Security & Compliance
+        - AI Tools
+      skills:
+      - category: Security & Compliance
+        matched:
+        - Secure Coding Practices
+        - sensitive path validation
+      - category: AI Tools
+        matched:
+        - Codex
+        - Cline
+        - AI governance
+        - secure AI development environments
+      text: Directed enterprise AI governance by migrating teams to secure, SSO-backed
+        Codex/Cline environments, ensuring robust data protection for sensitive codebases.
+      render: false
+    - order: 13
+      categories:
+        assigned:
+        - Infrastructure Automation
+        - Configuration Management
+        matched:
+        - Platform & API Engineering
+        - Automation & IaC
+        - Security & Compliance
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - service orchestration
+        - production troubleshooting
+        - stakeholder enablement
+      - category: Automation & IaC
+        matched:
+        - dynamic inventory
+        - credential automation
+      - category: Security & Compliance
+        matched:
+        - credential redaction
+      text: Managed global automation workflows for dynamic inventory generation,
+        credential orchestration, and production stakeholder support.
+      render: false
+    - order: 14
+      categories:
+        assigned:
+        - Infrastructure Automation
+        - Configuration Management
+        matched:
+        - Distributed Systems & Cloud
+        - Platform & API Engineering
+        - Automation & IaC
+        - Data & Observability
+      skills:
+      - category: Distributed Systems & Cloud
+        matched:
+        - execution environments
+      - category: Platform & API Engineering
+        matched:
+        - infrastructure platform engineering
+      - category: Automation & IaC
+        matched:
+        - execution environment builds
+      - category: Data & Observability
+        matched:
+        - Observability Dashboards
+      text: Modernized configuration-as-code across platform services, observability
+        stacks, and centralized execution environments.
+      render: false
+    - order: 15
+      categories:
+        assigned:
+        - Infrastructure Automation
+        - Configuration Management
+        matched:
+        - Distributed Systems & Cloud
+        - Platform & API Engineering
+        - Automation & IaC
+      skills:
+      - category: Distributed Systems & Cloud
+        matched:
+        - Oracle Cloud Infrastructure (OCI)
+        - OCI Artifact Registry
+      - category: Platform & API Engineering
+        matched:
+        - release engineering
+      - category: Automation & IaC
+        matched:
+        - Chef (Cookbooks/Policies)
+        - cookbook migration
+        - artifact migration
+      text: Led the migration of production cookbooks to OCI-native artifact sources,
+        streamlining release paths and reducing dependency on legacy storage.
+      render: false
+    - order: 16
+      categories:
+        assigned:
+        - Infrastructure Automation
+        - Configuration Management
+        matched:
+        - Platform & API Engineering
+        - Automation & IaC
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - validation frameworks
+        - release engineering
+      - category: Automation & IaC
+        matched:
+        - Chef (Cookbooks/Policies)
+        - policyfile automation
+      text: Enhanced policy distribution by optimizing ownership routing, dependency
+        pinning, and automated publishing validation.
+      render: false
+    - order: 17
+      categories:
+        assigned:
+        - Infrastructure Automation
+        - Configuration Management
+        matched:
+        - Data & Observability
+        - Security & Compliance
+      skills:
+      - category: Data & Observability
+        matched:
+        - alert routing
+        - alert-noise reduction
+      - category: Security & Compliance
+        matched:
+        - incident management
+      text: Minimized operational noise through the refinement of monitoring thresholds
+        and incident routing across core service families.
+      render: false
+    - order: 18
+      categories:
+        assigned:
+        - Infrastructure Automation
+        - Configuration Management
+        matched:
+        - Languages & Frameworks
+        - Platform & API Engineering
+        - Automation & IaC
+      skills:
+      - category: Languages & Frameworks
+        matched:
+        - Python
+        - Python 3
+      - category: Platform & API Engineering
+        matched:
+        - service orchestration
+        - remediation tooling
+      - category: Automation & IaC
+        matched:
+        - Python automation scripts
+        - credential automation
+      text: Developed Python-based utilities for inventory pruning, token handling,
+        and autonomous repair of operational workflows.
+      render: false
+    - order: 19
+      categories:
+        assigned:
+        - Infrastructure Automation
+        - Configuration Management
+        matched:
+        - Platform & API Engineering
+        - Automation & IaC
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - runbook authoring
+      - category: Automation & IaC
+        matched:
+        - runbook automation
+      text: Replaced fragile manual processes with robust automation frameworks and
+        comprehensive, validated runbooks.
+      render: false
+    - order: 20
+      categories:
+        assigned:
+        - Network Automation
+        - Multi-Vendor Device Management
+        matched:
+        - Languages & Frameworks
+        - Platform & API Engineering
+        - Automation & IaC
+        - Security & Compliance
+      skills:
+      - category: Languages & Frameworks
+        matched:
+        - Python
+      - category: Platform & API Engineering
+        matched:
+        - infrastructure platform engineering
+        - metadata services
+      - category: Automation & IaC
+        matched:
+        - Ansible
+        - network automation
+        - secrets automation
+      - category: Security & Compliance
+        matched:
+        - secrets management
+      text: Delivered a large-scale network automation platform utilizing Ansible
+        and Python, incorporating secure secret handling and metadata collection.
+      render: false
+    - order: 21
+      categories:
+        assigned:
+        - Network Automation
+        - Multi-Vendor Device Management
+        matched:
+        - Languages & Frameworks
+        - Platform & API Engineering
+        - Automation & IaC
+        - Security & Compliance
+      skills:
+      - category: Languages & Frameworks
+        matched:
+        - Python
+      - category: Platform & API Engineering
+        matched:
+        - service orchestration
+        - metadata services
+        - restore workflow design
+        - restore-point metadata
+      - category: Automation & IaC
+        matched:
+        - network device automation
+        - restore automation
+        - configuration backup automation
+      - category: Security & Compliance
+        matched:
+        - source-control sanitization
+        - restore readiness
+      text: Hardened Python services for the sanitization and storage of device configurations,
+        enabling reliable restore workflows and versioned metadata tracking.
+      render: false
+    - order: 22
+      categories:
+        assigned:
+        - Network Automation
+        - Multi-Vendor Device Management
+        matched:
+        - Platform & API Engineering
+        - Automation & IaC
+        - Data & Observability
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - Systems Architecture
+        - API Integration
+        - vendor-extensible service design
+      - category: Automation & IaC
+        matched:
+        - multi-vendor automation
+        - vendor-extensible automation
+      - category: Data & Observability
+        matched:
+        - Data Pipelines
+      text: Architected a vendor-extensible extraction pipeline, allowing for the
+        seamless integration of new device families without refactoring core logic.
+      render: false
+    - order: 23
+      categories:
+        assigned:
+        - Network Automation
+        - Multi-Vendor Device Management
+        matched:
+        - Automation & IaC
+      skills:
+      - category: Automation & IaC
+        matched:
+        - network automation
+        - network device automation
+        - multi-vendor automation
+      text: Expanded automated management to a diverse fleet of 11,000+ network devices
+        across multiple hardware vendors.
+      render: false
+    - order: 24
+      categories:
+        assigned:
+        - Network Automation
+        - Multi-Vendor Device Management
+        matched:
+        - Platform & API Engineering
+        - Automation & IaC
+        - Data & Observability
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - production troubleshooting
+      - category: Automation & IaC
+        matched:
+        - Ansible playbook development
+        - job scheduling automation
+        - network fact collection
+      - category: Data & Observability
+        matched:
+        - device fact collection
+        - normalized metadata pipelines
+        - automation schedule reporting
+        - failure classification
+      text: Created playbook frameworks to normalize device facts, classify failures,
+        and generate executive summaries for large-scale scheduled operations.
+      render: false
+    - order: 25
+      categories:
+        assigned:
+        - Network Automation
+        - Multi-Vendor Device Management
+        matched:
+        - Languages & Frameworks
+        - Platform & API Engineering
+        - Data & Observability
+      skills:
+      - category: Languages & Frameworks
+        matched:
+        - JSON
+        - CSV
+        - data transformation scripts
+      - category: Platform & API Engineering
+        matched:
+        - JSON/XML
+        - API Integration
+        - asset inventory systems
+      - category: Data & Observability
+        matched:
+        - network telemetry
+        - asset inventory data pipelines
+        - asset metadata modeling
+      text: Implemented asset-inventory integrations by transforming telemetry data
+        into structured records using reusable JSON/CSV payloads.
+      render: false
+    - order: 26
+      categories:
+        assigned:
+        - Network Automation
+        - Multi-Vendor Device Management
+        matched:
+        - Platform & API Engineering
+        - Automation & IaC
+        - Data & Observability
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - production troubleshooting
+      - category: Automation & IaC
+        matched:
+        - job scheduling automation
+        - automation schedule tuning
+      - category: Data & Observability
+        matched:
+        - host coverage analysis
+        - failure classification
+      text: Operationalized complex data collection schedules for thousands of switch
+        and router hosts, tuning expensive paths based on failure analysis.
+      render: false
+    - order: 27
+      categories:
+        assigned:
+        - Network Automation
+        - Multi-Vendor Device Management
+        matched:
+        - Platform & API Engineering
+        - Automation & IaC
+        - Security & Compliance
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - source-control automation
+        - release engineering
+      - category: Automation & IaC
+        matched:
+        - scheduled backup automation
+        - source-control publishing automation
+      - category: Security & Compliance
+        matched:
+        - secure source-control workflows
+        - production guardrails
+      text: Resolved production backup instability by optimizing source-control publishing
+        behavior and concurrent job handling.
+      render: false
+    - order: 28
+      categories:
+        assigned:
+        - Network Automation
+        - Multi-Vendor Device Management
+        matched:
+        - Data & Observability
+      skills:
+      - category: Data & Observability
+        matched:
+        - fact-cache analysis
+      text: Rectified fact-cache reliability issues by implementing executor timezone
+        corrections across the automation fleet.
+      render: false
+    - order: 29
+      categories:
+        assigned:
+        - Network Automation
+        - Multi-Vendor Device Management
+        matched:
+        - Platform & API Engineering
+        - Automation & IaC
+        - Security & Compliance
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - service orchestration
+        - restore workflow design
+        - technical documentation
+        - stakeholder enablement
+      - category: Automation & IaC
+        matched:
+        - restore automation
+      - category: Security & Compliance
+        matched:
+        - restore readiness
+      text: Authored technical documentation and provided executive demos for enterprise
+        backup and recovery workflows.
+      render: false
+    - order: 30
+      categories:
+        assigned:
+        - Observability
+        - OpenSearch
+        - Logging
+        matched:
+        - Distributed Systems & Cloud
+        - Data & Observability
+      skills:
+      - category: Distributed Systems & Cloud
+        matched:
+        - Oracle Cloud Infrastructure (OCI)
+        - ElasticSearch
+        - OpenSearch
+        - OCI Search Service
+      - category: Data & Observability
+        matched:
+        - Logstash
+        - OpenSearch
+        - Data Pipelines
+        - Observability Dashboards
+        - ELK-to-OpenSearch migrations
+      text: Led the transition of enterprise observability from self-hosted ELK to
+        OCI OpenSearch, maintaining continuity for Logstash and critical dashboards.
+      render: false
+    - order: 31
+      categories:
+        assigned:
+        - Observability
+        - OpenSearch
+        - Logging
+        matched:
+        - Platform & API Engineering
+        - Data & Observability
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - validation frameworks
+      - category: Data & Observability
+        matched:
+        - search-index migrations
+        - historical data migration
+        - document-count validation
+      text: Automated search-index validation and historical data replication, ensuring
+        document-count integrity during large-scale migrations.
+      render: false
+    - order: 32
+      categories:
+        assigned:
+        - Observability
+        - OpenSearch
+        - Logging
+        matched:
+        - Distributed Systems & Cloud
+        - Platform & API Engineering
+        - Data & Observability
+      skills:
+      - category: Distributed Systems & Cloud
+        matched:
+        - OpenSearch
+      - category: Platform & API Engineering
+        matched:
+        - remediation tooling
+      - category: Data & Observability
+        matched:
+        - OpenSearch
+        - data quality remediation
+        - shard-count monitoring
+      text: Improved OpenSearch operational readiness by developing shard-monitoring
+        tools, data-quality guides, and health remediations.
+      render: false
+    - order: 33
+      categories:
+        assigned:
+        - Observability
+        - OpenSearch
+        - Logging
+        matched:
+        - Distributed Systems & Cloud
+        - Platform & API Engineering
+        - Data & Observability
+      skills:
+      - category: Distributed Systems & Cloud
+        matched:
+        - OpenSearch
+      - category: Platform & API Engineering
+        matched:
+        - infrastructure platform engineering
+        - stakeholder enablement
+      - category: Data & Observability
+        matched:
+        - OpenSearch
+        - Observability Dashboards
+        - network telemetry
+      text: Consolidated automation and platform telemetry into OpenSearch-backed
+        visualizations for enhanced stakeholder visibility.
+      render: false
+    - order: 34
+      categories:
+        assigned:
+        - Observability
+        - OpenSearch
+        - Logging
+        matched:
+        - Languages & Frameworks
+        - Platform & API Engineering
+        - Data & Observability
+        - Security & Compliance
+      skills:
+      - category: Languages & Frameworks
+        matched:
+        - Python
+        - Python 3
+        - data transformation scripts
+      - category: Platform & API Engineering
+        matched:
+        - service orchestration
+      - category: Data & Observability
+        matched:
+        - Filebeat
+        - Logstash
+      - category: Security & Compliance
+        matched:
+        - incident management
+      text: Refactored legacy monitoring scripts into Python-based incident workflows
+        for Logstash, Filebeat, and search service health.
+      render: false
+    - order: 35
+      categories:
+        assigned:
+        - Observability
+        - OpenSearch
+        - Logging
+        matched:
+        - Platform & API Engineering
+        - Data & Observability
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - infrastructure platform engineering
+      - category: Data & Observability
+        matched:
+        - Data Pipelines
+        - network monitoring
+        - dead-letter queue monitoring
+        - log ingestion pipelines
+        - network telemetry
+      text: Optimized pipeline reliability through dead-letter queue monitoring and
+        network-flow analysis for logging infrastructure.
+      render: false
+    - order: 36
+      categories:
+        assigned:
+        - Observability
+        - OpenSearch
+        - Logging
+        matched:
+        - Data & Observability
+      skills:
+      - category: Data & Observability
+        matched:
+        - Observability Dashboards
+        - managed database monitoring
+      text: Designed and tuned dashboards for cluster health and database performance
+        monitoring.
+      render: false
+    - order: 37
+      categories:
+        assigned:
+        - Observability
+        - OpenSearch
+        - Logging
+        matched:
+        - Platform & API Engineering
+        - Data & Observability
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - remediation tooling
+      - category: Data & Observability
+        matched:
+        - alert routing
+        - alert-noise reduction
+      text: Mitigated alert fatigue by refining monitor logic and documenting precise
+        remediation channels.
+      render: false
+    - order: 38
+      categories:
+        assigned:
+        - Cloud Infrastructure
+        - OCI
+        - Platform Reliability
+        matched:
+        - Distributed Systems & Cloud
+        - Automation & IaC
+      skills:
+      - category: Distributed Systems & Cloud
+        matched:
+        - cloud-hosted automation clusters
+      - category: Automation & IaC
+        matched:
+        - rolling upgrade automation
+      text: Ensured reliability of cloud-native automation clusters through rolling
+        upgrades and systematic restoration of production services.
+      render: false
+    - order: 39
+      categories:
+        assigned:
+        - Cloud Infrastructure
+        - OCI
+        - Platform Reliability
+        matched:
+        - Distributed Systems & Cloud
+        - Automation & IaC
+        - Data & Observability
+        - Security & Compliance
+      skills:
+      - category: Distributed Systems & Cloud
+        matched:
+        - Oracle Cloud Infrastructure (OCI)
+        - OCI Metrics
+        - OCI Notification Service
+        - cross-tenancy policies
+        - cloud monitoring
+        - cloud notification routing
+      - category: Automation & IaC
+        matched:
+        - Chef (Cookbooks/Policies)
+        - policyfile automation
+      - category: Data & Observability
+        matched:
+        - OCI metrics monitoring
+      - category: Security & Compliance
+        matched:
+        - cross-tenancy policy governance
+      text: Optimized OCI metrics and cross-tenancy notification policies to enhance
+        global cloud monitoring coverage.
+      render: false
+    - order: 40
+      categories:
+        assigned:
+        - Cloud Infrastructure
+        - OCI
+        - Platform Reliability
+        matched:
+        - Distributed Systems & Cloud
+        - Platform & API Engineering
+      skills:
+      - category: Distributed Systems & Cloud
+        matched:
+        - OCI Functions
+      - category: Platform & API Engineering
+        matched:
+        - RESTful APIs
+        - API Integration
+        - infrastructure platform engineering
+        - service orchestration
+        - metadata services
+        - asset-cache services
+        - API front ends
+      text: Built serverless cloud functions and API endpoints to facilitate infrastructure
+        metadata and asset-cache workflows.
+      render: false
+    - order: 41
+      categories:
+        assigned:
+        - Cloud Infrastructure
+        - OCI
+        - Platform Reliability
+        matched:
+        - Distributed Systems & Cloud
+        - Data & Observability
+      skills:
+      - category: Distributed Systems & Cloud
+        matched:
+        - managed PostgreSQL
+        - production/staging environments
+      - category: Data & Observability
+        matched:
+        - managed database monitoring
+        - disk usage monitoring
+      text: Enhanced monitoring for managed databases and disk utilization across
+        production and staging environments.
+      render: false
+    - order: 42
+      categories:
+        assigned:
+        - Cloud Infrastructure
+        - OCI
+        - Platform Reliability
+        matched:
+        - Distributed Systems & Cloud
+        - Platform & API Engineering
+        - Automation & IaC
+      skills:
+      - category: Distributed Systems & Cloud
+        matched:
+        - execution environments
+        - regulated cloud environments
+      - category: Platform & API Engineering
+        matched:
+        - infrastructure platform engineering
+      - category: Automation & IaC
+        matched:
+        - execution environment builds
+      text: Contributed to the deployment of regulated infrastructure, implementing
+        inventory tracking and audit logs for execution environments.
+      render: false
+    - order: 43
+      categories:
+        assigned:
+        - Engineering Practices
+        - Delivery
+        - Stakeholder Support
+        matched:
+        - Languages & Frameworks
+        - Platform & API Engineering
+        - Data & Observability
+      skills:
+      - category: Languages & Frameworks
+        matched:
+        - data transformation scripts
+      - category: Platform & API Engineering
+        matched:
+        - remediation tooling
+        - runbook authoring
+      - category: Data & Observability
+        matched:
+        - remediation guides
+      text: Transformed recurring operational friction into scalable automation and
+        documented remediation guides for engineering teams.
+      render: false
+    - order: 44
+      categories:
+        assigned:
+        - Engineering Practices
+        - Delivery
+        - Stakeholder Support
+        matched:
+        - Platform & API Engineering
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - technical documentation
+        - operational handoffs
+        - stakeholder enablement
+      text: Maintained executive-level operational documentation, Confluence resources,
+        and handoff materials for global stakeholders.
+      render: false
+    - order: 45
+      categories:
+        assigned:
+        - Engineering Practices
+        - Delivery
+        - Stakeholder Support
+        matched:
+        - Platform & API Engineering
+        - AI Tools
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - infrastructure platform engineering
+        - production troubleshooting
+      - category: AI Tools
+        matched:
+        - AI-assisted debugging
+      text: Provided sustained production forensics and support for mission-critical
+        automation failures and platform upgrades.
+      render: false
+    - order: 46
+      categories:
+        assigned:
+        - Engineering Practices
+        - Delivery
+        - Stakeholder Support
+        matched:
+        - Data & Observability
+      skills:
+      - category: Data & Observability
+        matched:
+        - Observability Dashboards
+        - on-call dashboards
+      text: Balanced intensive on-call rotations with long-term project delivery across
+        automation, cloud reliability, and observability domains.
+      render: false
+    - order: 47
+      categories:
+        assigned:
+        - Engineering Practices
+        - Delivery
+        - Stakeholder Support
+        matched:
+        - Platform & API Engineering
+        - Data & Observability
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - infrastructure platform engineering
+      - category: Data & Observability
+        matched:
+        - Observability Dashboards
+      text: Successfully resolved 700+ technical issues across observability and platform
+        modernization during the 2023-2026 performance period.
+      render: false
+  - order: 2
+    render: true
+    min_bullet_points: 2
+    max_bullet_points: 5
+    line_1:
+      company_name_text: University of Iowa Hospitals and Clinics | Iowa City, IA
+      position_name_text: Engineering Support Specialist
+      position_dates_text: Jan 2020 - May 2021
+    line_2:
+      position_intro_text: 
+    bullet_points:
+    - order: 1
+      categories:
+        assigned: 
+        matched:
+        - Languages & Frameworks
+        - Platform & API Engineering
+        - Automation & IaC
+      skills:
+      - category: Languages & Frameworks
+        matched:
+        - Python
+        - AutoIT
+        - data transformation scripts
+      - category: Platform & API Engineering
+        matched:
+        - infrastructure platform engineering
+      - category: Automation & IaC
+        matched:
+        - Python automation scripts
+        - AutoIT automation scripts
+        - mass patch orchestration
+      text: Adhered to strict software development lifecycles to build custom Python
+        and AutoIT automation scripts, streamlining system upgrades across hundreds
+        of mission-critical platform nodes as full-cycle software engineering work.
+      render: false
+    - order: 2
+      categories:
+        assigned: 
+        matched:
+        - Languages & Frameworks
+        - Platform & API Engineering
+      skills:
+      - category: Languages & Frameworks
+        matched:
+        - React.js
+      - category: Platform & API Engineering
+        matched:
+        - Systems Architecture
+        - DICOM over IPv4
+      text: Collaborated on the structural design and implementation of a DICOM anonymization
+        server utilizing a modern React.js frontend interface as web application development.
+      render: false
+    - order: 3
+      categories:
+        assigned: 
+        matched:
+        - Platform & API Engineering
+        - Automation & IaC
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - healthcare application support
+        - infrastructure platform engineering
+        - production troubleshooting
+      - category: Automation & IaC
+        matched:
+        - remote software deployment
+        - mass patch orchestration
+      text: Conducted performance troubleshooting, defect handling, and remote patch
+        deployments on highly regulated medical platform surfaces through deep debugging
+        and patching.
+      render: false
+    - order: 4
+      categories:
+        assigned: 
+        matched:
+        - Platform & API Engineering
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - PACS administration
+        - EHR/HCIS systems
+        - healthcare application support
+      text: Administered IT and HIS systems for the department of radiology, including
+        Philips Vue PACS and interconnected applications/software used by regulated
+        clinical teams as radiology systems administration.
+      render: false
+    - order: 5
+      categories:
+        assigned: 
+        matched:
+        - Platform & API Engineering
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - EHR/HCIS systems
+        - healthcare application support
+      text: Provided technical support for HCIS radiology servers and computer systems
+        across mission-critical hospital environments across the support scope.
+      render: false
+    - order: 6
+      categories:
+        assigned: 
+        matched:
+        - Languages & Frameworks
+        - Automation & IaC
+      skills:
+      - category: Languages & Frameworks
+        matched:
+        - Python
+        - AutoIT
+        - data transformation scripts
+      - category: Automation & IaC
+        matched:
+        - Python automation scripts
+        - AutoIT automation scripts
+        - remote software deployment
+        - mass patch orchestration
+        - production rollout automation
+      text: Wrote Python and AutoIT scripts for remote software/update deployment
+        and performed mass patch rollouts across hundreds of systems as automation
+        detail.
+      render: false
+    - order: 7
+      categories:
+        assigned: 
+        matched:
+        - Languages & Frameworks
+        - Platform & API Engineering
+      skills:
+      - category: Languages & Frameworks
+        matched:
+        - React.js
+      - category: Platform & API Engineering
+        matched:
+        - DICOM over IPv4
+      text: Helped implement a DICOM anonymization server over IPv4 with a React.js
+        frontend as DICOM detail.
+      render: false
+  - order: 3
+    render: true
+    min_bullet_points: 2
+    max_bullet_points: 5
+    line_1:
+      company_name_text: Steindler Orthopedic Clinic | Iowa City, IA
+      position_name_text: IT Administrator / Systems Engineer
+      position_dates_text: Mar 2019 - Nov 2019
+    line_2:
+      position_intro_text: 
+    bullet_points:
+    - order: 1
+      categories:
+        assigned: 
+        matched:
+        - Distributed Systems & Cloud
+        - Platform & API Engineering
+      skills:
+      - category: Distributed Systems & Cloud
+        matched:
+        - Azure
+        - VMware ESX/vSphere
+      - category: Platform & API Engineering
+        matched:
+        - Systems Architecture
+        - infrastructure platform engineering
+      text: Led the engineering lifecycle to modernize 7+ year old core infrastructure
+        systems, executing legacy virtualization overhauls via ESX/VMware and migrating
+        services to Azure Cloud as cloud migrations and architecture work.
+      render: false
+    - order: 2
+      categories:
+        assigned: 
+        matched:
+        - Distributed Systems & Cloud
+        - Platform & API Engineering
+      skills:
+      - category: Distributed Systems & Cloud
+        matched:
+        - Azure
+        - SharePoint/OneDrive
+      - category: Platform & API Engineering
+        matched:
+        - RESTful APIs
+        - API Integration
+        - custom PHP plugins
+        - service orchestration
+      text: Built custom PHP plugins and integrated secure Azure SharePoint document-control
+        workflows to boost internal process cross-functional alignment as API and
+        workflow integration.
+      render: false
+    - order: 3
+      categories:
+        assigned: 
+        matched:
+        - Platform & API Engineering
+        - Data & Observability
+        - Security & Compliance
+        - AI Tools
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - ticketing API integrations
+      - category: Data & Observability
+        matched:
+        - Observability Dashboards
+        - automated ticketing dashboards
+        - automated reporting
+        - incident dashboards
+      - category: Security & Compliance
+        matched:
+        - incident management
+      - category: AI Tools
+        matched:
+        - AI-assisted ticket automation
+      text: Launched an enterprise ticketing and incident-tracking system, designing
+        centralized health monitoring dashboards and automated analytical reporting
+        tools as observability dashboards work.
+      render: false
+    - order: 4
+      categories:
+        assigned: 
+        matched:
+        - Platform & API Engineering
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - EHR/HCIS systems
+        - healthcare application support
+      text: Administered IT and HIS systems for an orthopedic clinic with 20+ providers,
+        80 employees, and 5 remote clinics while providing tier 1-3 support within
+        clinical IT scope.
+      render: false
+    - order: 5
+      categories:
+        assigned: 
+        matched:
+        - Distributed Systems & Cloud
+      skills:
+      - category: Distributed Systems & Cloud
+        matched:
+        - VMware ESX/vSphere
+      text: Replaced phone, fax, print, firewall, antivirus, and remote-access systems;
+        deployed ESX servers; upgraded Windows Server 2008 systems; and migrated workloads
+        to VMware where applicable as modernization detail.
+      render: false
+    - order: 6
+      categories:
+        assigned: 
+        matched:
+        - Distributed Systems & Cloud
+      skills:
+      - category: Distributed Systems & Cloud
+        matched:
+        - VMware ESX/vSphere
+        - Active Directory/DNS
+        - private cloud VMware clusters
+      text: Added load balancing, extended Active Directory for redundancy, and duplicated
+        selected services in an offsite private-cloud VMware cluster as resilience
+        detail.
+      render: false
+    - order: 7
+      categories:
+        assigned: 
+        matched:
+        - Platform & API Engineering
+        - Security & Compliance
+        - AI Tools
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - operational reporting APIs
+      - category: Security & Compliance
+        matched:
+        - HIPAA compliance
+        - incident management
+        - business continuity planning
+      - category: AI Tools
+        matched:
+        - AI-assisted operational reporting
+      text: Implemented change and incident-management practices to support HIPAA
+        compliance, business continuity, and operational reporting for compliance
+        and continuity.
+      render: false
+    - order: 8
+      categories:
+        assigned: 
+        matched:
+        - Platform & API Engineering
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - service orchestration
+        - stakeholder enablement
+      text: Deployed MModal Fluency Direct cloud dictation software and trained providers
+        on the new workflow as provider tooling.
+      render: false
+    - order: 9
+      categories:
+        assigned: 
+        matched:
+        - Distributed Systems & Cloud
+        - Platform & API Engineering
+      skills:
+      - category: Distributed Systems & Cloud
+        matched:
+        - SharePoint/OneDrive
+      - category: Platform & API Engineering
+        matched:
+        - WordPress
+        - custom PHP plugins
+        - service orchestration
+      text: Helped launch a WordPress website, configured custom PHP plugins, and
+        built SharePoint/OneDrive document-control workflows as web and workflow support.
+      render: false
+  - order: 4
+    render: true
+    min_bullet_points: 0
+    max_bullet_points: 2
+    line_1:
+      company_name_text: Stamats Communications | Cedar Rapids, IA
+      position_name_text: Systems Administrator (Contract)
+      position_dates_text: Apr 2018 - Oct 2018
+    line_2:
+      position_intro_text: 
+    bullet_points:
+    - order: 1
+      categories:
+        assigned: 
+        matched:
+        - Platform & API Engineering
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - Systems Architecture
+        - infrastructure platform engineering
+      text: Partnered with cross-functional leadership to architect and execute a
+        multi-million dollar infrastructure upgrade, maximizing capacity and network
+        availability as infrastructure optimization.
+      render: false
+    - order: 2
+      categories:
+        assigned: 
+        matched:
+        - Distributed Systems & Cloud
+      skills:
+      - category: Distributed Systems & Cloud
+        matched:
+        - Azure
+        - Exchange Online
+      text: Spearheaded on-premise Exchange migrations to Azure cloud environments
+        while ensuring strict alignment with enterprise information security standards
+        as cloud ecosystem deployment.
+      render: false
+    - order: 3
+      categories:
+        assigned: 
+        matched:
+        - Platform & API Engineering
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - internal and external web servers
+        - client databases
+        - infrastructure platform engineering
+      text: Administered company IT systems and network infrastructure for 150+ employees
+        and contractors, including internal/external web servers, client databases,
+        security solutions, and Windows environments across administration scope.
+      render: false
+    - order: 4
+      categories:
+        assigned: 
+        matched:
+        - Security & Compliance
+      skills:
+      - category: Security & Compliance
+        matched:
+        - Palo Alto firewalls
+        - Carbon Black Defense
+      text: Deployed Palo Alto firewalls across all sites, rolled out Carbon Black
+        Defense across servers and workstations, and conducted a company-wide software
+        inventory audit as security modernization.
+      render: false
+    - order: 5
+      categories:
+        assigned: 
+        matched:
+        - Languages & Frameworks
+      skills:
+      - category: Languages & Frameworks
+        matched:
+        - data transformation scripts
+      text: Reduced IT operating costs by 30% by identifying and removing unnecessary
+        subscriptions and products through cost optimization.
+      render: false
+    - order: 6
+      categories:
+        assigned: 
+        matched:
+        - Languages & Frameworks
+        - Distributed Systems & Cloud
+        - Platform & API Engineering
+        - Data & Observability
+      skills:
+      - category: Languages & Frameworks
+        matched:
+        - Node.js
+        - Django
+      - category: Distributed Systems & Cloud
+        matched:
+        - Docker/Kubernetes
+        - container images
+      - category: Platform & API Engineering
+        matched:
+        - SQL servers
+        - infrastructure platform engineering
+      - category: Data & Observability
+        matched:
+        - SQL
+      text: Managed 15+ client Django and Node.js websites plus SQL servers running
+        in Dockerized environments as web platform support.
+      render: false
+    - order: 7
+      categories:
+        assigned: 
+        matched:
+        - Languages & Frameworks
+        - Automation & IaC
+      skills:
+      - category: Languages & Frameworks
+        matched:
+        - Python
+        - AutoIT
+        - data transformation scripts
+      - category: Automation & IaC
+        matched:
+        - Python automation scripts
+        - AutoIT automation scripts
+      text: Provided tier 1-3 technical support and wrote Python/AutoIT automation
+        scripts for recurring IT tasks as support and automation work.
+      render: false
+  - order: 5
+    render: true
+    min_bullet_points: 0
+    max_bullet_points: 2
+    line_1:
+      company_name_text: VIDA Diagnostics | Coralville, IA
+      position_name_text: Systems Engineer
+      position_dates_text: Mar 2014 - Mar 2018
+    line_2:
+      position_intro_text: 
+    bullet_points:
+    - order: 1
+      categories:
+        assigned: 
+        matched:
+        - Languages & Frameworks
+        - Automation & IaC
+        - Data & Observability
+      skills:
+      - category: Languages & Frameworks
+        matched:
+        - Python
+        - data transformation scripts
+      - category: Automation & IaC
+        matched:
+        - Python automation scripts
+      - category: Data & Observability
+        matched:
+        - Data Pipelines
+        - Dell SAN/NAS systems
+        - CT/MR image data processing
+      text: Wrote highly scalable Python data-transfer scripts optimizing the ingestion
+        and transit of massive CT imagery cache structures between Linux environments
+        and SAN/NAS storage arrays as algorithmic data engineering.
+      render: false
+    - order: 2
+      categories:
+        assigned: 
+        matched:
+        - Languages & Frameworks
+        - Platform & API Engineering
+      skills:
+      - category: Languages & Frameworks
+        matched:
+        - Django
+      - category: Platform & API Engineering
+        matched:
+        - WordPress
+        - infrastructure platform engineering
+      text: Rebuilt corporate web platforms entirely from WordPress to a robust, secure
+        Django framework to improve backend structural integrity as framework refactoring.
+      render: false
+    - order: 3
+      categories:
+        assigned: 
+        matched:
+        - Platform & API Engineering
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - Systems Architecture
+        - infrastructure platform engineering
+      text: Architected, deployed, and administered storage, networking, security,
+        Windows, Linux, and web infrastructure during company growth from roughly
+        20 to 60+ employees as infrastructure ownership.
+      render: false
+    - order: 4
+      categories:
+        assigned: 
+        matched:
+        - Data & Observability
+        - Security & Compliance
+      skills:
+      - category: Data & Observability
+        matched:
+        - vulnerability scanning
+        - AlienVault SIEM
+      - category: Security & Compliance
+        matched:
+        - Vulnerability Mitigation
+        - HIPAA compliance
+        - next-generation endpoint security
+      text: Deployed administration tools, vulnerability scanning, AlienVault SIEM,
+        firewalls, and endpoint-security tooling; helped reach HIPAA compliance within
+        6 months and pass later audits through security and compliance work.
+      render: false
+    - order: 5
+      categories:
+        assigned: 
+        matched:
+        - Security & Compliance
+      skills:
+      - category: Security & Compliance
+        matched:
+        - risk assessment/change management
+        - incident management
+        - disaster recovery planning
+        - business continuity planning
+      text: Implemented change/incident management, disaster-recovery planning, and
+        business-continuity practices for mission-critical systems as continuity planning.
+      render: false
+    - order: 6
+      categories:
+        assigned: 
+        matched:
+        - Platform & API Engineering
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - infrastructure platform engineering
+      text: Replaced faulty and end-of-life equipment with enterprise-grade SAN, file-server,
+        switch, firewall, and router infrastructure as infrastructure overhaul.
+      render: false
+    - order: 7
+      categories:
+        assigned: 
+        matched:
+        - Distributed Systems & Cloud
+        - Platform & API Engineering
+      skills:
+      - category: Distributed Systems & Cloud
+        matched:
+        - Azure
+        - Azure Office 365
+        - SharePoint/OneDrive
+        - Active Directory/DNS
+      - category: Platform & API Engineering
+        matched:
+        - infrastructure platform engineering
+        - service orchestration
+      text: Migrated applicable infrastructure to Azure, extended Microsoft Active
+        Directory to cloud services, migrated Exchange to Office 365, and built Azure
+        SharePoint document/version-control workflows as cloud and identity modernization.
+      render: false
+    - order: 8
+      categories:
+        assigned: 
+        matched:
+        - Distributed Systems & Cloud
+      skills:
+      - category: Distributed Systems & Cloud
+        matched:
+        - VMware ESX/vSphere
+      text: Designed, deployed, and managed VMware networks and helped set up branch-office
+        locations across VMware and branch offices.
+      render: false
+    - order: 9
+      categories:
+        assigned: 
+        matched:
+        - Platform & API Engineering
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - stakeholder enablement
+      text: Oversaw budget, supervised IT work, and mentored/trained IT staff through
+        leadership.
+      render: false
+    - order: 10
+      categories:
+        assigned: 
+        matched:
+        - Data & Observability
+      skills:
+      - category: Data & Observability
+        matched:
+        - Dell SAN/NAS systems
+      text: Automated transfer of large CT image data caches between Linux backup
+        servers and Dell SAN/NAS storage arrays for medical imaging data.
+      render: false
+  - order: 6
+    render: true
+    min_bullet_points: 0
+    max_bullet_points: 2
+    line_1:
+      company_name_text: NanoMedTrix, LLC | Coralville, IA
+      position_name_text: Image Processing Specialist
+      position_dates_text: Nov 2012 - May 2014
+    line_2:
+      position_intro_text: 
+    bullet_points:
+    - order: 1
+      categories:
+        assigned: 
+        matched:
+        - Languages & Frameworks
+        - Data & Observability
+      skills:
+      - category: Languages & Frameworks
+        matched:
+        - Python
+        - R
+        - MATLAB
+      - category: Data & Observability
+        matched:
+        - CT/MR image data processing
+        - statistical image analysis
+      text: Developed Python, MATLAB, and R software tools for automated CT/MR image
+        preprocessing, segmentation, intensity analysis, and 3D visualization of organs
+        and anatomical structures as research software engineering.
+      render: false
+    - order: 2
+      categories:
+        assigned: 
+        matched:
+        - Platform & API Engineering
+        - Data & Observability
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - healthcare application support
+      - category: Data & Observability
+        matched:
+        - statistical image analysis
+      text: Ran statistical analysis to evaluate nanoparticle drug-delivery efficacy
+        in pre-clinical cancer models; results were used in successful NIH/SBIR grant
+        proposals as quantitative analysis.
+      render: false
+    - order: 3
+      categories:
+        assigned: 
+        matched:
+        - Languages & Frameworks
+        - Platform & API Engineering
+        - Data & Observability
+      skills:
+      - category: Languages & Frameworks
+        matched:
+        - Python
+        - ITK/SimpleITK
+        - MIPAV
+        - ImageJ
+        - Slicer 3D
+      - category: Platform & API Engineering
+        matched:
+        - infrastructure platform engineering
+        - service orchestration
+      - category: Data & Observability
+        matched:
+        - CT/MR image data processing
+      text: Used MIPAV, ImageJ, Slicer 3D, ITK, and SimpleITK/Python workflows for
+        medical-image processing across imaging platforms.
+      render: false
+    - order: 4
+      categories:
+        assigned: 
+        matched:
+        - Platform & API Engineering
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - healthcare application support
+      text: Assisted with experimental design, data collection, analysis, and report
+        preparation for pre-clinical studies across research operations.
+      render: false
+    - order: 5
+      categories:
+        assigned: 
+        matched:
+        - Languages & Frameworks
+      skills:
+      - category: Languages & Frameworks
+        matched:
+        - Ruby
+        - Ruby on Rails
+      text: Assisted in building and maintaining the company website using Ruby on
+        Rails through web development.
+      render: false
+    - order: 6
+      categories:
+        assigned: 
+        matched:
+        - Platform & API Engineering
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - production troubleshooting
+      text: Supported network security, storage, network, and Windows administration
+        responsibilities through IT administration.
+      render: false
+    - order: 7
+      categories:
+        assigned: 
+        matched:
+        - Platform & API Engineering
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - stakeholder enablement
+      text: Supervised, mentored, and trained student researchers through mentorship.
+      render: false
+  - order: 7
+    render: true
+    min_bullet_points: 0
+    max_bullet_points: 2
+    line_1:
+      company_name_text: The University of Iowa Health Care | Iowa City, IA
+      position_name_text: Student Clerk
+      position_dates_text: May 2011 - Jun 2012
+    line_2:
+      position_intro_text: 
+    bullet_points:
+    - order: 1
+      categories:
+        assigned: 
+        matched:
+        - Languages & Frameworks
+        - Platform & API Engineering
+      skills:
+      - category: Languages & Frameworks
+        matched:
+        - JavaScript
+        - HTML
+        - CSS
+        - JavaScript/jQuery
+        - XML
+        - data transformation scripts
+      - category: Platform & API Engineering
+        matched:
+        - JSON/XML
+      text: Revised and maintained an intranet site, frequently adding pages and GUI
+        features with HTML, CSS, JavaScript/jQuery, XML, and Adobe Photoshop through
+        web support.
+      render: false
+    - order: 2
+      categories:
+        assigned: 
+        matched:
+        - Platform & API Engineering
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - technical documentation
+        - stakeholder enablement
+      text: Worked with users and administrators to update pages and improve intranet
+        content through user collaboration.
+      render: false
+    - order: 3
+      categories:
+        assigned: 
+        matched:
+        - Platform & API Engineering
+        - Data & Observability
+      skills:
+      - category: Platform & API Engineering
+        matched:
+        - Systems Architecture
+        - metadata services
+      - category: Data & Observability
+        matched:
+        - Data Pipelines
+      text: Optimized file categorization and retrieval methods and wrote a custom
+        search engine for search and retrieval.
+      render: false
+education:
+  header_text: Education
+  entries:
+  - order: 1
+    line_1:
+      institution_name_text: University of Iowa | Iowa City, IA
+    line_2:
+      degree_name_text: Bachelor of Science in Physics & Mathematics
+      degree_dates_text: 2009 - 2013
+    bullet_points:
+    - order: 1
+      text: Emphasis on graduate-level mathematics, applied statistics, and algorithmic
+        logic.
+    - order: 2
+      text: University Chess Club President (2009-2012).
+certifications:
+  header_text: Certifications
+  bullet_points:
+  - order: 1
+    text: AlienVault Certified Security Engineer (AVCSE) | Certification (September,
+      2015)
+  - order: 2
+    text: Oracle Cloud Infrastructure (OCI) Engineer | Certification (August, 2024)
+  - order: 3
+    text: Oracle Cloud Infrastructure AI Foundations Associate | Certification (May,
+      2026)
+portfolio:
+  header_text: Portfolio
+  projects:
+  - order: 1
+    title_text: LinkedIn Career MCP
+    url: https://github.com/mperkhou/linkedin-career-mcp
+    description_text: a local MCP workflow that turns a candidate profile into efficient
+      LinkedIn searches, fetches high-fit postings, and tracks each opportunity through
+      a SQLite/workbook-backed local UI. For each role, it cleans the job description,
+      generates tailored resumes and cover letters, then uses ATS scoring and repair
+      loops to iteratively improve the resume against the posting.
