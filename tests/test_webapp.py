@@ -11,6 +11,7 @@ from openpyxl import Workbook, load_workbook
 from reportlab.pdfgen import canvas
 
 from linkedin_career_mcp import webapp
+from linkedin_career_mcp.models import JobDetails
 from linkedin_career_mcp.webapp import create_app, import_output_artifacts
 
 
@@ -210,6 +211,12 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     assert 'action="/cover-letters/123/copy-to-downloads"' not in html
     assert 'id="actions-form"' in html
     assert 'action="/actions/run"' in html
+    assert 'id="add-application"' in html
+    assert "Add" in html
+    assert html.index('id="delete-selected"') < html.index('id="add-application"')
+    assert html.index('id="add-application"') < html.index('class="actions-menu"')
+    assert 'window.open(' in html
+    assert '"/applications/add"' in html
     assert 'id="action-sync"' in html
     assert "Sync from output" in html
     assert 'id="action-regenerate"' in html
@@ -787,6 +794,106 @@ def test_actions_run_starts_background_regeneration(tmp_path: Path):
     assert status["runs"][0]["return_code"] == 0
     assert status["runs"][0]["title"] == "sync output + regenerate resumes for 2 job(s)"
     assert any("processing job 123" in message for message in status["runs"][0]["messages"])
+
+
+def test_add_application_loads_linkedin_job_and_starts_regeneration(
+    tmp_path: Path,
+    monkeypatch,
+):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    async def fake_fetch_linkedin_job_details(linkedin_url: str) -> JobDetails:
+        assert linkedin_url == "https://www.linkedin.com/jobs/view/12345/"
+        return JobDetails(
+            job_id="12345",
+            title="Senior Python Engineer",
+            company="Acme Corp",
+            listed_at="2026-06-05",
+            job_url="https://www.linkedin.com/jobs/view/12345",
+            description="Raw public JOD with benefits and practical Python work.",
+            seniority_level="Mid-Senior level",
+        )
+
+    monkeypatch.setattr(
+        webapp,
+        "_fetch_linkedin_job_details",
+        fake_fetch_linkedin_job_details,
+    )
+    monkeypatch.setattr(
+        webapp,
+        "_clean_prompt_job_description",
+        lambda description: "Clean prompt JOD with practical Python work.",
+    )
+
+    calls = []
+    completed = threading.Event()
+
+    def runner(**kwargs):
+        calls.append(kwargs)
+        webapp._append_background_action_message(  # noqa: SLF001
+            kwargs["run_id"],
+            "processing job 12345",
+        )
+        webapp._finish_background_action_run(  # noqa: SLF001
+            kwargs["run_id"],
+            status="completed",
+            return_code=0,
+        )
+        completed.set()
+
+    output_dir = tmp_path / "output"
+    database_path = output_dir / "tracking/applications.sqlite3"
+    app = create_app(
+        database_path=database_path,
+        output_dir=output_dir,
+        background_action_runner=runner,
+    )
+    client = app.test_client()
+
+    add_page = client.get("/applications/add?return_to=/?q=Platform")
+    add_html = add_page.data.decode()
+    assert add_page.status_code == 200
+    assert "LinkedIn URL" in add_html
+    assert "Other" in add_html
+    assert 'action="/applications/add/linkedin"' in add_html
+    assert 'name="other_url"' in add_html
+
+    response = client.post(
+        "/applications/add/linkedin",
+        data={
+            "linkedin_url": "https://www.linkedin.com/jobs/view/12345/",
+            "return_to": "/?q=Platform",
+        },
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == (
+        "/applications/add?return_to=%2F%3Fq%3DPlatform"
+    )
+    assert completed.wait(timeout=2)
+    assert calls
+    assert calls[0]["sync_requested"] is False
+    assert calls[0]["regenerate_mode"] == "resumes"
+    assert calls[0]["job_ids"] == ["12345"]
+
+    with webapp.connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT company, job_title, linkedin_url, job_description,
+                   prompt_job_description, date_posted, experience_level
+            FROM applications
+            WHERE job_id = '12345'
+            """
+        ).fetchone()
+
+    assert row["company"] == "Acme Corp"
+    assert row["job_title"] == "Senior Python Engineer"
+    assert row["linkedin_url"] == "https://www.linkedin.com/jobs/view/12345"
+    assert row["job_description"] == "Raw public JOD with benefits and practical Python work."
+    assert row["prompt_job_description"] == "Clean prompt JOD with practical Python work."
+    assert row["date_posted"] == "2026-06-05"
+    assert row["experience_level"] == "Mid-Senior level"
 
 
 def _edit_form_data(html: str) -> dict[str, str]:

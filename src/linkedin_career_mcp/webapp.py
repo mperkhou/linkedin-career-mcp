@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import difflib
 import sqlite3
 import subprocess
@@ -25,6 +26,13 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer
 
 from linkedin_career_mcp.ats import AtsProxyScore, calculate_ats_proxy_score
+from linkedin_career_mcp.config import load_settings
+from linkedin_career_mcp.errors import LinkedInCareerMcpError
+from linkedin_career_mcp.models import JobDetails
+from linkedin_career_mcp.providers.linkedin_public import (
+    LinkedInPublicJobsProvider,
+    extract_job_id,
+)
 from linkedin_career_mcp.resume_rendering import (
     render_resume_html_from_mapping,
     render_resume_pdf_from_html,
@@ -546,6 +554,56 @@ def upsert_application_artifact(
             ),
         )
         connection.commit()
+
+
+def add_linkedin_application_from_url(
+    *,
+    database_path: Path,
+    linkedin_url: str,
+) -> str:
+    url = str(linkedin_url or "").strip()
+    job_id = extract_job_id(url)
+    if not job_id:
+        raise ValueError("Paste a valid LinkedIn job URL.")
+
+    details = asyncio.run(_fetch_linkedin_job_details(url))
+    raw_description = str(details.description or "").strip() or None
+    prompt_description = (
+        _clean_prompt_job_description(raw_description) if raw_description else None
+    )
+    stored_job_id = details.job_id or job_id
+    upsert_application_artifact(
+        database_path=database_path,
+        job_id=stored_job_id,
+        company=details.company or "",
+        job_title=details.title or "Unknown title",
+        linkedin_url=str(details.job_url or url),
+        resume_path=None,
+        cover_letter_path=None,
+        job_description=raw_description,
+        prompt_job_description=prompt_description,
+        date_posted=details.listed_at,
+        experience_level=details.seniority_level,
+    )
+    return stored_job_id
+
+
+async def _fetch_linkedin_job_details(linkedin_url: str) -> JobDetails:
+    settings = load_settings()
+    provider = LinkedInPublicJobsProvider(
+        user_agent=settings.user_agent,
+        timeout_seconds=settings.timeout_seconds,
+    )
+    try:
+        return await provider.get_job_details(linkedin_url)
+    finally:
+        await provider.aclose()
+
+
+def _clean_prompt_job_description(description: str) -> str:
+    from linkedin_career_mcp.workflows import matching
+
+    return matching._clean_job_description_for_prompt(description)  # noqa: SLF001
 
 
 def store_application_resume_first_draft(
@@ -1360,6 +1418,35 @@ def create_app(
             f"{result.missing_cover_letters} missing cover letter files)."
         )
         return redirect_to_index_state()
+
+    @app.get("/applications/add")
+    def add_application():
+        return render_template_string(
+            ADD_APPLICATION_TEMPLATE,
+            return_to=_safe_index_return_path(request.args.get("return_to")),
+        )
+
+    @app.post("/applications/add/linkedin")
+    def add_linkedin_application():
+        try:
+            job_id = add_linkedin_application_from_url(
+                database_path=database_path,
+                linkedin_url=request.form.get("linkedin_url", ""),
+            )
+        except (ValueError, LinkedInCareerMcpError) as exc:
+            flash(f"LinkedIn add failed: {exc}")
+            return redirect(_add_application_return_path(request.form.get("return_to")))
+
+        run = start_background_action(
+            database_path=database_path,
+            output_dir=output_dir,
+            sync_requested=False,
+            regenerate_mode="resumes",
+            job_ids=[job_id],
+            runner=background_action_runner,
+        )
+        flash(f"Added LinkedIn job {job_id}. Started background action: {run.title}.")
+        return redirect(_add_application_return_path(request.form.get("return_to")))
 
     @app.post("/actions/run")
     def run_actions():
@@ -2187,6 +2274,11 @@ def _description_edit_return_path(job_id: str, return_to: Any) -> str:
     return f"/descriptions/{job_id}?{query}"
 
 
+def _add_application_return_path(return_to: Any) -> str:
+    query = urlencode({"return_to": _safe_index_return_path(return_to)})
+    return f"/applications/add?{query}"
+
+
 def cleanup_downloaded_application_pdfs(download_dir: Path | None = None) -> int:
     target_dir = download_dir or Path.home() / "Downloads"
     if not target_dir.is_dir():
@@ -2749,6 +2841,13 @@ INDEX_TEMPLATE = """
         N/A
       </option>
     </select>
+    <form id="bulk-delete-form" method="post" action="/applications/delete">
+      <input type="hidden" class="return-to-state" name="return_to" value="{{ current_path }}">
+      <button id="delete-selected" type="submit" class="danger" disabled>
+        Delete selected
+      </button>
+    </form>
+    <button id="add-application" type="button" class="ghost">Add</button>
     <details class="actions-menu">
       <summary>Actions</summary>
       <div class="actions-panel">
@@ -2777,12 +2876,6 @@ INDEX_TEMPLATE = """
         </form>
       </div>
     </details>
-    <form id="bulk-delete-form" method="post" action="/applications/delete">
-      <input type="hidden" class="return-to-state" name="return_to" value="{{ current_path }}">
-      <button id="delete-selected" type="submit" class="danger" disabled>
-        Delete selected
-      </button>
-    </form>
     <span id="selected-count" class="selected-count">0 selected</span>
   </div>
   <section id="action-status" class="action-status" hidden aria-live="polite">
@@ -3098,6 +3191,7 @@ INDEX_TEMPLATE = """
     const statusFilter = document.querySelector("#status-filter");
     const selectAll = document.querySelector("#select-all");
     const deleteButton = document.querySelector("#delete-selected");
+    const addApplicationButton = document.querySelector("#add-application");
     const selectedCount = document.querySelector("#selected-count");
     const bulkDeleteForm = document.querySelector("#bulk-delete-form");
     const companySortButton = document.querySelector("#company-sort");
@@ -3541,6 +3635,17 @@ INDEX_TEMPLATE = """
     if (actionsForm) {
       actionsForm.addEventListener("submit", syncActionsFormJobIds);
     }
+    if (addApplicationButton) {
+      addApplicationButton.addEventListener("click", () => {
+        const url = new URL("/applications/add", window.location.origin);
+        url.searchParams.set("return_to", currentReturnPath());
+        window.open(
+          url.toString(),
+          "add-application",
+          "popup,width=560,height=470,noopener,noreferrer",
+        );
+      });
+    }
     preserveStateLinks.forEach((link) => {
       link.addEventListener("click", () => {
         const url = new URL(link.href, window.location.origin);
@@ -3585,6 +3690,153 @@ INDEX_TEMPLATE = """
     refreshActionStatus();
     window.setInterval(refreshActionStatus, 2500);
   </script>
+</body>
+</html>
+"""
+
+
+ADD_APPLICATION_TEMPLATE = """
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Add Application</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #202124;
+      --muted: #626a73;
+      --line: #d9dee5;
+      --surface: #ffffff;
+      --band: #f4f6f8;
+      --accent: #0b6e69;
+      --accent-strong: #074f4b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--band);
+      font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    header {
+      padding: 18px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+    }
+    h1 {
+      margin: 0 0 4px;
+      font-size: 20px;
+      font-weight: 650;
+    }
+    main {
+      display: grid;
+      gap: 14px;
+      padding: 16px 20px 22px;
+    }
+    form, .field-group {
+      display: grid;
+      gap: 10px;
+      padding: 14px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+    }
+    label {
+      display: grid;
+      gap: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    input[type="url"] {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 9px 10px;
+      color: var(--ink);
+      font: inherit;
+      text-transform: none;
+    }
+    button, .button-link {
+      justify-self: start;
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 650;
+      padding: 8px 10px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    button:hover, .button-link:hover { background: var(--accent-strong); }
+    button:disabled {
+      cursor: not-allowed;
+      opacity: .5;
+    }
+    .flash {
+      margin: 0;
+      padding: 10px 12px;
+      border: 1px solid #b9d8d5;
+      background: #eef8f6;
+      color: var(--accent-strong);
+    }
+    .muted { color: var(--muted); }
+    .top-links {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+    a { color: var(--accent); font-weight: 650; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="top-links">
+      <a href="{{ return_to }}">Back to tracker</a>
+    </div>
+    <h1>Add Application</h1>
+    <div class="muted">Load a public LinkedIn job into the tracker.</div>
+  </header>
+  <main>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        {% for message in messages %}
+          <p class="flash">{{ message }}</p>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <form method="post" action="/applications/add/linkedin">
+      <input type="hidden" name="return_to" value="{{ return_to }}">
+      <label>
+        LinkedIn URL
+        <input
+          type="url"
+          name="linkedin_url"
+          placeholder="https://www.linkedin.com/jobs/view/1234567890"
+          required
+        >
+      </label>
+      <button type="submit">Load</button>
+    </form>
+
+    <div class="field-group">
+      <label>
+        Other
+        <input
+          type="url"
+          name="other_url"
+          placeholder="https://company.example/jobs/software-engineer"
+        >
+      </label>
+      <button type="button" disabled>Load</button>
+    </div>
+  </main>
 </body>
 </html>
 """
