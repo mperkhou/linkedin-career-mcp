@@ -37,6 +37,8 @@ from linkedin_career_mcp.providers.linkedin_public import (
 from linkedin_career_mcp.resume_rendering import (
     render_resume_html_from_mapping,
     render_resume_pdf_from_html,
+    rich_text,
+    sanitize_resume_rich_text,
 )
 
 DEFAULT_OUTPUT_DIR = Path("output")
@@ -1400,6 +1402,7 @@ def create_app(
     app.config["OUTPUT_DIR"] = output_dir
     app.jinja_env.filters["display_date"] = _display_date
     app.jinja_env.filters["display_timestamp"] = _display_timestamp
+    app.jinja_env.filters["rich_text"] = rich_text
     app.jinja_env.globals["bullet_text_for_editing"] = _bullet_text_for_editing
     app.jinja_env.globals["job_bulk_bullet_text"] = _job_bulk_bullet_text
 
@@ -2064,14 +2067,16 @@ def _resume_template_path(template_path: Path | None = None) -> Path:
 def _apply_resume_editor_form(resume: dict[str, Any], form: Any) -> dict[str, Any]:
     header = _ensure_mapping(resume, "header_top")
     header["line_1_name_header_text"] = _form_text(form, "header_name")
-    header["line_2_applicant_info_text"] = _form_text(form, "header_info")
+    header["line_2_header_text"] = _form_rich_text(form, "header_line_2")
+    header["line_3_applicant_info_text"] = _form_rich_text(form, "header_info")
+    header.pop("line_2_applicant_info_text", None)
     header["contact_items"] = _form_lines(form, "header_contact_items")
 
     summary = _ensure_mapping(resume, "professional_summary")
     summary["render"] = _form_bool(form, "summary_render")
     summary["header_text"] = _form_text(form, "summary_header_text")
-    summary["paragraph"] = _form_text(form, "summary_paragraph")
-    summary["summary_note"] = _form_text(form, "summary_note")
+    summary["paragraph"] = _form_rich_text(form, "summary_paragraph")
+    summary["summary_note"] = _form_rich_text(form, "summary_note")
 
     skills = _ensure_mapping(resume, "core_technical_skills")
     skills["render"] = _form_bool(form, "skills_render")
@@ -2096,7 +2101,7 @@ def _apply_resume_editor_form(resume: dict[str, Any], form: Any) -> dict[str, An
         line_1["position_name_text"] = _form_text(form, f"job_{job_index}_position")
         line_1["position_dates_text"] = _form_text(form, f"job_{job_index}_dates")
         line_2 = _ensure_mapping(job, "line_2")
-        line_2["position_intro_text"] = _form_text(form, f"job_{job_index}_intro")
+        line_2["position_intro_text"] = _form_rich_text(form, f"job_{job_index}_intro")
         _apply_job_bullet_edits(job=job, job_index=job_index, form=form)
 
     education = _ensure_mapping(resume, "education")
@@ -2117,7 +2122,7 @@ def _apply_resume_editor_form(resume: dict[str, Any], form: Any) -> dict[str, An
                 form,
                 f"education_{entry_index}_bullet_{bullet_index}_render",
             )
-            bullet["text"] = _form_text(
+            bullet["text"] = _form_rich_text(
                 form,
                 f"education_{entry_index}_bullet_{bullet_index}_text",
             )
@@ -2127,7 +2132,7 @@ def _apply_resume_editor_form(resume: dict[str, Any], form: Any) -> dict[str, An
     certifications["header_text"] = _form_text(form, "certifications_header_text")
     for index, bullet in enumerate(_mapping_list(certifications.get("bullet_points"))):
         bullet["render"] = _form_bool(form, f"certification_{index}_render")
-        bullet["text"] = _form_text(form, f"certification_{index}_text")
+        bullet["text"] = _form_rich_text(form, f"certification_{index}_text")
 
     portfolio = _ensure_mapping(resume, "portfolio")
     portfolio["render"] = _form_bool(form, "portfolio_render")
@@ -2136,7 +2141,7 @@ def _apply_resume_editor_form(resume: dict[str, Any], form: Any) -> dict[str, An
         project["render"] = _form_bool(form, f"portfolio_{index}_render")
         project["title_text"] = _form_text(form, f"portfolio_{index}_title")
         project["url"] = _form_text(form, f"portfolio_{index}_url")
-        project["description_text"] = _form_text(form, f"portfolio_{index}_description")
+        project["description_text"] = _form_rich_text(form, f"portfolio_{index}_description")
 
     return resume
 
@@ -2155,7 +2160,7 @@ def _apply_job_bullet_edits(*, job: dict[str, Any], job_index: int, form: Any) -
             else:
                 bullet = {"order": _next_bullet_order(bullets), "render": True}
                 bullets.append(bullet)
-            bullet["text"] = line
+            bullet["text"] = sanitize_resume_rich_text(line)
             bullet["render"] = True
         for bullet in bullets[len(lines) :]:
             bullet["render"] = False
@@ -2164,7 +2169,7 @@ def _apply_job_bullet_edits(*, job: dict[str, Any], job_index: int, form: Any) -
 
     for index, bullet in enumerate(bullets):
         bullet["render"] = _form_bool(form, f"job_{job_index}_bullet_{index}_render")
-        bullet["text"] = _form_text(form, f"job_{job_index}_bullet_{index}_text")
+        bullet["text"] = _form_rich_text(form, f"job_{job_index}_bullet_{index}_text")
     job["bullet_points"] = bullets
 
 
@@ -2196,12 +2201,20 @@ def _list_value(value: object) -> list[Any]:
 
 
 def _next_bullet_order(bullets: list[dict[str, Any]]) -> int:
-    orders = [int(bullet.get("order", 0)) for bullet in bullets if str(bullet.get("order", "")).isdigit()]
+    orders = [
+        int(bullet.get("order", 0))
+        for bullet in bullets
+        if str(bullet.get("order", "")).isdigit()
+    ]
     return (max(orders) if orders else len(bullets)) + 1
 
 
 def _form_text(form: Any, name: str) -> str:
     return str(form.get(name) or "").strip()
+
+
+def _form_rich_text(form: Any, name: str) -> str:
+    return sanitize_resume_rich_text(form.get(name))
 
 
 def _form_bool(form: Any, name: str) -> bool:
@@ -4245,7 +4258,13 @@ COVER_LETTER_EDIT_TEMPLATE = """
       <div class="top-links">
         <a href="{{ return_to }}">Back to tracker</a>
         {% if row.cover_letter_content %}
-          <a href="/cover-letters/{{ row.job_id }}" target="_blank" rel="noreferrer">Cover Letter PDF</a>
+          <a
+            href="/cover-letters/{{ row.job_id }}"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Cover Letter PDF
+          </a>
         {% endif %}
       </div>
       <h1>Edit Cover Letter</h1>
@@ -4278,7 +4297,9 @@ COVER_LETTER_EDIT_TEMPLATE = """
           <button type="button" data-command="bold"><strong>B</strong></button>
           <button type="button" data-command="italic"><em>I</em></button>
         </div>
-        <div id="cover-editor" class="cover-editor" contenteditable="true">{{ cover_letter_object.body_html | safe }}</div>
+        <div id="cover-editor" class="cover-editor" contenteditable="true">
+          {{ cover_letter_object.body_html | safe }}
+        </div>
       </div>
     </form>
   </main>
@@ -4453,7 +4474,38 @@ RESUME_EDIT_TEMPLATE = """
       line-height: 1.4;
     }
     textarea.tall { min-height: 126px; }
-    textarea.bulk { min-height: 160px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    textarea.bulk {
+      min-height: 160px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .rich-field {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      overflow: hidden;
+      background: #fff;
+    }
+    .rich-field .editor-toolbar {
+      display: flex;
+      gap: 5px;
+      padding: 6px;
+      border-bottom: 1px solid var(--line);
+      background: #fafbfc;
+    }
+    .rich-field .editor-toolbar button {
+      min-width: 32px;
+      padding: 4px 7px;
+    }
+    .rich-editor {
+      min-height: 39px;
+      padding: 8px 9px;
+      outline: none;
+      white-space: pre-wrap;
+    }
+    .rich-editor.tall { min-height: 126px; }
+    .rich-editor:focus {
+      box-shadow: inset 0 0 0 2px #b9d8d5;
+    }
     .job-card, .nested-card {
       margin-top: 12px;
       padding: 12px;
@@ -4496,15 +4548,38 @@ RESUME_EDIT_TEMPLATE = """
   {% set education = resume.education | default({}) %}
   {% set certifications = resume.certifications | default({}) %}
   {% set portfolio = resume.portfolio | default({}) %}
+  {% macro rich_editor(name, value, tall=False) -%}
+    <div class="rich-field">
+      <div class="editor-toolbar" aria-label="Formatting">
+        <button type="button" data-rich-command="bold"><strong>B</strong></button>
+        <button type="button" data-rich-command="italic"><em>I</em></button>
+      </div>
+      <input
+        type="hidden"
+        name="{{ name }}"
+        data-rich-input="{{ name }}"
+        value="{{ value | default('', true) }}"
+      >
+      <div
+        class="rich-editor {{ 'tall' if tall else '' }}"
+        contenteditable="true"
+        data-rich-target="{{ name }}"
+      >{{ value | default('', true) | rich_text }}</div>
+    </div>
+  {%- endmacro %}
   <header>
     <div>
       <div class="top-links">
         <a href="{{ return_to }}">Back to tracker</a>
         {% if row.resume_content %}
-          <a href="/resumes/{{ row.job_id }}" target="_blank" rel="noreferrer">Resume PDF</a>
+          <a href="/resumes/{{ row.job_id }}" target="_blank" rel="noreferrer">
+            Resume PDF
+          </a>
         {% endif %}
         {% if row.resume_html_content %}
-          <a href="/resume-html/{{ row.job_id }}" target="_blank" rel="noreferrer">Resume HTML</a>
+          <a href="/resume-html/{{ row.job_id }}" target="_blank" rel="noreferrer">
+            Resume HTML
+          </a>
         {% endif %}
       </div>
       <h1>Edit Resume</h1>
@@ -4513,10 +4588,20 @@ RESUME_EDIT_TEMPLATE = """
     <div class="score-panel">
       <strong>ATS proxy score</strong>
       <div class="score-grid">
-        <span>Overall</span><strong>{{ row.ats_score if row.ats_score is not none else '-' }}/100</strong>
-        <span>Parsing</span><strong>{{ row.ats_parsing_score if row.ats_parsing_score is not none else '-' }}/100</strong>
-        <span>Keyword</span><strong>{{ row.ats_keyword_score if row.ats_keyword_score is not none else '-' }}/100</strong>
-        <span>Semantic</span><strong>{{ row.ats_semantic_score if row.ats_semantic_score is not none else '-' }}/100</strong>
+        <span>Overall</span>
+        <strong>{{ row.ats_score if row.ats_score is not none else '-' }}/100</strong>
+        <span>Parsing</span>
+        <strong>
+          {{ row.ats_parsing_score if row.ats_parsing_score is not none else '-' }}/100
+        </strong>
+        <span>Keyword</span>
+        <strong>
+          {{ row.ats_keyword_score if row.ats_keyword_score is not none else '-' }}/100
+        </strong>
+        <span>Semantic</span>
+        <strong>
+          {{ row.ats_semantic_score if row.ats_semantic_score is not none else '-' }}/100
+        </strong>
         <span>Risk</span><strong>{{ row.ats_formatting_risk or '-' }}</strong>
       </div>
       {% if row.ats_missing_terms %}
@@ -4532,7 +4617,7 @@ RESUME_EDIT_TEMPLATE = """
         {% endfor %}
       {% endif %}
     {% endwith %}
-    <form method="post" action="/resumes/{{ row.job_id }}/edit">
+    <form id="resume-edit-form" method="post" action="/resumes/{{ row.job_id }}/edit">
       <input type="hidden" name="return_to" value="{{ return_to }}">
       <div class="save-bar">
         <div class="actions-inline">
@@ -4540,7 +4625,9 @@ RESUME_EDIT_TEMPLATE = """
           <a class="button-link secondary" href="{{ return_to }}">Close</a>
         </div>
         {% if row.application_resume_backup_object %}
-          <span class="muted">Backup: {{ row.application_resume_backup_created_at|display_timestamp }}</span>
+          <span class="muted">
+            Backup: {{ row.application_resume_backup_created_at|display_timestamp }}
+          </span>
         {% else %}
           <span class="muted">Backup: none</span>
         {% endif %}
@@ -4552,58 +4639,105 @@ RESUME_EDIT_TEMPLATE = """
         </div>
         <div class="grid">
           <label class="field">Name
-            <input type="text" name="header_name" value="{{ header_top.line_1_name_header_text | default('', true) }}">
+            <input
+              type="text"
+              name="header_name"
+              value="{{ header_top.line_1_name_header_text | default('', true) }}"
+            >
+          </label>
+          <label class="field">Header Line 2
+            {{ rich_editor('header_line_2', header_top.line_2_header_text | default('', true)) }}
           </label>
           <label class="field">Fallback Contact Line
-            <input type="text" name="header_info" value="{{ header_top.line_2_applicant_info_text | default('', true) }}">
+            {% set header_info = header_top.line_3_applicant_info_text | default('', true) %}
+            {% if not header_info %}
+              {% set header_info = header_top.line_2_applicant_info_text | default('', true) %}
+            {% endif %}
+            {{ rich_editor('header_info', header_info) }}
           </label>
         </div>
         <label class="field">Contact Items
-          <textarea name="header_contact_items">{{ (header_top.contact_items | default([])) | join('\n') }}</textarea>
+          <textarea name="header_contact_items">
+            {{- (header_top.contact_items | default([])) | join('\n') -}}
+          </textarea>
         </label>
       </section>
 
       <section class="section">
         <div class="section-title">
-          <label><input type="checkbox" name="summary_render" value="1" {{ 'checked' if summary.render | default(true) else '' }}> Professional Summary</label>
+          <label>
+            <input
+              type="checkbox"
+              name="summary_render"
+              value="1"
+              {{ 'checked' if summary.render | default(true) else '' }}
+            >
+            Professional Summary
+          </label>
         </div>
         <div class="grid">
           <label class="field">Heading
-            <input type="text" name="summary_header_text" value="{{ summary.header_text | default('Professional Summary', true) }}">
+            <input
+              type="text"
+              name="summary_header_text"
+              value="{{ summary.header_text | default('Professional Summary', true) }}"
+            >
           </label>
           <label class="field">Note
-            <input type="text" name="summary_note" value="{{ summary.summary_note | default('', true) }}">
+            {{ rich_editor('summary_note', summary.summary_note | default('', true)) }}
           </label>
         </div>
         <label class="field">Paragraph
-          <textarea class="tall" name="summary_paragraph">{{ summary.paragraph | default('', true) }}</textarea>
+          {{ rich_editor('summary_paragraph', summary.paragraph | default('', true), tall=True) }}
         </label>
       </section>
 
       <section class="section">
         <div class="section-title">
-          <label><input type="checkbox" name="skills_render" value="1" {{ 'checked' if skills.render | default(true) else '' }}> Core Technical Skills</label>
+          <label>
+            <input
+              type="checkbox"
+              name="skills_render"
+              value="1"
+              {{ 'checked' if skills.render | default(true) else '' }}
+            >
+            Core Technical Skills
+          </label>
         </div>
         <label class="field">Heading
-          <input type="text" name="skills_header_text" value="{{ skills.header_text | default('Core Technical Skills', true) }}">
+          <input
+            type="text"
+            name="skills_header_text"
+            value="{{ skills.header_text | default('Core Technical Skills', true) }}"
+          >
         </label>
         {% for bullet in skills.bullet_points | default([]) %}
           {% set skill_index = loop.index0 %}
           {% set items = bullet.items | default({}) %}
           <div class="nested-card">
             <label class="field">Category
-              <input type="text" name="skill_{{ skill_index }}_category" value="{{ bullet.category | default('', true) }}">
+              <input
+                type="text"
+                name="skill_{{ skill_index }}_category"
+                value="{{ bullet.category | default('', true) }}"
+              >
             </label>
             <div class="grid">
               <label class="field">Primary Items
-                <textarea name="skill_{{ skill_index }}_primary">{{ (items.primary | default([])) | join('\n') }}</textarea>
+                <textarea name="skill_{{ skill_index }}_primary">
+                  {{- (items.primary | default([])) | join('\n') -}}
+                </textarea>
               </label>
               <label class="field">Additional Items
-                <textarea name="skill_{{ skill_index }}_additional">{{ (items.additional | default([])) | join('\n') }}</textarea>
+                <textarea name="skill_{{ skill_index }}_additional">
+                  {{- (items.additional | default([])) | join('\n') -}}
+                </textarea>
               </label>
             </div>
             <label class="field">JOD Matched Items
-              <textarea name="skill_{{ skill_index }}_jod_matched">{{ (bullet.jod_matched_items | default([])) | join('\n') }}</textarea>
+              <textarea name="skill_{{ skill_index }}_jod_matched">
+                {{- (bullet.jod_matched_items | default([])) | join('\n') -}}
+              </textarea>
             </label>
           </div>
         {% endfor %}
@@ -4611,10 +4745,22 @@ RESUME_EDIT_TEMPLATE = """
 
       <section class="section">
         <div class="section-title">
-          <label><input type="checkbox" name="experience_render" value="1" {{ 'checked' if experience.render | default(true) else '' }}> Professional Experience</label>
+          <label>
+            <input
+              type="checkbox"
+              name="experience_render"
+              value="1"
+              {{ 'checked' if experience.render | default(true) else '' }}
+            >
+            Professional Experience
+          </label>
         </div>
         <label class="field">Heading
-          <input type="text" name="experience_header_text" value="{{ experience.header_text | default('Professional Experience', true) }}">
+          <input
+            type="text"
+            name="experience_header_text"
+            value="{{ experience.header_text | default('Professional Experience', true) }}"
+          >
         </label>
         {% for job in experience.jobs | default([]) %}
           {% set job_index = loop.index0 %}
@@ -4625,22 +4771,42 @@ RESUME_EDIT_TEMPLATE = """
             <div class="section-title">
               <h3>Job {{ loop.index }}</h3>
               <label class="render-toggle">
-                <input type="checkbox" name="job_{{ job_index }}_render" value="1" {{ 'checked' if job.render | default(true) else '' }}>
+                <input
+                  type="checkbox"
+                  name="job_{{ job_index }}_render"
+                  value="1"
+                  {{ 'checked' if job.render | default(true) else '' }}
+                >
                 Render job
               </label>
             </div>
             <div class="grid">
               <label class="field">Company
-                <input type="text" name="job_{{ job_index }}_company" value="{{ line_1.company_name_text | default('', true) }}">
+                <input
+                  type="text"
+                  name="job_{{ job_index }}_company"
+                  value="{{ line_1.company_name_text | default('', true) }}"
+                >
               </label>
               <label class="field">Position
-                <input type="text" name="job_{{ job_index }}_position" value="{{ line_1.position_name_text | default('', true) }}">
+                <input
+                  type="text"
+                  name="job_{{ job_index }}_position"
+                  value="{{ line_1.position_name_text | default('', true) }}"
+                >
               </label>
               <label class="field">Dates
-                <input type="text" name="job_{{ job_index }}_dates" value="{{ line_1.position_dates_text | default('', true) }}">
+                <input
+                  type="text"
+                  name="job_{{ job_index }}_dates"
+                  value="{{ line_1.position_dates_text | default('', true) }}"
+                >
               </label>
               <label class="field">Intro
-                <input type="text" name="job_{{ job_index }}_intro" value="{{ line_2.position_intro_text | default('', true) }}">
+                {{ rich_editor(
+                  'job_' ~ job_index ~ '_intro',
+                  line_2.position_intro_text | default('', true)
+                ) }}
               </label>
             </div>
             <label class="field">All Bullet Points
@@ -4658,7 +4824,10 @@ RESUME_EDIT_TEMPLATE = """
                     aria-label="Render bullet {{ bullet_index + 1 }}"
                     {{ 'checked' if bullet is string or (bullet.render | default(true)) else '' }}
                   >
-                  <textarea name="job_{{ job_index }}_bullet_{{ bullet_index }}_text">{{ bullet_text_for_editing(bullet) }}</textarea>
+                  {{ rich_editor(
+                    'job_' ~ job_index ~ '_bullet_' ~ bullet_index ~ '_text',
+                    bullet_text_for_editing(bullet)
+                  ) }}
                 </div>
               {% endfor %}
             </div>
@@ -4668,10 +4837,22 @@ RESUME_EDIT_TEMPLATE = """
 
       <section class="section">
         <div class="section-title">
-          <label><input type="checkbox" name="education_render" value="1" {{ 'checked' if education.render | default(true) else '' }}> Education</label>
+          <label>
+            <input
+              type="checkbox"
+              name="education_render"
+              value="1"
+              {{ 'checked' if education.render | default(true) else '' }}
+            >
+            Education
+          </label>
         </div>
         <label class="field">Heading
-          <input type="text" name="education_header_text" value="{{ education.header_text | default('Education', true) }}">
+          <input
+            type="text"
+            name="education_header_text"
+            value="{{ education.header_text | default('Education', true) }}"
+          >
         </label>
         {% for entry in education.entries | default([]) %}
           {% set entry_index = loop.index0 %}
@@ -4679,25 +4860,50 @@ RESUME_EDIT_TEMPLATE = """
           {% set line_2 = entry.line_2 | default({}) %}
           <div class="nested-card">
             <label class="render-toggle">
-              <input type="checkbox" name="education_{{ entry_index }}_render" value="1" {{ 'checked' if entry.render | default(true) else '' }}>
+              <input
+                type="checkbox"
+                name="education_{{ entry_index }}_render"
+                value="1"
+                {{ 'checked' if entry.render | default(true) else '' }}
+              >
               Render entry
             </label>
             <div class="grid">
               <label class="field">Institution
-                <input type="text" name="education_{{ entry_index }}_institution" value="{{ line_1.institution_name_text | default('', true) }}">
+                <input
+                  type="text"
+                  name="education_{{ entry_index }}_institution"
+                  value="{{ line_1.institution_name_text | default('', true) }}"
+                >
               </label>
               <label class="field">Degree
-                <input type="text" name="education_{{ entry_index }}_degree" value="{{ line_2.degree_name_text | default('', true) }}">
+                <input
+                  type="text"
+                  name="education_{{ entry_index }}_degree"
+                  value="{{ line_2.degree_name_text | default('', true) }}"
+                >
               </label>
               <label class="field">Dates
-                <input type="text" name="education_{{ entry_index }}_dates" value="{{ line_2.degree_dates_text | default('', true) }}">
+                <input
+                  type="text"
+                  name="education_{{ entry_index }}_dates"
+                  value="{{ line_2.degree_dates_text | default('', true) }}"
+                >
               </label>
             </div>
             {% for bullet in entry.bullet_points | default([]) %}
               {% set bullet_index = loop.index0 %}
               <div class="bullet-row">
-                <input type="checkbox" name="education_{{ entry_index }}_bullet_{{ bullet_index }}_render" value="1" {{ 'checked' if bullet.render | default(true) else '' }}>
-                <textarea name="education_{{ entry_index }}_bullet_{{ bullet_index }}_text">{{ bullet.text | default('', true) }}</textarea>
+                <input
+                  type="checkbox"
+                  name="education_{{ entry_index }}_bullet_{{ bullet_index }}_render"
+                  value="1"
+                  {{ 'checked' if bullet.render | default(true) else '' }}
+                >
+                {{ rich_editor(
+                  'education_' ~ entry_index ~ '_bullet_' ~ bullet_index ~ '_text',
+                  bullet.text | default('', true)
+                ) }}
               </div>
             {% endfor %}
           </div>
@@ -4706,44 +4912,92 @@ RESUME_EDIT_TEMPLATE = """
 
       <section class="section">
         <div class="section-title">
-          <label><input type="checkbox" name="certifications_render" value="1" {{ 'checked' if certifications.render | default(true) else '' }}> Certifications</label>
+          <label>
+            <input
+              type="checkbox"
+              name="certifications_render"
+              value="1"
+              {{ 'checked' if certifications.render | default(true) else '' }}
+            >
+            Certifications
+          </label>
         </div>
         <label class="field">Heading
-          <input type="text" name="certifications_header_text" value="{{ certifications.header_text | default('Certifications', true) }}">
+          <input
+            type="text"
+            name="certifications_header_text"
+            value="{{ certifications.header_text | default('Certifications', true) }}"
+          >
         </label>
         {% for bullet in certifications.bullet_points | default([]) %}
           {% set bullet_index = loop.index0 %}
           <div class="bullet-row">
-            <input type="checkbox" name="certification_{{ bullet_index }}_render" value="1" {{ 'checked' if bullet.render | default(true) else '' }}>
-            <textarea name="certification_{{ bullet_index }}_text">{{ bullet.text | default('', true) }}</textarea>
+            <input
+              type="checkbox"
+              name="certification_{{ bullet_index }}_render"
+              value="1"
+              {{ 'checked' if bullet.render | default(true) else '' }}
+            >
+            {{ rich_editor(
+              'certification_' ~ bullet_index ~ '_text',
+              bullet.text | default('', true)
+            ) }}
           </div>
         {% endfor %}
       </section>
 
       <section class="section">
         <div class="section-title">
-          <label><input type="checkbox" name="portfolio_render" value="1" {{ 'checked' if portfolio.render | default(true) else '' }}> Portfolio</label>
+          <label>
+            <input
+              type="checkbox"
+              name="portfolio_render"
+              value="1"
+              {{ 'checked' if portfolio.render | default(true) else '' }}
+            >
+            Portfolio
+          </label>
         </div>
         <label class="field">Heading
-          <input type="text" name="portfolio_header_text" value="{{ portfolio.header_text | default('Portfolio', true) }}">
+          <input
+            type="text"
+            name="portfolio_header_text"
+            value="{{ portfolio.header_text | default('Portfolio', true) }}"
+          >
         </label>
         {% for project in portfolio.projects | default([]) %}
           {% set project_index = loop.index0 %}
           <div class="nested-card">
             <label class="render-toggle">
-              <input type="checkbox" name="portfolio_{{ project_index }}_render" value="1" {{ 'checked' if project.render | default(true) else '' }}>
+              <input
+                type="checkbox"
+                name="portfolio_{{ project_index }}_render"
+                value="1"
+                {{ 'checked' if project.render | default(true) else '' }}
+              >
               Render project
             </label>
             <div class="grid">
               <label class="field">Title
-                <input type="text" name="portfolio_{{ project_index }}_title" value="{{ project.title_text | default('', true) }}">
+                <input
+                  type="text"
+                  name="portfolio_{{ project_index }}_title"
+                  value="{{ project.title_text | default('', true) }}"
+                >
               </label>
               <label class="field">URL
-                <input type="text" name="portfolio_{{ project_index }}_url" value="{{ project.url | default('', true) }}">
+                <input
+                  type="text"
+                  name="portfolio_{{ project_index }}_url"
+                  value="{{ project.url | default('', true) }}"
+                >
               </label>
             </div>
             <label class="field">Description
-              <textarea name="portfolio_{{ project_index }}_description">{{ project.description_text | default('', true) }}</textarea>
+              {{ rich_editor(
+                'portfolio_' ~ project_index ~ '_description',
+                project.description_text | default('', true)
+              ) }}
             </label>
           </div>
         {% endfor %}
@@ -4752,11 +5006,36 @@ RESUME_EDIT_TEMPLATE = """
 
     <form method="post" action="/resumes/{{ row.job_id }}/edit/revert">
       <input type="hidden" name="return_to" value="{{ return_to }}">
-      <button class="danger" type="submit" {{ 'disabled' if not row.application_resume_backup_object else '' }}>
+      <button
+        class="danger"
+        type="submit"
+        {{ 'disabled' if not row.application_resume_backup_object else '' }}
+      >
         Revert To Backup
       </button>
     </form>
   </main>
+  <script>
+    const resumeForm = document.querySelector("#resume-edit-form");
+    document.querySelectorAll("[data-rich-command]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const editor = button.closest(".rich-field").querySelector(".rich-editor");
+        editor.focus();
+        document.execCommand(button.dataset.richCommand, false, null);
+      });
+    });
+    if (resumeForm) {
+      resumeForm.addEventListener("submit", () => {
+        document.querySelectorAll(".rich-editor[data-rich-target]").forEach((editor) => {
+          const target = editor.dataset.richTarget;
+          const input = document.querySelector(`[data-rich-input="${target}"]`);
+          if (input) {
+            input.value = editor.innerHTML;
+          }
+        });
+      });
+    }
+  </script>
 </body>
 </html>
 """
@@ -4970,9 +5249,16 @@ DESCRIPTION_COMPARE_TEMPLATE = """
     <div class="score-panel">
       <strong>ATS proxy score</strong>
       <div class="score-grid">
-        <span>Overall</span><strong>{{ row.ats_score if row.ats_score is not none else '-' }}/100</strong>
-        <span>Keyword</span><strong>{{ row.ats_keyword_score if row.ats_keyword_score is not none else '-' }}/100</strong>
-        <span>Semantic</span><strong>{{ row.ats_semantic_score if row.ats_semantic_score is not none else '-' }}/100</strong>
+        <span>Overall</span>
+        <strong>{{ row.ats_score if row.ats_score is not none else '-' }}/100</strong>
+        <span>Keyword</span>
+        <strong>
+          {{ row.ats_keyword_score if row.ats_keyword_score is not none else '-' }}/100
+        </strong>
+        <span>Semantic</span>
+        <strong>
+          {{ row.ats_semantic_score if row.ats_semantic_score is not none else '-' }}/100
+        </strong>
         <span>Risk</span><strong>{{ row.ats_formatting_risk or '-' }}</strong>
       </div>
       {% if row.ats_missing_terms %}

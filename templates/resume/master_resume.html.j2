@@ -74,6 +74,14 @@
       line-height: 8.6pt;
     }
 
+    .resume-headline {
+      margin: -2pt 0 5pt;
+      color: var(--muted);
+      font-size: 8.2pt;
+      font-weight: 700;
+      line-height: 9.8pt;
+    }
+
     .contact-separator {
       display: inline-block;
       padding: 0 3pt;
@@ -227,7 +235,7 @@
 
   {% macro bullet_text(bullet) -%}
     {%- if bullet is string -%}
-      {{- bullet | linkify -}}
+      {{- bullet | rich_text -}}
     {%- else -%}
       {%- set label = bullet.bold_label | default(bullet.category | default("", true), true) -%}
       {%- set body = bullet.text | default("", true) -%}
@@ -238,7 +246,7 @@
         {%- set body = bullet.rendered_text | default("", true) -%}
       {%- endif -%}
       {%- if label -%}<strong>{{ label }}:</strong>{%- endif -%}
-      {%- if body %} {{ body | linkify }}{%- endif -%}
+      {%- if body %} {{ body | rich_text }}{%- endif -%}
     {%- endif -%}
   {%- endmacro %}
 
@@ -248,9 +256,16 @@
     {% if header.render | default(true) %}
       <header>
         <h1 class="resume-name">{{ header.line_1_name_header_text | default("", true) }}</h1>
+        {% if header.line_2_header_text | default("", true) %}
+          <p class="resume-headline">{{ header.line_2_header_text | rich_text }}</p>
+        {% endif %}
         <p class="resume-contact">
           {% set links = header.links | default([]) %}
           {% set contact_items = header.contact_items | default([]) %}
+          {% set applicant_info = header.line_3_applicant_info_text | default("", true) %}
+          {% if not applicant_info %}
+            {% set applicant_info = header.line_2_applicant_info_text | default("", true) %}
+          {% endif %}
           {% if contact_items %}
             {% for item in contact_items %}
               {% set matched_link = namespace(url=None) %}
@@ -262,12 +277,12 @@
               {% if matched_link.url %}
                 <a href="{{ matched_link.url }}">{{ item }}</a>
               {% else %}
-                {{ item }}
+                {{ item | rich_text }}
               {% endif %}
               {% if not loop.last %}<span class="contact-separator">|</span>{% endif %}
             {% endfor %}
-          {% elif header.line_2_applicant_info_text %}
-            {{ header.line_2_applicant_info_text | linkify }}
+          {% elif applicant_info %}
+            {{ applicant_info | rich_text }}
           {% endif %}
         </p>
       </header>
@@ -277,10 +292,10 @@
       <section class="resume-section">
         <h2 class="section-heading">{{ summary.header_text | default("Professional Summary", true) }}</h2>
         {% if summary.paragraph | default("", true) %}
-          <p>{{ linked(summary.paragraph) }}</p>
+          <p>{{ summary.paragraph | rich_text }}</p>
         {% endif %}
         {% if summary.summary_note | default("", true) %}
-          <p class="summary-note">{{ linked(summary.summary_note) }}</p>
+          <p class="summary-note">{{ summary.summary_note | rich_text }}</p>
         {% endif %}
       </section>
     {% endif %}
@@ -319,7 +334,7 @@
               </p>
             {% endif %}
             {% if line_2.position_intro_text | default("", true) %}
-              <p class="job-intro">{{ linked(line_2.position_intro_text) }}</p>
+              <p class="job-intro">{{ line_2.position_intro_text | rich_text }}</p>
             {% endif %}
             {% if job_bullets %}
               <ul class="bullet-list">
@@ -347,9 +362,9 @@
             {% set line_2 = item.line_2 | default({}) %}
             <li class="education-item">
               {% if item is string %}
-                {{ linked(item) }}
+                {{ item | rich_text }}
               {% elif details %}
-                <strong>{{ item.title }}:</strong> {{ details[0] | linkify }}
+                <strong>{{ item.title }}:</strong> {{ details[0] | rich_text }}
               {% elif line_1.institution_name_text | default("", true) or line_2.degree_name_text | default("", true) %}
                 <strong>{{ line_1.institution_name_text | default("", true) }}:</strong>
                 {{ line_2.degree_name_text | default("", true) }}
@@ -357,7 +372,7 @@
                   | <span class="job-dates">{{ line_2.degree_dates_text }}</span>
                 {% endif %}
               {% else %}
-                {{ linked(item.title | default(item.rendered_text | default("", true), true)) }}
+                {{ item.title | default(item.rendered_text | default("", true), true) | rich_text }}
               {% endif %}
               {% if entry_bullets %}
                 <ul class="nested-list">
@@ -372,7 +387,7 @@
                       {% if sub_item.label | default("", true) %}
                         <em>{{ sub_item.label }}:</em>
                       {% endif %}
-                      {{ linked(sub_item.text | default(sub_item, true)) }}
+                      {{ sub_item.text | default(sub_item, true) | rich_text }}
                     </li>
                   {% endfor %}
                 </ul>
@@ -403,14 +418,14 @@
           {% for project in projects if project is string or (project.render | default(true)) %}
             <li>
               {% if project is string %}
-                {{ linked(project) }}
+                {{ project | rich_text }}
               {% else %}
                 {% set title = project.title_text | default(project.title | default("", true), true) %}
                 {% set url = project.url | default("", true) %}
                 {% set description = project.description_text | default(project.description | default("", true), true) %}
                 {% if title %}<strong>{{ title }}:</strong>{% endif %}
                 {% if url %} {{ linked(url) }}{% endif %}
-                {% if description %} - {{ linked(description) }}{% endif %}
+                {% if description %} - {{ description | rich_text }}{% endif %}
               {% endif %}
             </li>
           {% endfor %}

@@ -15,7 +15,8 @@ section_order:
 header_top:
   render: true
   line_1_name_header_text: Max Perkhounkov
-  line_2_applicant_info_text: Iowa City, IA | 641-781-0477 | mperkhounkov1@gmail.com
+  line_2_header_text: ''
+  line_3_applicant_info_text: Iowa City, IA | 641-781-0477 | mperkhounkov1@gmail.com
     | linkedin.com/in/maxim-perkhounkov
   contact_items:
   - Iowa City, IA

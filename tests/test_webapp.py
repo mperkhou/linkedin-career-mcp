@@ -627,9 +627,18 @@ def test_resume_editor_saves_rerenders_rescores_and_reverts(tmp_path: Path, monk
 
     edit_response = client.get("/resumes/123/edit?return_to=%2F%3Fsort%3Dresume")
     assert edit_response.status_code == 200
-    form_data = _edit_form_data(edit_response.data.decode())
-    form_data["summary_paragraph"] = "Edited summary with authentication APIs."
-    form_data["job_0_bullet_0_text"] = "Edited authentication API bullet."
+    edit_html = edit_response.data.decode()
+    assert 'data-rich-command="bold"' in edit_html
+    assert 'data-rich-command="italic"' in edit_html
+    assert 'data-rich-target="header_line_2"' in edit_html
+    assert 'data-rich-target="summary_paragraph"' in edit_html
+    form_data = _edit_form_data(edit_html)
+    form_data["header_line_2"] = "<b>Staff Platform Engineer</b>"
+    form_data["summary_paragraph"] = (
+        "Edited summary with <b>authentication</b> <i>APIs</i>."
+        "<script>bad()</script>"
+    )
+    form_data["job_0_bullet_0_text"] = "Edited <b>authentication</b> API bullet."
 
     save_response = client.post("/resumes/123/edit", data=form_data)
     assert save_response.status_code == 302
@@ -643,14 +652,23 @@ def test_resume_editor_saves_rerenders_rescores_and_reverts(tmp_path: Path, monk
             WHERE job_id = '123'
             """
         ).fetchone()
-    assert "Edited summary with authentication APIs." in edited_row[
+    assert "<b>Staff Platform Engineer</b>" in edited_row["application_resume_object"]
+    assert "line_3_applicant_info_text" in edited_row["application_resume_object"]
+    assert "line_2_applicant_info_text" not in edited_row["application_resume_object"]
+    assert "Edited summary with <b>authentication</b> <i>APIs</i>." in edited_row[
         "application_resume_object"
     ]
-    assert "Edited authentication API bullet." in edited_row["application_resume_object"]
+    assert "<script>" not in edited_row["application_resume_object"]
+    assert "Edited <b>authentication</b> API bullet." in edited_row[
+        "application_resume_object"
+    ]
     assert "Original platform API bullet." in edited_row[
         "application_resume_backup_object"
     ]
-    assert "Edited authentication API bullet." in edited_row["resume_html_content"]
+    assert '<p class="resume-headline"><b>Staff Platform Engineer</b></p>' in edited_row[
+        "resume_html_content"
+    ]
+    assert "Edited <b>authentication</b> API bullet." in edited_row["resume_html_content"]
     assert edited_row["resume_content"] is not None
     assert edited_row["source_resume_path"] == ""
     assert edited_row["ats_score"] is not None
@@ -670,7 +688,7 @@ def test_resume_editor_saves_rerenders_rescores_and_reverts(tmp_path: Path, monk
             """
         ).fetchone()
     assert "Original platform API bullet." in reverted_row["application_resume_object"]
-    assert "Edited authentication API bullet." in reverted_row[
+    assert "Edited <b>authentication</b> API bullet." in reverted_row[
         "application_resume_backup_object"
     ]
     assert "Original platform API bullet." in reverted_row["resume_html_content"]
@@ -1024,7 +1042,9 @@ def test_add_application_loads_other_job_url_and_starts_regeneration(
     assert row["company"] == "Example Jobs"
     assert row["job_title"] == "Staff Platform Engineer"
     assert row["linkedin_url"] == "https://jobs.example.com/staff-engineer"
-    assert row["job_description"] == "Raw generic JOD with platform reliability and secure API work."
+    assert row["job_description"] == (
+        "Raw generic JOD with platform reliability and secure API work."
+    )
     assert row["prompt_job_description"] == "Clean generic JOD with platform reliability."
     assert row["date_posted"] == "2026-06-14"
     assert row["experience_level"] == "Senior"
@@ -1055,7 +1075,8 @@ def _sample_application_resume_yaml(*, paragraph: str, bullet: str) -> str:
     return f"""schema_version: test
 header_top:
   line_1_name_header_text: Max Perkhounkov
-  line_2_applicant_info_text: max@example.com
+  line_2_header_text: ''
+  line_3_applicant_info_text: max@example.com
   contact_items:
   - max@example.com
   links: []

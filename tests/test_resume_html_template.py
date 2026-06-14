@@ -12,6 +12,7 @@ def test_resume_html_template_renders_trimmed_application_object(tmp_path: Path)
             {
                 "header_top": {
                     "line_1_name_header_text": "Max Perkhounkov",
+                    "line_2_header_text": "<b>Platform Automation Engineer</b>",
                     "contact_items": ["Iowa City, IA", "mperkhounkov1@gmail.com"],
                 },
                 "core_technical_skills": {
@@ -39,7 +40,7 @@ def test_resume_html_template_renders_trimmed_application_object(tmp_path: Path)
                             "bullet_points": [
                                 {
                                     "bold_label": "Agentic Workflow",
-                                    "text": "Built a dynamic renderer prototype.",
+                                    "text": "Built a <b>dynamic</b> renderer prototype.",
                                     "render": True,
                                 },
                                 {
@@ -76,12 +77,16 @@ def test_resume_html_template_renders_trimmed_application_object(tmp_path: Path)
 
     assert "Core Technical Skills" in html
     assert "Professional Experience" in html
+    assert '<p class="resume-headline"><b>Platform Automation Engineer</b></p>' in html
     assert "Education &amp; Certifications" not in html
     assert "Professional Summary" not in html
     assert "<strong>AI Platform:</strong> Python, Jinja2, OpenRouter" in html
     assert "<strong>Languages &amp; Frameworks:</strong> Python, Ruby, MATLAB" in html
     assert "Not in inventory" not in html
-    assert "<strong>Agentic Workflow:</strong> Built a dynamic renderer prototype." in html
+    assert (
+        "<strong>Agentic Workflow:</strong> Built a <b>dynamic</b> renderer prototype."
+        in html
+    )
     assert "This bullet should not render" not in html
     assert "Hidden Company" not in html
     assert "This job should not render" not in html
@@ -95,6 +100,7 @@ def test_resume_html_template_honors_section_render_flags(tmp_path: Path) -> Non
                 "header_top": {
                     "render": True,
                     "line_1_name_header_text": "Max Perkhounkov",
+                    "line_2_header_text": "",
                     "contact_items": ["Iowa City, IA"],
                 },
                 "professional_summary": {
@@ -169,6 +175,7 @@ def test_resume_html_template_honors_section_render_flags(tmp_path: Path) -> Non
     )
 
     assert "This summary should not render" not in html
+    assert '<p class="resume-headline">' not in html
     assert "Hidden Skills" not in html
     assert "Hidden Employer" not in html
     assert "University of Iowa" in html

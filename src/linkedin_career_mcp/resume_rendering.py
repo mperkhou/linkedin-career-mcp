@@ -16,6 +16,8 @@ from reportlab.lib.pagesizes import LETTER
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
+_RESUME_RICH_TAG_RE = re.compile(r"</?\s*(a|b|br|div|em|i|p|strong)\b", re.IGNORECASE)
+
 
 def linkify(value: object) -> Markup:
     text = "" if value is None else str(value)
@@ -32,6 +34,49 @@ def linkify(value: object) -> Markup:
         cursor = match.end()
     parts.append(escape(text[cursor:]))
     return Markup("").join(parts)
+
+
+def rich_text(value: object) -> Markup:
+    return Markup(sanitize_resume_rich_text(value))
+
+
+def sanitize_resume_rich_text(value: object) -> str:
+    text = "" if value is None else str(value).strip()
+    if not text:
+        return ""
+    if not _RESUME_RICH_TAG_RE.search(text):
+        return str(linkify(text))
+
+    soup = BeautifulSoup(text, "html.parser")
+    for tag in soup.find_all(["script", "style"]):
+        tag.decompose()
+    return "".join(_resume_rich_node_markup(child) for child in soup.contents).strip()
+
+
+def _resume_rich_node_markup(node: object) -> str:
+    from bs4 import NavigableString, Tag
+
+    if isinstance(node, NavigableString):
+        return str(linkify(str(node)))
+    if not isinstance(node, Tag):
+        return ""
+
+    name = (node.name or "").lower()
+    if name == "br":
+        return "<br/>"
+
+    inner = "".join(_resume_rich_node_markup(child) for child in node.children)
+    if name in {"b", "strong"}:
+        return f"<b>{inner}</b>"
+    if name in {"i", "em"}:
+        return f"<i>{inner}</i>"
+    if name == "a":
+        href = str(node.get("href") or "").strip()
+        if href.startswith(("http://", "https://", "mailto:")):
+            safe_href = escape(href)
+            return f'<a href="{safe_href}">{inner}</a>'
+        return inner
+    return inner
 
 
 def render_skill_items(value: object) -> str:
@@ -90,6 +135,7 @@ def render_resume_html_from_mapping(
         lstrip_blocks=True,
     )
     environment.filters["linkify"] = linkify
+    environment.filters["rich_text"] = rich_text
     environment.filters["render_skill_items"] = render_skill_items
     template = environment.get_template(template_path.name)
     return template.render(data=resume)

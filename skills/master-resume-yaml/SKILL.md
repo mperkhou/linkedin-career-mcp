@@ -46,6 +46,11 @@ Keep the object renderer-friendly:
 
 - Every renderable top-level section has an explicit `render: true` unless the section
   should be hidden in a generated ARO.
+- `header_top.line_1_name_header_text` is the name, `header_top.line_2_header_text`
+  is an optional empty-by-default headline line, and
+  `header_top.line_3_applicant_info_text` is the fallback contact line. Preserve
+  `contact_items`/`links` for structured rendering; the HTML renderer hides line 2
+  when it is empty.
 - `core_technical_skills.bullet_points[*].items.primary` contains the always-rendered skills.
 - `core_technical_skills.bullet_points[*].items.additional` contains factual optional skills that may be selected later.
 - Every core skill bucket in the master YAML has `jod_matched_items: []`.
