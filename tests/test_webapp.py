@@ -6,6 +6,7 @@ from io import BytesIO
 from pathlib import Path
 
 import pytest
+import yaml
 from bs4 import BeautifulSoup
 from openpyxl import Workbook, load_workbook
 from reportlab.pdfgen import canvas
@@ -724,6 +725,10 @@ def test_resume_editor_saves_rerenders_rescores_and_reverts(tmp_path: Path, monk
             """
         ).fetchone()
     assert "<b>Staff Platform Engineer</b>" in edited_row["application_resume_object"]
+    edited_aro = yaml.safe_load(edited_row["application_resume_object"])
+    edited_skill_items = edited_aro["core_technical_skills"]["bullet_points"][0]["items"]
+    assert edited_skill_items["primary"] == ["Python", "AWS"]
+    assert edited_skill_items["additional"] == ["authentication", "Java"]
     assert "line_3_applicant_info_text" in edited_row["application_resume_object"]
     assert "line_2_applicant_info_text" not in edited_row["application_resume_object"]
     assert "Edited summary with <b>authentication</b> <i>APIs</i>." in edited_row[
@@ -737,6 +742,9 @@ def test_resume_editor_saves_rerenders_rescores_and_reverts(tmp_path: Path, monk
         "application_resume_backup_object"
     ]
     assert '<p class="resume-headline"><b>Staff Platform Engineer</b></p>' in edited_row[
+        "resume_html_content"
+    ]
+    assert "<strong>Platform Engineering:</strong> Python, AWS, authentication" in edited_row[
         "resume_html_content"
     ]
     assert "Edited <b>authentication</b> API bullet." in edited_row["resume_html_content"]
@@ -764,6 +772,40 @@ def test_resume_editor_saves_rerenders_rescores_and_reverts(tmp_path: Path, monk
     ]
     assert "Original platform API bullet." in reverted_row["resume_html_content"]
     assert reverted_row["ats_score"] is not None
+
+
+def test_resume_editor_preserves_skill_inventory_when_skill_fields_are_missing():
+    resume = yaml.safe_load(
+        _sample_application_resume_yaml(
+            paragraph="Original summary for platform APIs.",
+            bullet="Original platform API bullet.",
+        )
+    )
+    form = {
+        "header_name": "Max Perkhounkov",
+        "header_line_2": "Senior Platform Software Engineer",
+        "header_info": "max@example.com",
+        "header_contact_items": "max@example.com",
+        "summary_render": "1",
+        "summary_header_text": "Professional Summary",
+        "summary_paragraph": "Original summary for platform APIs.",
+        "summary_note": "",
+        "skills_render": "1",
+        "skills_header_text": "Core Technical Skills",
+        "skill_0_primary": "",
+        "skill_0_additional": "",
+        "skill_0_jod_matched": "",
+        "experience_render": "1",
+        "experience_header_text": "Professional Experience",
+    }
+
+    updated = webapp._apply_resume_editor_form(resume, form)  # noqa: SLF001
+
+    skill_bucket = updated["core_technical_skills"]["bullet_points"][0]
+    assert skill_bucket["category"] == "Platform Engineering"
+    assert skill_bucket["items"]["primary"] == ["Python", "AWS"]
+    assert skill_bucket["items"]["additional"] == ["authentication", "Java"]
+    assert skill_bucket["jod_matched_items"] == ["authentication"]
 
 
 def test_aro_resume_sync_status_and_edit_warning(tmp_path: Path, monkeypatch):

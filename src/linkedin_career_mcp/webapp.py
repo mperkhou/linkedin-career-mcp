@@ -2236,14 +2236,30 @@ def _apply_resume_editor_form(resume: dict[str, Any], form: Any) -> dict[str, An
     skills["render"] = _form_bool(form, "skills_render")
     skills["header_text"] = _form_text(form, "skills_header_text")
     for index, bullet in enumerate(_mapping_list(skills.get("bullet_points"))):
-        bullet["category"] = _form_text(form, f"skill_{index}_category")
+        bullet["category"] = _form_text_or_existing(
+            form,
+            f"skill_{index}_category",
+            bullet.get("category"),
+        )
         items = bullet.get("items")
         if not isinstance(items, dict):
             items = {}
             bullet["items"] = items
-        items["primary"] = _form_lines(form, f"skill_{index}_primary")
-        items["additional"] = _form_lines(form, f"skill_{index}_additional")
-        bullet["jod_matched_items"] = _form_lines(form, f"skill_{index}_jod_matched")
+        items["primary"] = _form_lines_or_existing(
+            form,
+            f"skill_{index}_primary",
+            items.get("primary"),
+        )
+        items["additional"] = _form_lines_or_existing(
+            form,
+            f"skill_{index}_additional",
+            items.get("additional"),
+        )
+        bullet["jod_matched_items"] = _form_lines_or_existing(
+            form,
+            f"skill_{index}_jod_matched",
+            bullet.get("jod_matched_items"),
+        )
 
     experience = _ensure_mapping(resume, "professional_experience")
     experience["render"] = _form_bool(form, "experience_render")
@@ -2367,6 +2383,12 @@ def _form_text(form: Any, name: str) -> str:
     return str(form.get(name) or "").strip()
 
 
+def _form_text_or_existing(form: Any, name: str, existing: Any) -> str:
+    if name not in form:
+        return str(existing or "").strip()
+    return _form_text(form, name)
+
+
 def _form_rich_text(form: Any, name: str) -> str:
     return sanitize_resume_rich_text(form.get(name))
 
@@ -2377,6 +2399,20 @@ def _form_bool(form: Any, name: str) -> bool:
 
 def _form_lines(form: Any, name: str) -> list[str]:
     return _textarea_lines(_form_text(form, name))
+
+
+def _form_lines_or_existing(form: Any, name: str, existing: Any) -> list[str]:
+    existing_items = _string_list(existing)
+    if name in form:
+        submitted_items = _form_lines(form, name)
+        return submitted_items or existing_items
+    return existing_items
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
 
 
 def _textarea_lines(value: str) -> list[str]:
@@ -4942,7 +4978,7 @@ RESUME_EDIT_TEMPLATE = """
         </label>
         {% for bullet in skills.bullet_points | default([]) %}
           {% set skill_index = loop.index0 %}
-          {% set items = bullet.items | default({}) %}
+          {% set skill_items = bullet["items"] | default({}) %}
           <div class="nested-card">
             <label class="field">Category
               <input
@@ -4954,12 +4990,12 @@ RESUME_EDIT_TEMPLATE = """
             <div class="grid">
               <label class="field">Primary Items
                 <textarea name="skill_{{ skill_index }}_primary">
-                  {{- (items.primary | default([])) | join('\n') -}}
+                  {{- (skill_items.primary | default([])) | join('\n') -}}
                 </textarea>
               </label>
               <label class="field">Additional Items
                 <textarea name="skill_{{ skill_index }}_additional">
-                  {{- (items.additional | default([])) | join('\n') -}}
+                  {{- (skill_items.additional | default([])) | join('\n') -}}
                 </textarea>
               </label>
             </div>
