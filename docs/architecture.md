@@ -11,7 +11,7 @@ server.py
 tools/
   Registers MCP tools. Tool functions should stay thin and return serializable models.
 
-services.py
+services/
   Coordinates providers, applies caps and defaults, and owns tool-friendly errors.
 
 providers/
@@ -26,7 +26,7 @@ workflows/
 
 - Keep LinkedIn public scraping isolated in `providers/linkedin_public.py`.
 - Do not put credentials in provider constructors unless a future authenticated provider needs them.
-- Prefer domain models in `models.py` over loose dictionaries between layers.
+- Prefer domain models in `models/` over loose dictionaries between layers.
 - Future application submission workflows must require explicit user approval before any external submit action.
 - Add new job boards as providers, not as separate MCP servers, unless their auth/runtime needs diverge.
 
