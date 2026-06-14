@@ -65,10 +65,10 @@ def register_matching_tools(mcp: FastMCP, workflow: MatchingJobsWorkflow) -> Non
             ArtifactMode,
             Field(
                 description=(
-                    "Artifact generation mode: all, resumes-only, or cover-letters-only."
+                    "Artifact generation mode. Use resumes-only while cover letters are manual."
                 ),
             ),
-        ] = "all",
+        ] = "resumes-only",
     ) -> dict[str, object]:
         """Find remote or hybrid matching LinkedIn jobs and prepare application PDFs."""
 

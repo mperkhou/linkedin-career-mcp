@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
 
+import pytest
 from bs4 import BeautifulSoup
 from openpyxl import Workbook, load_workbook
 from reportlab.pdfgen import canvas
@@ -68,6 +69,8 @@ def test_connect_database_migrates_job_description_columns(tmp_path: Path):
     assert "source_resume_html_path" in columns
     assert "resume_html_updated_at" in columns
     assert "resume_updated_at" in columns
+    assert "cover_letter_object" in columns
+    assert "cover_letter_object_updated_at" in columns
     assert "cover_letter_filename" in columns
     assert "cover_letter_content" in columns
     assert "source_cover_letter_path" in columns
@@ -170,7 +173,7 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
         job_title="Senior Engineer",
         linkedin_url="https://www.linkedin.com/jobs/view/123",
         resume_path=resume_path,
-        cover_letter_path=cover_letter_path,
+        cover_letter_path=None,
         job_description="Full parsed JOD with mission boilerplate and role requirements.",
         prompt_job_description="Clean prompt JOD with role requirements.",
         date_posted="2026-06-07T12:00:00Z",
@@ -191,7 +194,7 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     assert score_row["ats_missing_terms"] is not None
     assert score_row["experience_level"] == "Mid-Senior level"
     assert score_row["resume_updated_at"] == "2026-06-09T15:30:00+00:00"
-    assert score_row["cover_letter_updated_at"] == "2026-06-10T16:45:00+00:00"
+    assert score_row["cover_letter_updated_at"] is None
 
     app = create_app(database_path=database_path, output_dir=output_dir)
     client = app.test_client()
@@ -202,17 +205,17 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     assert b"/descriptions/123" in index.data
     assert b"Compare descriptions" in index.data
     assert b"Cover Letter" in index.data
-    assert b"/cover-letters/123" in index.data
+    assert b"/cover-letters/123/edit" in index.data
     assert 'action="/resumes/123/copy-to-downloads"' in html
-    assert 'action="/cover-letters/123/copy-to-downloads"' in html
+    assert 'action="/cover-letters/123/copy-to-downloads"' not in html
     assert 'id="actions-form"' in html
     assert 'action="/actions/run"' in html
     assert 'id="action-sync"' in html
     assert "Sync from output" in html
     assert 'id="action-regenerate"' in html
-    assert "Regenerate docs" in html
-    assert "Cover letters" in html
-    assert "Resumes" in html
+    assert "Regenerate resumes" in html
+    assert "Cover letters" not in html
+    assert "Regenerate docs" not in html
     assert 'id="action-status"' in html
     assert 'fetch("/actions/status"' in html
     assert 'class="same-page-download"' not in html
@@ -235,9 +238,8 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     assert b'data-matched-sort=' in index.data
     assert b"data-ats-sort=" in index.data
     assert b'data-resume-sort="2026-06-09T15:30:00+00:00"' in index.data
-    assert b'data-cover-letter-sort="2026-06-10T16:45:00+00:00"' in index.data
+    assert b'data-cover-letter-sort=""' in index.data
     assert b"2026-06-09 15:30" in index.data
-    assert b"2026-06-10 16:45" in index.data
     assert b"ATS proxy score:" in index.data
     assert b"Keyword match:" in index.data
     assert b"Formatting risk:" in index.data
@@ -284,19 +286,12 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     assert resume_download.data == b"%PDF-1.4 fake pdf"
     assert "attachment" in resume_download.headers["Content-Disposition"]
 
-    db_cover_letter = client.get("/cover-letters/123")
-    assert db_cover_letter.status_code == 200
-    assert db_cover_letter.data == b"%PDF-1.4 fake cover"
-
-    cover_letter_download = client.get("/cover-letters/123/download")
-    assert cover_letter_download.status_code == 200
-    assert cover_letter_download.data == b"%PDF-1.4 fake cover"
-    assert "attachment" in cover_letter_download.headers["Content-Disposition"]
+    assert client.get("/cover-letters/123").status_code == 404
+    assert client.get("/cover-letters/123/download").status_code == 404
 
     downloads_dir = tmp_path / "Downloads"
     downloads_dir.mkdir()
     downloaded_resume = downloads_dir / "mp_resume_senior_engineer.pdf"
-    downloaded_cover_letter = downloads_dir / "mp_cover_letter_senior_engineer.pdf"
     unrelated_pdf = downloads_dir / "other_resume.pdf"
     monkeypatch.setenv("HOME", str(tmp_path))
 
@@ -304,16 +299,8 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     assert resume_copy.status_code == 302
     assert downloaded_resume.read_bytes() == b"%PDF-1.4 fake pdf"
 
-    cover_letter_copy = client.post("/cover-letters/123/copy-to-downloads")
-    assert cover_letter_copy.status_code == 302
-    assert downloaded_cover_letter.read_bytes() == b"%PDF-1.4 fake cover"
-
     copy_index = client.get("/")
     assert b"Copied resume to ~/Downloads/mp_resume_senior_engineer.pdf." in copy_index.data
-    assert (
-        b"Copied cover letter to ~/Downloads/mp_cover_letter_senior_engineer.pdf."
-        in copy_index.data
-    )
 
     unrelated_pdf.write_bytes(b"other")
 
@@ -323,7 +310,6 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     )
     assert yes_response.status_code == 302
     assert not downloaded_resume.exists()
-    assert not downloaded_cover_letter.exists()
     assert unrelated_pdf.exists()
 
     update_response = client.post(
@@ -396,17 +382,14 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
 
 def test_regenerate_make_command_maps_modes_to_make_targets():
     assert webapp._regenerate_make_command(  # noqa: SLF001
-        regenerate_mode="all",
-        job_ids=["123", "456"],
-    ) == ["make", "regenerate-all", "JOB_IDS=123 456"]
-    assert webapp._regenerate_make_command(  # noqa: SLF001
         regenerate_mode="resumes",
         job_ids=["123"],
     ) == ["make", "regenerate-resumes", "JOB_IDS=123"]
-    assert webapp._regenerate_make_command(  # noqa: SLF001
-        regenerate_mode="cover_letters",
-        job_ids=["123"],
-    ) == ["make", "regenerate-cover-letters", "JOB_IDS=123"]
+    with pytest.raises(ValueError, match="Unsupported regeneration mode"):
+        webapp._regenerate_make_command(  # noqa: SLF001
+            regenerate_mode="cover_letters",
+            job_ids=["123"],
+        )
 
 
 def test_store_application_resume_first_draft_updates_tracker_row(tmp_path: Path):
@@ -638,6 +621,82 @@ def test_resume_editor_saves_rerenders_rescores_and_reverts(tmp_path: Path, monk
     assert reverted_row["ats_score"] is not None
 
 
+def test_cover_letter_editor_saves_clo_and_pdf(tmp_path: Path, monkeypatch):
+    database_path = tmp_path / "applications.sqlite3"
+    webapp.upsert_application_artifact(
+        database_path=database_path,
+        job_id="123",
+        company="Example Co",
+        job_title="Senior Engineer",
+        linkedin_url="https://www.linkedin.com/jobs/view/123",
+        resume_path=None,
+        job_description="Requires Python, AWS, APIs, and authentication.",
+        prompt_job_description="Requires Python, AWS, APIs, and authentication.",
+    )
+
+    app = create_app(database_path=database_path, output_dir=tmp_path / "output")
+    client = app.test_client()
+
+    edit_response = client.get("/cover-letters/123/edit?return_to=%2F%3Fq%3DExample")
+    assert edit_response.status_code == 200
+    edit_html = edit_response.data.decode()
+    assert "Edit Cover Letter" in edit_html
+    assert 'contenteditable="true"' in edit_html
+    assert 'data-command="bold"' in edit_html
+    assert 'data-command="italic"' in edit_html
+
+    save_response = client.post(
+        "/cover-letters/123/edit",
+        data={
+            "return_to": "/?q=Example",
+            "body_html": (
+                "<p>Dear <strong>Hiring Team</strong>,</p>"
+                "<script>alert('nope')</script>"
+                "<p><em>I am excited</em> about authentication systems.</p>"
+            ),
+        },
+    )
+    assert save_response.status_code == 302
+    with webapp.connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT cover_letter_object, cover_letter_filename, cover_letter_content,
+                   source_cover_letter_path, cover_letter_updated_at
+            FROM applications
+            WHERE job_id = '123'
+            """
+        ).fetchone()
+    assert row["cover_letter_object"] is not None
+    assert "<script>" not in row["cover_letter_object"]
+    assert "<b>Hiring Team</b>" in row["cover_letter_object"]
+    assert "<i>I am excited</i>" in row["cover_letter_object"]
+    assert row["cover_letter_filename"] == "mp_cover_letter_senior_engineer.pdf"
+    assert bytes(row["cover_letter_content"]).startswith(b"%PDF")
+    assert row["source_cover_letter_path"] == ""
+    assert row["cover_letter_updated_at"] is not None
+
+    pdf_response = client.get("/cover-letters/123")
+    assert pdf_response.status_code == 200
+    assert pdf_response.data.startswith(b"%PDF")
+    download_response = client.get("/cover-letters/123/download")
+    assert download_response.status_code == 200
+    assert "attachment" in download_response.headers["Content-Disposition"]
+
+    index = client.get("/")
+    assert b"/cover-letters/123/edit" in index.data
+    assert b"/cover-letters/123" in index.data
+    assert b"Download" in index.data
+
+    downloads_dir = tmp_path / "Downloads"
+    downloads_dir.mkdir()
+    monkeypatch.setenv("HOME", str(tmp_path))
+    copy_response = client.post("/cover-letters/123/copy-to-downloads")
+    assert copy_response.status_code == 302
+    assert (downloads_dir / "mp_cover_letter_senior_engineer.pdf").read_bytes().startswith(
+        b"%PDF"
+    )
+
+
 def test_actions_run_starts_background_regeneration(tmp_path: Path):
     with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
         webapp._ACTION_RUNS.clear()  # noqa: SLF001
@@ -672,7 +731,7 @@ def test_actions_run_starts_background_regeneration(tmp_path: Path):
         data={
             "action_sync": "1",
             "action_regenerate": "1",
-            "regenerate_mode": "all",
+            "regenerate_mode": "resumes",
             "job_id": ["123", "123", "456"],
             "return_to": "/?q=Example",
         },
@@ -683,14 +742,14 @@ def test_actions_run_starts_background_regeneration(tmp_path: Path):
     assert completed.wait(timeout=2)
     assert calls
     assert calls[0]["sync_requested"] is True
-    assert calls[0]["regenerate_mode"] == "all"
+    assert calls[0]["regenerate_mode"] == "resumes"
     assert calls[0]["job_ids"] == ["123", "456"]
 
     status = client.get("/actions/status").get_json()
     assert status is not None
     assert status["runs"][0]["status"] == "completed"
     assert status["runs"][0]["return_code"] == 0
-    assert status["runs"][0]["title"] == "sync output + regenerate all docs for 2 job(s)"
+    assert status["runs"][0]["title"] == "sync output + regenerate resumes for 2 job(s)"
     assert any("processing job 123" in message for message in status["runs"][0]["messages"])
 
 

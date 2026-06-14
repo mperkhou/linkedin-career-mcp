@@ -9,13 +9,19 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from html import escape as html_escape
 from io import BytesIO
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
 import yaml
+from bs4 import BeautifulSoup, Comment, NavigableString, Tag
 from openpyxl import load_workbook
+from reportlab.lib.colors import HexColor
+from reportlab.lib.pagesizes import LETTER
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer
 
 from linkedin_career_mcp.ats import AtsProxyScore, calculate_ats_proxy_score
 from linkedin_career_mcp.resume_rendering import (
@@ -65,6 +71,8 @@ APPLICATION_EXTRA_COLUMNS = {
     "source_resume_html_path": "TEXT NOT NULL DEFAULT ''",
     "resume_html_updated_at": "TEXT",
     "resume_updated_at": "TEXT",
+    "cover_letter_object": "TEXT",
+    "cover_letter_object_updated_at": "TEXT",
     "cover_letter_filename": "TEXT NOT NULL DEFAULT ''",
     "cover_letter_content": "BLOB",
     "cover_letter_mime_type": "TEXT NOT NULL DEFAULT 'application/pdf'",
@@ -81,11 +89,10 @@ APPLICATION_EXTRA_COLUMNS = {
     "ats_missing_terms": "TEXT",
     "ats_updated_at": "TEXT",
 }
-REGENERATE_ACTION_TARGETS = {
-    "resumes": "regenerate-resumes",
-    "cover_letters": "regenerate-cover-letters",
-    "all": "regenerate-all",
-}
+REGENERATE_ACTION_TARGETS = {"resumes": "regenerate-resumes"}
+COVER_LETTER_OBJECT_SCHEMA_VERSION = "cover_letter_object.v0.1"
+EMERALD_ACCENT = HexColor("#57ba86")
+RESUME_BODY_COLOR = HexColor("#111827")
 MAX_ACTION_RUNS = 8
 MAX_ACTION_MESSAGES = 160
 
@@ -161,6 +168,8 @@ def init_database(connection: sqlite3.Connection) -> None:
             resume_mime_type TEXT NOT NULL DEFAULT 'application/pdf',
             source_resume_path TEXT NOT NULL,
             resume_updated_at TEXT,
+            cover_letter_object TEXT,
+            cover_letter_object_updated_at TEXT,
             cover_letter_filename TEXT NOT NULL DEFAULT '',
             cover_letter_content BLOB,
             cover_letter_mime_type TEXT NOT NULL DEFAULT 'application/pdf',
@@ -389,27 +398,41 @@ def upsert_application_artifact(
                     )
                 END,
                 cover_letter_filename = CASE
+                    WHEN COALESCE(NULLIF(applications.cover_letter_object, ''), '') != ''
+                    THEN applications.cover_letter_filename
                     WHEN excluded.cover_letter_filename != '' THEN excluded.cover_letter_filename
                     ELSE applications.cover_letter_filename
                 END,
-                cover_letter_content = COALESCE(
-                    excluded.cover_letter_content,
-                    applications.cover_letter_content
-                ),
+                cover_letter_content = CASE
+                    WHEN COALESCE(NULLIF(applications.cover_letter_object, ''), '') != ''
+                    THEN applications.cover_letter_content
+                    ELSE COALESCE(
+                        excluded.cover_letter_content,
+                        applications.cover_letter_content
+                    )
+                END,
                 cover_letter_mime_type = CASE
+                    WHEN COALESCE(NULLIF(applications.cover_letter_object, ''), '') != ''
+                    THEN applications.cover_letter_mime_type
                     WHEN excluded.cover_letter_content IS NOT NULL
                     THEN excluded.cover_letter_mime_type
                     ELSE applications.cover_letter_mime_type
                 END,
                 source_cover_letter_path = CASE
+                    WHEN COALESCE(NULLIF(applications.cover_letter_object, ''), '') != ''
+                    THEN applications.source_cover_letter_path
                     WHEN excluded.source_cover_letter_path != ''
                     THEN excluded.source_cover_letter_path
                     ELSE applications.source_cover_letter_path
                 END,
-                cover_letter_updated_at = COALESCE(
-                    excluded.cover_letter_updated_at,
-                    applications.cover_letter_updated_at
-                ),
+                cover_letter_updated_at = CASE
+                    WHEN COALESCE(NULLIF(applications.cover_letter_object, ''), '') != ''
+                    THEN applications.cover_letter_updated_at
+                    ELSE COALESCE(
+                        excluded.cover_letter_updated_at,
+                        applications.cover_letter_updated_at
+                    )
+                END,
                 date_matched = COALESCE(
                     NULLIF(applications.date_matched, ''),
                     excluded.date_matched
@@ -710,6 +733,103 @@ def revert_application_resume_edit(
     )
 
 
+def save_cover_letter_edit(
+    *,
+    database_path: Path,
+    job_id: str,
+    body_html: str,
+) -> None:
+    sanitized_html = _sanitize_cover_letter_body_html(body_html)
+    body_text = _cover_letter_plain_text(sanitized_html)
+    if not body_text:
+        raise ValueError("Cover letter text is empty.")
+    cover_letter_object = _dump_cover_letter_object(
+        {
+            "schema_version": COVER_LETTER_OBJECT_SCHEMA_VERSION,
+            "source": "manual",
+            "body_html": sanitized_html,
+            "body_text": body_text,
+        }
+    )
+    cover_letter_pdf = render_cover_letter_pdf_from_clo_html(sanitized_html)
+    now = datetime.now(UTC).isoformat(timespec="seconds")
+    with connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT *
+            FROM applications
+            WHERE job_id = ?
+            """,
+            (job_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"Application row was not found for job_id={job_id}.")
+        connection.execute(
+            """
+            UPDATE applications
+            SET cover_letter_object = ?,
+                cover_letter_object_updated_at = ?,
+                cover_letter_filename = ?,
+                cover_letter_content = ?,
+                cover_letter_mime_type = 'application/pdf',
+                source_cover_letter_path = '',
+                cover_letter_updated_at = ?,
+                updated_at = ?
+            WHERE job_id = ?
+            """,
+            (
+                cover_letter_object,
+                now,
+                _cover_letter_pdf_filename(row),
+                cover_letter_pdf,
+                now,
+                now,
+                job_id,
+            ),
+        )
+        connection.commit()
+
+
+def render_cover_letter_pdf_from_clo_html(body_html: str) -> bytes:
+    styles = getSampleStyleSheet()
+    body = ParagraphStyle(
+        "ManualCoverLetterBody",
+        parent=styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=10.5,
+        leading=14.5,
+        spaceAfter=10,
+        textColor=RESUME_BODY_COLOR,
+    )
+    story: list[Any] = [
+        HRFlowable(
+            width="100%",
+            thickness=7.2,
+            color=EMERALD_ACCENT,
+            spaceBefore=0,
+            spaceAfter=0,
+        ),
+        Spacer(1, 34),
+    ]
+    paragraphs = _cover_letter_paragraph_markup(body_html)
+    if not paragraphs:
+        paragraphs = ["Cover letter content was empty."]
+    for paragraph in paragraphs:
+        story.append(Paragraph(paragraph, body))
+
+    buffer = BytesIO()
+    document = SimpleDocTemplate(
+        buffer,
+        pagesize=LETTER,
+        rightMargin=72,
+        leftMargin=72,
+        topMargin=54,
+        bottomMargin=72,
+    )
+    document.build(story)
+    return buffer.getvalue()
+
+
 def delete_applications(
     *,
     database_path: Path,
@@ -775,20 +895,6 @@ def import_output_artifacts(*, output_dir: Path, database_path: Path) -> ImportR
         if resume_path_text and (resume_path is None or not resume_path.exists()):
             missing_resumes += 1
 
-        cover_letter_path_text = ""
-        if "cover_letter" in column_indexes:
-            cover_letter_value = row[column_indexes["cover_letter"]]
-            cover_letter_path_text = str(cover_letter_value or "").strip()
-        cover_letter_path = (
-            _resolve_output_path(output_dir=output_dir, path_text=cover_letter_path_text)
-            if cover_letter_path_text
-            else None
-        )
-        if cover_letter_path_text and (
-            cover_letter_path is None or not cover_letter_path.exists()
-        ):
-            missing_cover_letters += 1
-
         upsert_application_artifact(
             database_path=database_path,
             job_id=job_id,
@@ -796,7 +902,7 @@ def import_output_artifacts(*, output_dir: Path, database_path: Path) -> ImportR
             job_title=str(values["job_title"] or ""),
             linkedin_url=str(values["linkedin_url"] or ""),
             resume_path=resume_path,
-            cover_letter_path=cover_letter_path,
+            cover_letter_path=None,
             applied_to=str(values["applied_to"] or "No"),
             date_applied=_date_value(values["date_applied"]),
             date_matched=_optional_row_value(
@@ -1093,8 +1199,6 @@ def _background_action_title(
     if regenerate_mode:
         label = {
             "resumes": "regenerate resumes",
-            "cover_letters": "regenerate cover letters",
-            "all": "regenerate all docs",
         }.get(regenerate_mode, "regenerate docs")
         parts.append(f"{label} for {len(job_ids)} job(s)")
     return " + ".join(parts) or "background action"
@@ -1192,7 +1296,7 @@ def create_app(
     def run_actions():
         sync_requested = request.form.get("action_sync") == "1"
         regenerate_requested = request.form.get("action_regenerate") == "1"
-        regenerate_mode = request.form.get("regenerate_mode", "all")
+        regenerate_mode = request.form.get("regenerate_mode", "resumes")
         job_ids = _selected_job_ids(request.form.getlist("job_id"))
         if not sync_requested and not regenerate_requested:
             flash("Choose at least one action to run.")
@@ -1341,6 +1445,41 @@ def create_app(
         else:
             flash(f"Copied resume to {_download_display_path(destination)}.")
         return redirect_to_index_state()
+
+    @app.get("/cover-letters/<job_id>/edit")
+    def cover_letter_edit(job_id: str):
+        row = _fetch_application(database_path, job_id)
+        if row is None:
+            abort(404)
+        try:
+            cover_letter_object = _parse_cover_letter_object(row["cover_letter_object"])
+        except (TypeError, ValueError, yaml.YAMLError) as exc:
+            return Response(f"Cover letter object could not be parsed: {exc}", status=500)
+        return render_template_string(
+            COVER_LETTER_EDIT_TEMPLATE,
+            row=row,
+            cover_letter_object=cover_letter_object,
+            return_to=_safe_index_return_path(request.args.get("return_to")),
+        )
+
+    @app.post("/cover-letters/<job_id>/edit")
+    def cover_letter_edit_save(job_id: str):
+        row = _fetch_application(database_path, job_id)
+        if row is None:
+            abort(404)
+        try:
+            save_cover_letter_edit(
+                database_path=database_path,
+                job_id=job_id,
+                body_html=request.form.get("body_html", ""),
+            )
+        except (TypeError, ValueError, yaml.YAMLError) as exc:
+            flash(f"Cover letter save failed: {exc}")
+        else:
+            flash("Saved cover letter and rendered PDF.")
+        return redirect(
+            _cover_letter_edit_return_path(job_id, request.form.get("return_to"))
+        )
 
     @app.get("/cover-letters/<job_id>")
     def cover_letter(job_id: str):
@@ -1502,6 +1641,112 @@ def _parse_application_resume_yaml(value: str) -> dict[str, Any]:
 
 def _dump_application_resume_yaml(resume: dict[str, Any]) -> str:
     return yaml.safe_dump(resume, sort_keys=False, allow_unicode=False)
+
+
+def _parse_cover_letter_object(value: Any) -> dict[str, Any]:
+    text = str(value or "").strip()
+    if not text:
+        return {
+            "schema_version": COVER_LETTER_OBJECT_SCHEMA_VERSION,
+            "source": "manual",
+            "body_html": "",
+            "body_text": "",
+        }
+    parsed = yaml.safe_load(text)
+    if not isinstance(parsed, dict):
+        raise ValueError("Cover letter object must be a YAML mapping.")
+    parsed.setdefault("schema_version", COVER_LETTER_OBJECT_SCHEMA_VERSION)
+    parsed.setdefault("source", "manual")
+    parsed["body_html"] = _sanitize_cover_letter_body_html(parsed.get("body_html"))
+    parsed["body_text"] = _cover_letter_plain_text(parsed["body_html"])
+    return parsed
+
+
+def _dump_cover_letter_object(value: dict[str, Any]) -> str:
+    return yaml.safe_dump(value, sort_keys=False, allow_unicode=False)
+
+
+def _sanitize_cover_letter_body_html(value: Any) -> str:
+    soup = BeautifulSoup(str(value or ""), "html.parser")
+    for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
+        comment.extract()
+    for tag in list(soup.find_all(True)):
+        name = (tag.name or "").lower()
+        if name in {"strong", "b"}:
+            tag.name = "b"
+            tag.attrs = {}
+        elif name in {"em", "i"}:
+            tag.name = "i"
+            tag.attrs = {}
+        elif name in {"p", "div", "br"}:
+            tag.attrs = {}
+        elif name == "a":
+            href = str(tag.get("href") or "").strip()
+            if href.startswith(("http://", "https://", "mailto:")):
+                tag.attrs = {"href": href}
+            else:
+                tag.unwrap()
+        else:
+            tag.unwrap()
+    return str(soup).strip()
+
+
+def _cover_letter_plain_text(body_html: str) -> str:
+    soup = BeautifulSoup(body_html or "", "html.parser")
+    return "\n".join(
+        line.strip()
+        for line in soup.get_text("\n").splitlines()
+        if line.strip()
+    ).strip()
+
+
+def _cover_letter_paragraph_markup(body_html: str) -> list[str]:
+    soup = BeautifulSoup(body_html or "", "html.parser")
+    paragraphs: list[str] = []
+    current: list[str] = []
+
+    def flush_current() -> None:
+        value = "".join(current).strip()
+        if value:
+            paragraphs.append(value)
+        current.clear()
+
+    for child in soup.contents:
+        if isinstance(child, NavigableString):
+            text = str(child)
+            if text.strip():
+                current.append(html_escape(text))
+        elif isinstance(child, Tag) and child.name in {"p", "div"}:
+            flush_current()
+            markup = _cover_letter_node_markup(child).strip()
+            if markup:
+                paragraphs.append(markup)
+        elif isinstance(child, Tag) and child.name == "br":
+            flush_current()
+        else:
+            current.append(_cover_letter_node_markup(child))
+    flush_current()
+    return paragraphs
+
+
+def _cover_letter_node_markup(node: Any) -> str:
+    if isinstance(node, NavigableString):
+        return html_escape(str(node))
+    if not isinstance(node, Tag):
+        return ""
+    name = (node.name or "").lower()
+    if name == "br":
+        return "<br/>"
+    inner = "".join(_cover_letter_node_markup(child) for child in node.children)
+    if name == "b":
+        return f"<b>{inner}</b>"
+    if name == "i":
+        return f"<i>{inner}</i>"
+    if name == "a":
+        href = str(node.get("href") or "").strip()
+        if href.startswith(("http://", "https://", "mailto:")):
+            return f'<a href="{html_escape(href, quote=True)}" color="blue">{inner}</a>'
+    return inner
 
 
 def _resume_template_path(template_path: Path | None = None) -> Path:
@@ -1720,6 +1965,10 @@ def _resume_pdf_filename(row: sqlite3.Row) -> str:
     return f"mp_resume_{_filename_part(str(row['job_title'] or row['job_id']))}.pdf"
 
 
+def _cover_letter_pdf_filename(row: sqlite3.Row) -> str:
+    return f"mp_cover_letter_{_filename_part(str(row['job_title'] or row['job_id']))}.pdf"
+
+
 def _filename_part(value: str) -> str:
     characters = [character.lower() if character.isalnum() else "_" for character in value]
     compact = "_".join(part for part in "".join(characters).split("_") if part)
@@ -1776,6 +2025,11 @@ def _safe_index_return_path(value: Any) -> str:
 def _resume_edit_return_path(job_id: str, return_to: Any) -> str:
     query = urlencode({"return_to": _safe_index_return_path(return_to)})
     return f"/resumes/{job_id}/edit?{query}"
+
+
+def _cover_letter_edit_return_path(job_id: str, return_to: Any) -> str:
+    query = urlencode({"return_to": _safe_index_return_path(return_to)})
+    return f"/cover-letters/{job_id}/edit?{query}"
 
 
 def cleanup_downloaded_application_pdfs(download_dir: Path | None = None) -> int:
@@ -2356,23 +2610,9 @@ INDEX_TEMPLATE = """
           </label>
           <label class="action-choice">
             <input id="action-regenerate" type="checkbox" name="action_regenerate" value="1">
-            <span>Regenerate docs</span>
+            <span>Regenerate resumes</span>
           </label>
-          <fieldset id="regenerate-options" class="regenerate-options" disabled>
-            <legend>Document type</legend>
-            <label>
-              <input type="radio" name="regenerate_mode" value="cover_letters">
-              <span>Cover letters</span>
-            </label>
-            <label>
-              <input type="radio" name="regenerate_mode" value="resumes">
-              <span>Resumes</span>
-            </label>
-            <label>
-              <input type="radio" name="regenerate_mode" value="all" checked>
-              <span>All</span>
-            </label>
-          </fieldset>
+          <input type="hidden" name="regenerate_mode" value="resumes">
           <div class="actions-menu-footer">
             <span id="actions-selected-summary" class="actions-selected-summary">
               0 selected
@@ -2619,6 +2859,14 @@ INDEX_TEMPLATE = """
               <td>
                 <div class="artifact-cell">
                   <div class="actions">
+                    <a
+                      class="preserve-state-link"
+                      href="/cover-letters/{{ row.job_id }}/edit"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Edit
+                    </a>
                   {% if row.cover_letter_content %}
                     <a href="/cover-letters/{{ row.job_id }}" target="_blank" rel="noreferrer">
                       Cover Letter
@@ -3180,6 +3428,185 @@ INDEX_TEMPLATE = """
     }
     refreshActionStatus();
     window.setInterval(refreshActionStatus, 2500);
+  </script>
+</body>
+</html>
+"""
+
+
+COVER_LETTER_EDIT_TEMPLATE = """
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Edit Cover Letter - {{ row.company }}</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #202124;
+      --muted: #626a73;
+      --line: #d9dee5;
+      --surface: #ffffff;
+      --band: #f4f6f8;
+      --accent: #0b6e69;
+      --accent-strong: #074f4b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--band);
+      font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 18px 24px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+    }
+    h1 { margin: 3px 0 2px; font-size: 20px; font-weight: 650; }
+    a { color: var(--accent); font-weight: 650; }
+    .muted { color: var(--muted); }
+    .top-links { display: flex; gap: 10px; flex-wrap: wrap; }
+    main { padding: 18px 24px 40px; }
+    .flash {
+      margin: 0 0 12px;
+      padding: 10px 12px;
+      border: 1px solid #b9d8d5;
+      background: #eef8f6;
+    }
+    .save-bar {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: -18px -24px 18px;
+      padding: 12px 24px;
+      background: rgba(255, 255, 255, .96);
+      border-bottom: 1px solid var(--line);
+    }
+    button, .button-link {
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 650;
+      padding: 8px 10px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    button:hover, .button-link:hover { background: var(--accent-strong); }
+    button.secondary, .button-link.secondary {
+      background: #fff;
+      color: var(--accent);
+    }
+    button.secondary:hover, .button-link.secondary:hover {
+      background: #eff7f6;
+      color: var(--accent-strong);
+    }
+    .editor-shell {
+      background: var(--surface);
+      border: 1px solid var(--line);
+    }
+    .editor-toolbar {
+      display: flex;
+      gap: 6px;
+      padding: 10px;
+      border-bottom: 1px solid var(--line);
+      background: #fafbfc;
+    }
+    .editor-toolbar button {
+      min-width: 38px;
+      padding: 6px 8px;
+    }
+    .cover-editor {
+      min-height: 620px;
+      padding: 28px 32px;
+      background: #fff;
+      color: var(--ink);
+      font: 16px/1.58 Georgia, "Times New Roman", serif;
+      outline: none;
+      white-space: normal;
+    }
+    .cover-editor:focus {
+      box-shadow: inset 0 0 0 2px #b9d8d5;
+    }
+    .cover-editor p, .cover-editor div {
+      margin: 0 0 14px;
+    }
+    @media (max-width: 900px) {
+      header, .save-bar { align-items: flex-start; flex-direction: column; }
+      main { padding: 14px; }
+      .save-bar { margin: -14px -14px 14px; padding: 12px 14px; }
+      .cover-editor { min-height: 480px; padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <div class="top-links">
+        <a href="{{ return_to }}">Back to tracker</a>
+        {% if row.cover_letter_content %}
+          <a href="/cover-letters/{{ row.job_id }}" target="_blank" rel="noreferrer">Cover Letter PDF</a>
+        {% endif %}
+      </div>
+      <h1>Edit Cover Letter</h1>
+      <div class="muted">{{ row.company }} - {{ row.job_title }} - {{ row.job_id }}</div>
+    </div>
+    {% if row.cover_letter_object_updated_at %}
+      <div class="muted">{{ row.cover_letter_object_updated_at|display_timestamp }}</div>
+    {% endif %}
+  </header>
+  <main>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        {% for message in messages %}
+          <p class="flash">{{ message }}</p>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+    <form id="cover-letter-form" method="post" action="/cover-letters/{{ row.job_id }}/edit">
+      <input type="hidden" name="return_to" value="{{ return_to }}">
+      <input id="body-html" type="hidden" name="body_html">
+      <div class="save-bar">
+        <div>
+          <button type="submit">Save PDF</button>
+          <a class="button-link secondary" href="{{ return_to }}">Close</a>
+        </div>
+        <span class="muted">{{ row.cover_letter_filename or 'No cover letter' }}</span>
+      </div>
+      <div class="editor-shell">
+        <div class="editor-toolbar" aria-label="Formatting">
+          <button type="button" data-command="bold"><strong>B</strong></button>
+          <button type="button" data-command="italic"><em>I</em></button>
+        </div>
+        <div id="cover-editor" class="cover-editor" contenteditable="true">{{ cover_letter_object.body_html | safe }}</div>
+      </div>
+    </form>
+  </main>
+  <script>
+    const form = document.querySelector("#cover-letter-form");
+    const editor = document.querySelector("#cover-editor");
+    const bodyHtml = document.querySelector("#body-html");
+    document.querySelectorAll("[data-command]").forEach((button) => {
+      button.addEventListener("click", () => {
+        editor.focus();
+        document.execCommand(button.dataset.command, false, null);
+      });
+    });
+    form.addEventListener("submit", () => {
+      bodyHtml.value = editor.innerHTML;
+    });
   </script>
 </body>
 </html>
