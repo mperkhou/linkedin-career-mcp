@@ -2,9 +2,11 @@ import os
 import sqlite3
 import threading
 from datetime import UTC, datetime
+from io import BytesIO
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
+from reportlab.pdfgen import canvas
 
 from linkedin_career_mcp import webapp
 from linkedin_career_mcp.webapp import create_app, import_output_artifacts
@@ -55,6 +57,13 @@ def test_connect_database_migrates_job_description_columns(tmp_path: Path):
     columns = {row["name"] for row in rows}
     assert "job_description" in columns
     assert "prompt_job_description" in columns
+    assert "application_resume_object" in columns
+    assert "application_resume_updated_at" in columns
+    assert "resume_html_filename" in columns
+    assert "resume_html_content" in columns
+    assert "resume_html_mime_type" in columns
+    assert "source_resume_html_path" in columns
+    assert "resume_html_updated_at" in columns
     assert "resume_updated_at" in columns
     assert "cover_letter_filename" in columns
     assert "cover_letter_content" in columns
@@ -397,6 +406,69 @@ def test_regenerate_make_command_maps_modes_to_make_targets():
     ) == ["make", "regenerate-cover-letters", "JOB_IDS=123"]
 
 
+def test_store_application_resume_first_draft_updates_tracker_row(tmp_path: Path):
+    database_path = tmp_path / "applications.sqlite3"
+    webapp.upsert_application_artifact(
+        database_path=database_path,
+        job_id="123",
+        company="Example Co",
+        job_title="Senior Engineer",
+        linkedin_url="https://www.linkedin.com/jobs/view/123",
+        resume_path=None,
+        job_description="Requires Python, AWS, APIs, and observability.",
+        prompt_job_description="Requires Python, AWS, APIs, and observability.",
+    )
+    resume_pdf = _pdf_bytes(
+        """
+        Max Perkhounkov
+        Professional Summary
+        Core Technical Skills
+        Python AWS APIs observability
+        Professional Experience
+        Built Python APIs on AWS with observability.
+        Education
+        Certifications
+        """
+    )
+
+    webapp.store_application_resume_first_draft(
+        database_path=database_path,
+        job_id="123",
+        application_resume_object="schema_version: test\n",
+        resume_html="<html><body><h1>First Draft Resume</h1></body></html>",
+        resume_pdf=resume_pdf,
+    )
+
+    with webapp.connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT application_resume_object, resume_html_filename, resume_html_content,
+                   resume_html_mime_type, resume_filename, resume_content,
+                   source_resume_path, ats_score, ats_missing_terms
+            FROM applications
+            WHERE job_id = '123'
+            """
+        ).fetchone()
+    assert row["application_resume_object"] == "schema_version: test\n"
+    assert row["resume_html_filename"] == "mp_resume_senior_engineer.html"
+    assert row["resume_html_content"] == "<html><body><h1>First Draft Resume</h1></body></html>"
+    assert row["resume_html_mime_type"] == "text/html; charset=utf-8"
+    assert row["resume_filename"] == "mp_resume_senior_engineer.pdf"
+    assert row["resume_content"] == resume_pdf
+    assert row["source_resume_path"] == ""
+    assert row["ats_score"] is not None
+    assert row["ats_missing_terms"] is not None
+
+    app = create_app(database_path=database_path, output_dir=tmp_path / "output")
+    client = app.test_client()
+    html_response = client.get("/resume-html/123")
+    assert html_response.status_code == 200
+    assert b"First Draft Resume" in html_response.data
+    assert html_response.mimetype == "text/html"
+    index = client.get("/")
+    assert b'href="/resume-html/123"' in index.data
+
+
 def test_actions_run_starts_background_regeneration(tmp_path: Path):
     with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
         webapp._ACTION_RUNS.clear()  # noqa: SLF001
@@ -451,3 +523,14 @@ def test_actions_run_starts_background_regeneration(tmp_path: Path):
     assert status["runs"][0]["return_code"] == 0
     assert status["runs"][0]["title"] == "sync output + regenerate all docs for 2 job(s)"
     assert any("processing job 123" in message for message in status["runs"][0]["messages"])
+
+
+def _pdf_bytes(text: str) -> bytes:
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer)
+    text_object = pdf.beginText(40, 760)
+    for line in text.strip().splitlines():
+        text_object.textLine(line.strip())
+    pdf.drawText(text_object)
+    pdf.save()
+    return buffer.getvalue()

@@ -121,6 +121,8 @@ After a trimmed JOD exists for a specific job, use
    `bullet_point_total_match_count` across all professional-experience bullets.
 5. Pass the scored ARO through `scripts/application_resume_select_bullets.py` to set
    first-draft `render` flags by descending positive score buckets without splitting ties.
+6. Store the first-draft ARO, rendered HTML, generated PDF, and ATS score for the job row
+   with `scripts/application_resume_store_first_draft.py`.
 
 Keep the master YAML neutral: empty `jod_matched_items`, zero count fields, and no
 job-specific pruning.

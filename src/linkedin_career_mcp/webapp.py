@@ -49,6 +49,13 @@ REQUIRED_TRACKING_COLUMNS = (
 APPLICATION_EXTRA_COLUMNS = {
     "job_description": "TEXT",
     "prompt_job_description": "TEXT",
+    "application_resume_object": "TEXT",
+    "application_resume_updated_at": "TEXT",
+    "resume_html_filename": "TEXT NOT NULL DEFAULT ''",
+    "resume_html_content": "TEXT",
+    "resume_html_mime_type": "TEXT NOT NULL DEFAULT 'text/html; charset=utf-8'",
+    "source_resume_html_path": "TEXT NOT NULL DEFAULT ''",
+    "resume_html_updated_at": "TEXT",
     "resume_updated_at": "TEXT",
     "cover_letter_filename": "TEXT NOT NULL DEFAULT ''",
     "cover_letter_content": "BLOB",
@@ -132,6 +139,13 @@ def init_database(connection: sqlite3.Connection) -> None:
             linkedin_url TEXT NOT NULL,
             job_description TEXT,
             prompt_job_description TEXT,
+            application_resume_object TEXT,
+            application_resume_updated_at TEXT,
+            resume_html_filename TEXT NOT NULL DEFAULT '',
+            resume_html_content TEXT,
+            resume_html_mime_type TEXT NOT NULL DEFAULT 'text/html; charset=utf-8',
+            source_resume_html_path TEXT NOT NULL DEFAULT '',
+            resume_html_updated_at TEXT,
             resume_filename TEXT NOT NULL,
             resume_content BLOB,
             resume_mime_type TEXT NOT NULL DEFAULT 'application/pdf',
@@ -444,6 +458,87 @@ def upsert_application_artifact(
                 date_applied,
                 now,
                 now,
+            ),
+        )
+        connection.commit()
+
+
+def store_application_resume_first_draft(
+    *,
+    database_path: Path,
+    job_id: str,
+    application_resume_object: str,
+    resume_html: str,
+    resume_pdf: bytes,
+    resume_html_path: Path | None = None,
+    resume_pdf_path: Path | None = None,
+) -> None:
+    now = datetime.now(UTC).isoformat(timespec="seconds")
+    with connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT job_id, job_title, prompt_job_description, job_description
+            FROM applications
+            WHERE job_id = ?
+            """,
+            (job_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"Application row was not found for job_id={job_id}.")
+
+        ats_score = _calculate_ats_score(
+            resume_content=resume_pdf,
+            job_description=row["prompt_job_description"] or row["job_description"],
+        )
+        connection.execute(
+            """
+            UPDATE applications
+            SET application_resume_object = ?,
+                application_resume_updated_at = ?,
+                resume_html_filename = ?,
+                resume_html_content = ?,
+                resume_html_mime_type = 'text/html; charset=utf-8',
+                source_resume_html_path = ?,
+                resume_html_updated_at = ?,
+                resume_filename = ?,
+                resume_content = ?,
+                resume_mime_type = 'application/pdf',
+                source_resume_path = ?,
+                resume_updated_at = ?,
+                ats_score = ?,
+                ats_parsing_score = ?,
+                ats_keyword_score = ?,
+                ats_semantic_score = ?,
+                ats_formatting_risk = ?,
+                ats_missing_terms = ?,
+                ats_updated_at = ?,
+                updated_at = ?
+            WHERE job_id = ?
+            """,
+            (
+                application_resume_object,
+                now,
+                (
+                    resume_html_path.name
+                    if resume_html_path is not None
+                    else _resume_html_filename(row)
+                ),
+                resume_html,
+                str(resume_html_path) if resume_html_path is not None else "",
+                now,
+                resume_pdf_path.name if resume_pdf_path is not None else _resume_pdf_filename(row),
+                resume_pdf,
+                str(resume_pdf_path) if resume_pdf_path is not None else "",
+                now,
+                ats_score.overall_score if ats_score is not None else None,
+                ats_score.parsing_score if ats_score is not None else None,
+                ats_score.keyword_match_score if ats_score is not None else None,
+                ats_score.semantic_match_score if ats_score is not None else None,
+                ats_score.formatting_risk if ats_score is not None else None,
+                _format_missing_terms(ats_score) if ats_score is not None else None,
+                now if ats_score is not None else None,
+                now,
+                job_id,
             ),
         )
         connection.commit()
@@ -988,6 +1083,16 @@ def create_app(
             as_attachment=False,
         )
 
+    @app.get("/resume-html/<job_id>")
+    def resume_html(job_id: str):
+        row = _fetch_application(database_path, job_id)
+        if row is None or not row["resume_html_content"]:
+            return Response("Resume HTML was not found in the database.", status=404)
+        return Response(
+            row["resume_html_content"],
+            mimetype=row["resume_html_mime_type"] or "text/html; charset=utf-8",
+        )
+
     @app.get("/resumes/<job_id>/download")
     def resume_download(job_id: str):
         row = _fetch_application(database_path, job_id)
@@ -1185,6 +1290,20 @@ def _artifact_timestamp(path: Path | None) -> str | None:
     except OSError:
         return None
     return datetime.fromtimestamp(modified_at, UTC).isoformat(timespec="seconds")
+
+
+def _resume_html_filename(row: sqlite3.Row) -> str:
+    return f"mp_resume_{_filename_part(str(row['job_title'] or row['job_id']))}.html"
+
+
+def _resume_pdf_filename(row: sqlite3.Row) -> str:
+    return f"mp_resume_{_filename_part(str(row['job_title'] or row['job_id']))}.pdf"
+
+
+def _filename_part(value: str) -> str:
+    characters = [character.lower() if character.isalnum() else "_" for character in value]
+    compact = "_".join(part for part in "".join(characters).split("_") if part)
+    return compact or "resume"
 
 
 def _normalize_applied_to(value: Any) -> str:
@@ -2037,6 +2156,11 @@ INDEX_TEMPLATE = """
                     <a href="/resumes/{{ row.job_id }}" target="_blank" rel="noreferrer">
                       Resume
                     </a>
+                    {% if row.resume_html_content %}
+                      <a href="/resume-html/{{ row.job_id }}" target="_blank" rel="noreferrer">
+                        HTML
+                      </a>
+                    {% endif %}
                     <form method="post" action="/resumes/{{ row.job_id }}/copy-to-downloads">
                       <input
                         type="hidden"

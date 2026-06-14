@@ -149,6 +149,11 @@ ARO pass one can be exercised without wiring it into the legacy workflow:
 .venv/bin/python scripts/application_resume_select_bullets.py \
   --input tmp/application-resume-object.yml \
   --output tmp/application-resume-object-first-draft.yml
+
+.venv/bin/python scripts/application_resume_store_first_draft.py \
+  --job-id 4424184336 \
+  --input tmp/application-resume-object-first-draft.yml \
+  --database output/tracking/applications.sqlite3
 ```
 
 The workflow is designed to spend requests where they matter. Existing LinkedIn job IDs
@@ -420,8 +425,9 @@ make launch-website
 
 This starts the Flask server and opens the tracker in your browser.
 LinkedIn job links route through the local Flask app and try to open in Playwright's
-packaged Chromium. If Playwright or its Chromium browser is not installed, the app falls
-back to your system default browser.
+packaged Chromium. The default `make install-python` path installs Playwright and Chromium
+so HTML resume rendering can produce print-quality PDFs; if Chromium is unavailable, the
+resume renderer logs a warning and falls back to a plain-text PDF.
 
 Use the tracker toolbar's Actions menu to sync the SQLite tracker from `output/` or to
 regenerate documents for selected rows. Select one or more jobs, choose Regenerate docs,
@@ -431,10 +437,10 @@ and syncs regenerated artifacts back into SQLite when the command finishes.
 Resume and cover-letter columns show the latest synced artifact timestamp under their
 links, and both columns can be sorted to quickly find stale or newly regenerated PDFs.
 
-To enable Playwright Chromium:
+If the browser package needs to be repaired manually:
 
 ```bash
-.venv/bin/python -m pip install -e ".[browser]"
+.venv/bin/python -m pip install -e ".[dev,browser]"
 .venv/bin/python -m playwright install chromium
 ```
 
@@ -519,6 +525,7 @@ src/linkedin_career_mcp/
   models.py                  typed domain models
   ollama.py                  local Ollama client
   query_optimizer.py         contextual LinkedIn query ranking and outcome history
+  resume_rendering.py        shared YAML-to-HTML and HTML-to-PDF resume rendering
   providers/
     linkedin_public.py       public LinkedIn guest-page adapter
   services.py                caps, filtering, and provider orchestration
@@ -528,6 +535,10 @@ src/linkedin_career_mcp/
     matching.py              profile-aware search and application-artifact workflow
 scripts/
   application_resume_pass_one.py  manual ARO prompt/response/scoring helper
+  application_resume_select_bullets.py
+                              first-draft experience bullet selector
+  application_resume_store_first_draft.py
+                              stores first-draft ARO/HTML/PDF/ATS in SQLite
   render_resume_html.py       MASTER-RESUME.yml HTML preview renderer
 ```
 

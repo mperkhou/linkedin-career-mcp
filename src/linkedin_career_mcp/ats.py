@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import dataclass
 from io import BytesIO
+from math import sqrt
 
 from pypdf import PdfReader
 
@@ -66,15 +68,42 @@ TECHNICAL_TERMS = (
     "prompt engineering",
     "python",
     "react",
-    "rest",
     "rest api",
     "rbac",
+    "reliability",
     "scalability",
     "security",
     "shell",
     "sql",
     "terraform",
     "typescript",
+    "cloud native",
+)
+TERM_ALIASES = {
+    "ci/cd": ("ci/cd", "cicd", "continuous integration", "continuous deployment"),
+    "cloud native": (
+        "cloud native",
+        "cloud-native",
+        "cloud native platforms",
+        "cloud-native platforms",
+    ),
+    "containerization": ("containerization", "containerized", "dockerized", "container images"),
+    "data pipeline": ("data pipeline", "data pipelines"),
+    "reliability": ("reliability", "reliable", "resilience", "resilient"),
+    "rest api": ("rest api", "rest apis", "restful api", "restful apis"),
+    "scalability": ("scalability", "scalable", "horizontally scalable"),
+}
+NEGATED_TERM_PATTERNS = (
+    "not",
+    "not a",
+    "not an",
+    "isn't",
+    "is not",
+    "isn t",
+    "isnt",
+    "not just",
+    "no",
+    "without",
 )
 
 SEMANTIC_CLUSTERS = (
@@ -98,6 +127,7 @@ SEMANTIC_CLUSTERS = (
             "azure",
             "cloud",
             "cloud infrastructure",
+            "cloud native",
             "containerization",
             "docker",
             "kubernetes",
@@ -112,6 +142,7 @@ SEMANTIC_CLUSTERS = (
             "distributed systems",
             "kafka",
             "microservices",
+            "reliability",
             "scalability",
         },
     ),
@@ -339,11 +370,12 @@ def _semantic_score(
         if cluster and any(_contains_term(resume_normalized, related) for related in cluster):
             matched_weight += weight * 0.65
 
-    job_tokens = _keyword_tokens(job_normalized)
-    resume_tokens = _keyword_tokens(resume_normalized)
-    token_overlap = len(job_tokens & resume_tokens) / len(job_tokens) if job_tokens else 0.5
+    token_similarity = _token_similarity_score(
+        job_normalized=job_normalized,
+        resume_normalized=resume_normalized,
+    )
     coverage = matched_weight / total_weight
-    return _clamp_score(round((coverage * 0.75 + token_overlap * 0.25) * 100))
+    return _clamp_score(round((coverage * 0.75 + token_similarity * 0.25) * 100))
 
 
 def _formatting_risk(*, parsing_score: int, resume_text: str) -> str:
@@ -365,17 +397,14 @@ def _missing_high_value_terms(
     missing_required = [
         term for term, weight in job_terms if term not in resume_terms and weight >= 1.0
     ]
-    missing_context = [
-        term for term, weight in job_terms if term not in resume_terms and weight < 1.0
-    ]
-    return tuple([*missing_required, *missing_context][:limit])
+    return tuple(missing_required[:limit])
 
 
 def _extract_weighted_terms(job_description: str) -> list[tuple[str, float]]:
     normalized = _normalize_text(job_description)
     terms: dict[str, float] = {}
     for term in TECHNICAL_TERMS:
-        if _contains_term(normalized, term):
+        if _contains_weightable_term(job_description, normalized, term):
             terms[term] = max(terms.get(term, 0.0), _term_weight(job_description, term))
     for phrase in _extract_repeated_phrases(normalized):
         if phrase not in terms:
@@ -408,10 +437,9 @@ def _is_relevant_repeated_phrase(phrase: str) -> bool:
 
 
 def _term_weight(job_description: str, term: str) -> float:
-    normalized_term = re.escape(_normalize_text(term))
     for sentence in re.split(r"(?<=[.!?])\s+|\n+", job_description):
         normalized_sentence = _normalize_text(sentence)
-        if re.search(rf"\b{normalized_term}\b", normalized_sentence) and any(
+        if _contains_term(normalized_sentence, term) and any(
             language in normalized_sentence for language in REQUIRED_LANGUAGE
         ):
             return 1.75
@@ -437,9 +465,77 @@ def _keyword_tokens(text: str) -> set[str]:
     }
 
 
+def _token_similarity_score(*, job_normalized: str, resume_normalized: str) -> float:
+    job_tokens = _keyword_tokens(job_normalized)
+    resume_tokens = _keyword_tokens(resume_normalized)
+    if not job_tokens:
+        return 0.5
+
+    recall = len(job_tokens & resume_tokens) / len(job_tokens)
+    cosine = _token_cosine_similarity(
+        _keyword_token_counts(job_normalized),
+        _keyword_token_counts(resume_normalized),
+    )
+    return (recall * 0.6) + (cosine * 0.4)
+
+
+def _keyword_token_counts(text: str) -> Counter[str]:
+    return Counter(
+        token
+        for token in re.findall(r"[a-z][a-z0-9+#/-]+", text)
+        if len(token) > 2 and token not in STOPWORDS
+    )
+
+
+def _token_cosine_similarity(left: Counter[str], right: Counter[str]) -> float:
+    if not left or not right:
+        return 0.0
+    common = set(left) & set(right)
+    numerator = sum(left[token] * right[token] for token in common)
+    left_norm = sqrt(sum(value * value for value in left.values()))
+    right_norm = sqrt(sum(value * value for value in right.values()))
+    if not left_norm or not right_norm:
+        return 0.0
+    return numerator / (left_norm * right_norm)
+
+
 def _contains_term(text: str, term: str) -> bool:
-    normalized_term = re.escape(_normalize_text(term))
-    return bool(re.search(rf"(?<![a-z0-9]){normalized_term}(?![a-z0-9])", text))
+    return any(_contains_normalized_phrase(text, alias) for alias in _term_aliases(term))
+
+
+def _contains_weightable_term(original_text: str, normalized_text: str, term: str) -> bool:
+    if not _contains_term(normalized_text, term):
+        return False
+    return any(
+        _contains_term(normalized_sentence, term)
+        and not _has_negated_term_context(normalized_sentence, term)
+        for sentence in re.split(r"(?<=[.!?])\s+|\n+", original_text)
+        if (normalized_sentence := _normalize_text(sentence))
+    )
+
+
+def _has_negated_term_context(normalized_sentence: str, term: str) -> bool:
+    for alias in _term_aliases(term):
+        normalized_alias = _normalize_text(alias)
+        for negation in NEGATED_TERM_PATTERNS:
+            pattern = (
+                rf"(?<![a-z0-9]){re.escape(negation)}"
+                rf"(?:\s+\w+){{0,3}}\s+{re.escape(normalized_alias)}(?![a-z0-9])"
+            )
+            if re.search(pattern, normalized_sentence):
+                return True
+    return False
+
+
+def _contains_normalized_phrase(text: str, phrase: str) -> bool:
+    normalized_phrase = re.escape(_normalize_text(phrase))
+    return bool(re.search(rf"(?<![a-z0-9]){normalized_phrase}(?![a-z0-9])", text))
+
+
+def _term_aliases(term: str) -> tuple[str, ...]:
+    normalized = _normalize_text(term)
+    aliases = TERM_ALIASES.get(normalized, ())
+    return (term, *aliases)
 
 
 def _normalize_text(text: str) -> str:

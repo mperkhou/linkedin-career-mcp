@@ -98,8 +98,11 @@ core_technical_skills:
       - AWS S3
       - AWS EC2
       - Docker/Kubernetes
+      - Containerization
       - Kaseya SaaS IT management
       - private cloud VMware clusters
+      - Linux
+      - Linux environments
       - OCI Search Service
       - OCI Functions
       - OCI Metrics
@@ -109,6 +112,7 @@ core_technical_skills:
       - cross-tenancy policies
       - managed PostgreSQL
       - cloud-hosted automation clusters
+      - cloud-native platforms
       - execution environments
       - container images
       - production/staging environments
@@ -135,7 +139,10 @@ core_technical_skills:
       - custom PHP plugins
       - SQL servers
       - healthcare application support
+      - REST APIs
       - infrastructure platform engineering
+      - platform reliability
+      - Scalability
       - service orchestration
       - metadata services
       - asset inventory systems
@@ -192,6 +199,7 @@ core_technical_skills:
       - job scheduling automation
       - execution environment builds
       - CI/CD automation
+      - continuous integration
       - cookbook migration
       - policyfile automation
       - artifact migration
@@ -220,6 +228,7 @@ core_technical_skills:
       - MongoDB
       - SQL
       - Data Pipelines
+      - Observability
       - Observability Dashboards
       additional:
       - Dell SAN/NAS systems
@@ -464,6 +473,7 @@ professional_experience:
       - category: Automation & IaC
         matched:
         - CI/CD automation
+        - continuous integration
         jod_match_count: 0
       - category: Security & Compliance
         matched:
@@ -665,6 +675,7 @@ professional_experience:
       - category: Platform & API Engineering
         matched:
         - RESTful APIs
+        - REST APIs
         - API Integration
         - service orchestration
         - JIRA API integrations
@@ -761,6 +772,7 @@ professional_experience:
         jod_match_count: 0
       - category: Data & Observability
         matched:
+        - Observability
         - Observability Dashboards
         jod_match_count: 0
       text: Modernized configuration-as-code across platform services, observability
@@ -944,6 +956,7 @@ professional_experience:
         matched:
         - service orchestration
         - metadata services
+        - platform reliability
         - restore workflow design
         - restore-point metadata
         jod_match_count: 0
@@ -1196,6 +1209,7 @@ professional_experience:
         - Logstash
         - OpenSearch
         - Data Pipelines
+        - Observability
         - Observability Dashboards
         - ELK-to-OpenSearch migrations
         jod_match_count: 0
@@ -1279,6 +1293,7 @@ professional_experience:
       - category: Data & Observability
         matched:
         - OpenSearch
+        - Observability
         - Observability Dashboards
         - network telemetry
         jod_match_count: 0
@@ -1334,6 +1349,7 @@ professional_experience:
       - category: Platform & API Engineering
         matched:
         - infrastructure platform engineering
+        - platform reliability
         jod_match_count: 0
       - category: Data & Observability
         matched:
@@ -1396,11 +1412,17 @@ professional_experience:
         - Platform Reliability
         matched:
         - Distributed Systems & Cloud
+        - Platform & API Engineering
         - Automation & IaC
       skills:
       - category: Distributed Systems & Cloud
         matched:
         - cloud-hosted automation clusters
+        - cloud-native platforms
+        jod_match_count: 0
+      - category: Platform & API Engineering
+        matched:
+        - platform reliability
         jod_match_count: 0
       - category: Automation & IaC
         matched:
@@ -1465,6 +1487,7 @@ professional_experience:
       - category: Platform & API Engineering
         matched:
         - RESTful APIs
+        - REST APIs
         - API Integration
         - infrastructure platform engineering
         - service orchestration
@@ -1545,6 +1568,7 @@ professional_experience:
         jod_match_count: 0
       - category: Platform & API Engineering
         matched:
+        - Scalability
         - remediation tooling
         - runbook authoring
         jod_match_count: 0
@@ -1605,10 +1629,16 @@ professional_experience:
         - Delivery
         - Stakeholder Support
         matched:
+        - Platform & API Engineering
         - Data & Observability
       skills:
+      - category: Platform & API Engineering
+        matched:
+        - platform reliability
+        jod_match_count: 0
       - category: Data & Observability
         matched:
+        - Observability
         - Observability Dashboards
         - on-call dashboards
         jod_match_count: 0
@@ -1629,9 +1659,11 @@ professional_experience:
       - category: Platform & API Engineering
         matched:
         - infrastructure platform engineering
+        - platform reliability
         jod_match_count: 0
       - category: Data & Observability
         matched:
+        - Observability
         - Observability Dashboards
         jod_match_count: 0
       text: Successfully resolved 700+ technical issues across observability and platform
@@ -1846,6 +1878,7 @@ professional_experience:
       - category: Platform & API Engineering
         matched:
         - RESTful APIs
+        - REST APIs
         - API Integration
         - custom PHP plugins
         - service orchestration
@@ -1870,6 +1903,7 @@ professional_experience:
         jod_match_count: 0
       - category: Data & Observability
         matched:
+        - Observability
         - Observability Dashboards
         - automated ticketing dashboards
         - automated reporting
@@ -2106,6 +2140,7 @@ professional_experience:
       - category: Distributed Systems & Cloud
         matched:
         - Docker/Kubernetes
+        - Containerization
         - container images
         jod_match_count: 0
       - category: Platform & API Engineering
@@ -2159,6 +2194,8 @@ professional_experience:
         assigned: 
         matched:
         - Languages & Frameworks
+        - Distributed Systems & Cloud
+        - Platform & API Engineering
         - Automation & IaC
         - Data & Observability
       skills:
@@ -2166,6 +2203,15 @@ professional_experience:
         matched:
         - Python
         - data transformation scripts
+        jod_match_count: 0
+      - category: Distributed Systems & Cloud
+        matched:
+        - Linux
+        - Linux environments
+        jod_match_count: 0
+      - category: Platform & API Engineering
+        matched:
+        - Scalability
         jod_match_count: 0
       - category: Automation & IaC
         matched:
@@ -2206,8 +2252,13 @@ professional_experience:
       categories:
         assigned: 
         matched:
+        - Distributed Systems & Cloud
         - Platform & API Engineering
       skills:
+      - category: Distributed Systems & Cloud
+        matched:
+        - Linux
+        jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - Systems Architecture
@@ -2328,8 +2379,13 @@ professional_experience:
       categories:
         assigned: 
         matched:
+        - Distributed Systems & Cloud
         - Data & Observability
       skills:
+      - category: Distributed Systems & Cloud
+        matched:
+        - Linux
+        jod_match_count: 0
       - category: Data & Observability
         matched:
         - Dell SAN/NAS systems

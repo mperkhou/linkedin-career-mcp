@@ -47,6 +47,8 @@ The current tools search public LinkedIn job listings and fetch public job detai
   workflow is being redesigned.
 - Use `scripts/application_resume_select_bullets.py` after scoring to choose first-draft
   experience bullets by descending positive score buckets while preserving disabled jobs.
+- Use `scripts/application_resume_store_first_draft.py` to store the first-draft ARO,
+  rendered HTML, generated PDF, and ATS score on the Flask tracker row for a job ID.
 - Treat the old full-context resume/cover-letter generation path as legacy during ARO
   refactoring; keep it available for regression tests and tracker workflows until replaced.
 - Keep tracked master profile inputs in `profile/`.

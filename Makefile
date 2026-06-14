@@ -19,18 +19,21 @@ MAX_JOBS ?= 10
 RESUME_PATH ?=
 COVER_LETTER_PATH ?=
 
-.PHONY: install install-python install-ollama ollama-model venv skill-link match-jobs regenerate-resumes regenerate-cover-letters regenerate-all refresh-static-artifacts launch-website stop-website restart-website test lint clean
+.PHONY: install install-python install-browser install-ollama ollama-model venv skill-link match-jobs regenerate-resumes regenerate-cover-letters regenerate-all refresh-static-artifacts launch-website stop-website restart-website test lint clean
 
 install: install-python install-ollama ollama-model skill-link
 
-install-python: venv
+install-python: venv install-browser
+
+install-browser: venv
+	$(VENV_PYTHON) -m playwright install chromium
 
 venv: $(VENV)/.installed
 
 $(VENV)/.installed: pyproject.toml
 	$(PYTHON) -m venv $(VENV)
 	$(VENV_PYTHON) -m pip install --upgrade pip
-	$(VENV_PYTHON) -m pip install -e ".[dev]"
+	$(VENV_PYTHON) -m pip install -e ".[dev,browser]"
 	touch $(VENV)/.installed
 
 skill-link:
