@@ -217,7 +217,9 @@
   {% set summary = data.professional_summary | default({}) %}
   {% set skills = data.core_technical_skills | default({}) %}
   {% set experience = data.professional_experience | default({}) %}
-  {% set education = data.education_and_certifications | default({}) %}
+  {% set education = data.education | default(data.education_and_certifications | default({}), true) %}
+  {% set certifications = data.certifications | default({}) %}
+  {% set portfolio = data.portfolio | default({}) %}
 
   {% macro linked(value) -%}
     {{- value | default("", true) | linkify -}}
@@ -243,33 +245,35 @@
   <main class="resume-page">
     <div class="resume-top-rule"></div>
 
-    <header>
-      <h1 class="resume-name">{{ header.line_1_name_header_text | default("", true) }}</h1>
-      <p class="resume-contact">
-        {% set links = header.links | default([]) %}
-        {% set contact_items = header.contact_items | default([]) %}
-        {% if contact_items %}
-          {% for item in contact_items %}
-            {% set matched_link = namespace(url=None) %}
-            {% for link in links %}
-              {% if item == link.label %}
-                {% set matched_link.url = link.url %}
+    {% if header.render | default(true) %}
+      <header>
+        <h1 class="resume-name">{{ header.line_1_name_header_text | default("", true) }}</h1>
+        <p class="resume-contact">
+          {% set links = header.links | default([]) %}
+          {% set contact_items = header.contact_items | default([]) %}
+          {% if contact_items %}
+            {% for item in contact_items %}
+              {% set matched_link = namespace(url=None) %}
+              {% for link in links %}
+                {% if item == link.label %}
+                  {% set matched_link.url = link.url %}
+                {% endif %}
+              {% endfor %}
+              {% if matched_link.url %}
+                <a href="{{ matched_link.url }}">{{ item }}</a>
+              {% else %}
+                {{ item }}
               {% endif %}
+              {% if not loop.last %}<span class="contact-separator">|</span>{% endif %}
             {% endfor %}
-            {% if matched_link.url %}
-              <a href="{{ matched_link.url }}">{{ item }}</a>
-            {% else %}
-              {{ item }}
-            {% endif %}
-            {% if not loop.last %}<span class="contact-separator">|</span>{% endif %}
-          {% endfor %}
-        {% elif header.line_2_applicant_info_text %}
-          {{ header.line_2_applicant_info_text | linkify }}
-        {% endif %}
-      </p>
-    </header>
+          {% elif header.line_2_applicant_info_text %}
+            {{ header.line_2_applicant_info_text | linkify }}
+          {% endif %}
+        </p>
+      </header>
+    {% endif %}
 
-    {% if summary.paragraph | default("", true) or summary.summary_note | default("", true) %}
+    {% if summary.render | default(true) and (summary.paragraph | default("", true) or summary.summary_note | default("", true)) %}
       <section class="resume-section">
         <h2 class="section-heading">{{ summary.header_text | default("Professional Summary", true) }}</h2>
         {% if summary.paragraph | default("", true) %}
@@ -282,7 +286,7 @@
     {% endif %}
 
     {% set skill_bullets = skills.bullet_points | default([]) %}
-    {% if skill_bullets %}
+    {% if skills.render | default(true) and skill_bullets %}
       <section class="resume-section">
         <h2 class="section-heading">{{ skills.header_text | default("Core Technical Skills", true) }}</h2>
         <ul class="bullet-list">
@@ -294,7 +298,7 @@
     {% endif %}
 
     {% set jobs = experience.jobs | default([]) %}
-    {% if jobs %}
+    {% if experience.render | default(true) and jobs %}
       <section class="resume-section with-rule">
         <div class="section-rule"></div>
         <h2 class="section-heading">{{ experience.header_text | default("Professional Experience", true) }}</h2>
@@ -329,24 +333,39 @@
       </section>
     {% endif %}
 
-    {% set education_items = education.get("items", []) if education.get is defined else [] %}
-    {% if education_items %}
+    {% set education_items = education.entries | default(education.get("items", []) if education.get is defined else []) %}
+    {% if education.render | default(true) and education_items %}
       <section class="resume-section with-rule">
         <div class="section-rule"></div>
-        <h2 class="section-heading">{{ education.header_text | default("Education & Certifications", true) }}</h2>
+        <h2 class="section-heading">{{ education.header_text | default("Education", true) }}</h2>
         <ul class="bullet-list">
-          {% for item in education_items %}
+          {% for item in education_items if item is string or (item.render | default(true)) %}
             {% set details = item.details | default([]) %}
             {% set sub_items = item.sub_items | default([]) %}
+            {% set entry_bullets = item.bullet_points | default([]) %}
+            {% set line_1 = item.line_1 | default({}) %}
+            {% set line_2 = item.line_2 | default({}) %}
             <li class="education-item">
               {% if item is string %}
                 {{ linked(item) }}
               {% elif details %}
                 <strong>{{ item.title }}:</strong> {{ details[0] | linkify }}
+              {% elif line_1.institution_name_text | default("", true) or line_2.degree_name_text | default("", true) %}
+                <strong>{{ line_1.institution_name_text | default("", true) }}:</strong>
+                {{ line_2.degree_name_text | default("", true) }}
+                {% if line_2.degree_dates_text | default("", true) %}
+                  | <span class="job-dates">{{ line_2.degree_dates_text }}</span>
+                {% endif %}
               {% else %}
                 {{ linked(item.title | default(item.rendered_text | default("", true), true)) }}
               {% endif %}
-              {% if sub_items %}
+              {% if entry_bullets %}
+                <ul class="nested-list">
+                  {% for entry_bullet in entry_bullets if entry_bullet is string or (entry_bullet.render | default(true)) %}
+                    <li>{{ bullet_text(entry_bullet) }}</li>
+                  {% endfor %}
+                </ul>
+              {% elif sub_items %}
                 <ul class="nested-list">
                   {% for sub_item in sub_items %}
                     <li>
@@ -357,6 +376,41 @@
                     </li>
                   {% endfor %}
                 </ul>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% endif %}
+
+    {% set certification_bullets = certifications.bullet_points | default([]) %}
+    {% if certifications.render | default(true) and certification_bullets %}
+      <section class="resume-section">
+        <h2 class="section-heading">{{ certifications.header_text | default("Certifications", true) }}</h2>
+        <ul class="bullet-list">
+          {% for bullet in certification_bullets if bullet is string or (bullet.render | default(true)) %}
+            <li>{{ bullet_text(bullet) }}</li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% endif %}
+
+    {% set projects = portfolio.projects | default([]) %}
+    {% if portfolio.render | default(true) and projects %}
+      <section class="resume-section">
+        <h2 class="section-heading">{{ portfolio.header_text | default("Portfolio", true) }}</h2>
+        <ul class="bullet-list">
+          {% for project in projects if project is string or (project.render | default(true)) %}
+            <li>
+              {% if project is string %}
+                {{ linked(project) }}
+              {% else %}
+                {% set title = project.title_text | default(project.title | default("", true), true) %}
+                {% set url = project.url | default("", true) %}
+                {% set description = project.description_text | default(project.description | default("", true), true) %}
+                {% if title %}<strong>{{ title }}:</strong>{% endif %}
+                {% if url %} {{ linked(url) }}{% endif %}
+                {% if description %} - {{ linked(description) }}{% endif %}
               {% endif %}
             </li>
           {% endfor %}

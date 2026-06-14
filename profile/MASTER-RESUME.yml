@@ -13,6 +13,7 @@ section_order:
 - certifications
 - portfolio
 header_top:
+  render: true
   line_1_name_header_text: Max Perkhounkov
   line_2_applicant_info_text: Iowa City, IA | 641-781-0477 | mperkhounkov1@gmail.com
     | linkedin.com/in/maxim-perkhounkov
@@ -25,6 +26,7 @@ header_top:
   - label: linkedin.com/in/maxim-perkhounkov
     url: https://linkedin.com/in/maxim-perkhounkov
 professional_summary:
+  render: true
   header_text: Professional Summary
   paragraph: Analytical and metrics-driven Senior Platform Software Engineer with
     over 10 years of multi-disciplinary experience architecting scalable distributed
@@ -37,6 +39,7 @@ professional_summary:
   summary_note: 'Note: This resume is custom tailored for every job position using
     my automated agentic workflow found at: mperkhou/linkedin-career-mcp'
 core_technical_skills:
+  render: true
   header_text: Core Technical Skills
   bullet_points:
   - order: 1
@@ -332,6 +335,7 @@ core_technical_skills:
       - secure AI development environments
     jod_matched_items: []
 professional_experience:
+  render: true
   header_text: Professional Experience
   jobs:
   - order: 1
@@ -2545,6 +2549,7 @@ professional_experience:
       bullet_point_total_match_count: 0
       render: false
 education:
+  render: true
   header_text: Education
   entries:
   - order: 1
@@ -2560,6 +2565,7 @@ education:
     - order: 2
       text: University Chess Club President (2009-2012).
 certifications:
+  render: true
   header_text: Certifications
   bullet_points:
   - order: 1
@@ -2571,6 +2577,7 @@ certifications:
     text: Oracle Cloud Infrastructure AI Foundations Associate | Certification (May,
       2026)
 portfolio:
+  render: true
   header_text: Portfolio
   projects:
   - order: 1

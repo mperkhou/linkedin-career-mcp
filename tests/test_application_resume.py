@@ -11,7 +11,7 @@ from linkedin_career_mcp.application_resume import (
     build_core_skills_jod_match_prompt,
     calculate_experience_jod_match_counts,
     initialize_application_resume_object,
-    select_predraft_experience_bullets,
+    select_first_draft_experience_bullets,
 )
 from scripts.application_resume_pass_one import main as application_resume_pass_one_main
 from scripts.application_resume_select_bullets import main as application_resume_select_bullets_main
@@ -192,10 +192,10 @@ def test_application_resume_pass_one_script_writes_prompt_and_scored_aro(
     assert bullet["bullet_point_total_match_count"] == 2
 
 
-def test_select_predraft_experience_bullets_uses_score_buckets_without_splitting_ties() -> None:
+def test_select_first_draft_experience_bullets_uses_score_buckets_without_splitting_ties() -> None:
     aro = _sample_selection_aro()
 
-    selected = select_predraft_experience_bullets(aro)
+    selected = select_first_draft_experience_bullets(aro)
     jobs = selected["professional_experience"]["jobs"]
 
     assert jobs[0]["render"] is True
@@ -213,9 +213,9 @@ def test_select_predraft_experience_bullets_uses_score_buckets_without_splitting
     assert _selected_scores(aro["professional_experience"]["jobs"][0]) == []
 
 
-def test_application_resume_select_bullets_script_writes_predraft_aro(tmp_path: Path) -> None:
+def test_application_resume_select_bullets_script_writes_first_draft_aro(tmp_path: Path) -> None:
     aro_path = tmp_path / "scored-aro.yml"
-    output_path = tmp_path / "predraft-aro.yml"
+    output_path = tmp_path / "first-draft-aro.yml"
     aro_path.write_text(
         yaml.safe_dump(_sample_selection_aro(), sort_keys=False),
         encoding="utf-8",

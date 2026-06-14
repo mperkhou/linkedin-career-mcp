@@ -9,12 +9,12 @@ from typing import Any
 
 import yaml
 
-from linkedin_career_mcp.application_resume import select_predraft_experience_bullets
+from linkedin_career_mcp.application_resume import select_first_draft_experience_bullets
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Select scored ARO experience bullets for pre-draft rendering."
+        description="Select scored ARO experience bullets for first-draft rendering."
     )
     parser.add_argument(
         "--input",
@@ -25,7 +25,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output",
         type=Path,
-        help="Write the selected pre-draft ARO YAML to this path. Defaults to stdout.",
+        help="Write the selected first-draft ARO YAML to this path. Defaults to stdout.",
     )
     return parser
 
@@ -33,7 +33,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> None:
     args = build_arg_parser().parse_args(argv)
     aro = _load_yaml_mapping(args.input)
-    selected = select_predraft_experience_bullets(aro)
+    selected = select_first_draft_experience_bullets(aro)
     output_text = yaml.safe_dump(selected, sort_keys=False, allow_unicode=False)
 
     if args.output is None:

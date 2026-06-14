@@ -163,10 +163,10 @@ def apply_core_skill_matches_and_score_experience(
     return calculate_experience_jod_match_counts(aro)
 
 
-def select_predraft_experience_bullets(
+def select_first_draft_experience_bullets(
     application_resume: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Set job and bullet render flags for the first structured resume pre-draft.
+    """Set job and bullet render flags for the first-draft structured resume.
 
     Bullet selection is deterministic and score-bucket based: positive-score bullets are
     considered from highest score to lowest score, complete score ties are kept together,

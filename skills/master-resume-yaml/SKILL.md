@@ -44,6 +44,8 @@ Create or refresh these top-level sections:
 
 Keep the object renderer-friendly:
 
+- Every renderable top-level section has an explicit `render: true` unless the section
+  should be hidden in a generated ARO.
 - `core_technical_skills.bullet_points[*].items.primary` contains the always-rendered skills.
 - `core_technical_skills.bullet_points[*].items.additional` contains factual optional skills that may be selected later.
 - Every core skill bucket in the master YAML has `jod_matched_items: []`.
@@ -118,7 +120,7 @@ After a trimmed JOD exists for a specific job, use
 4. Let local code calculate `skills[*].jod_match_count` and
    `bullet_point_total_match_count` across all professional-experience bullets.
 5. Pass the scored ARO through `scripts/application_resume_select_bullets.py` to set
-   pre-draft `render` flags by descending positive score buckets without splitting ties.
+   first-draft `render` flags by descending positive score buckets without splitting ties.
 
 Keep the master YAML neutral: empty `jod_matched_items`, zero count fields, and no
 job-specific pruning.

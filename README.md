@@ -148,7 +148,7 @@ ARO pass one can be exercised without wiring it into the legacy workflow:
 
 .venv/bin/python scripts/application_resume_select_bullets.py \
   --input tmp/application-resume-object.yml \
-  --output tmp/application-resume-object-predraft.yml
+  --output tmp/application-resume-object-first-draft.yml
 ```
 
 The workflow is designed to spend requests where they matter. Existing LinkedIn job IDs
