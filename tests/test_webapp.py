@@ -272,10 +272,46 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
 
     descriptions = client.get("/descriptions/123")
     assert descriptions.status_code == 200
+    assert b"Edit Job Descriptions" in descriptions.data
     assert b"Parsed Job Description" in descriptions.data
     assert b"Prompt Job Description" in descriptions.data
+    assert b"Removed By Trimming" in descriptions.data
+    assert b"Description Diff" in descriptions.data
+    assert b'name="job_description"' in descriptions.data
+    assert b'name="prompt_job_description"' in descriptions.data
     assert b"Full parsed JOD with mission boilerplate and role requirements." in descriptions.data
     assert b"Clean prompt JOD with role requirements." in descriptions.data
+
+    descriptions_save = client.post(
+        "/descriptions/123",
+        data={
+            "job_description": "Full edited JOD with Java, auth, and platform work.",
+            "prompt_job_description": "Prompt edited JOD with Java and auth.",
+            "return_to": "/?sort=ats&direction=desc",
+        },
+    )
+    assert descriptions_save.status_code == 302
+    assert descriptions_save.headers["Location"] == (
+        "/descriptions/123?return_to=%2F%3Fsort%3Dats%26direction%3Ddesc"
+    )
+    with webapp.connect_database(database_path) as connection:
+        description_row = connection.execute(
+            """
+            SELECT job_description, prompt_job_description, ats_updated_at
+            FROM applications
+            WHERE job_id = '123'
+            """
+        ).fetchone()
+    assert (
+        description_row["job_description"]
+        == "Full edited JOD with Java, auth, and platform work."
+    )
+    assert description_row["prompt_job_description"] == "Prompt edited JOD with Java and auth."
+    assert description_row["ats_updated_at"] is not None
+
+    edited_descriptions = client.get("/descriptions/123")
+    assert b"Full edited JOD with Java, auth, and platform work." in edited_descriptions.data
+    assert b"Prompt edited JOD with Java and auth." in edited_descriptions.data
 
     db_resume = client.get("/resumes/123")
     assert db_resume.status_code == 200

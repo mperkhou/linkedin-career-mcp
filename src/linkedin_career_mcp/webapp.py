@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import difflib
 import sqlite3
 import subprocess
 import sys
@@ -116,6 +117,15 @@ class ApplicationJobRecord:
     date_matched: str | None
     date_posted: str | None
     experience_level: str | None
+
+
+@dataclass(frozen=True)
+class DescriptionDiffRow:
+    status: str
+    left_line_no: int | None
+    right_line_no: int | None
+    left_text: str
+    right_text: str
 
 
 @dataclass
@@ -788,6 +798,65 @@ def save_cover_letter_edit(
             ),
         )
         connection.commit()
+
+
+def save_description_edit(
+    *,
+    database_path: Path,
+    job_id: str,
+    job_description: str,
+    prompt_job_description: str,
+) -> AtsProxyScore | None:
+    parsed_description = job_description.strip() or None
+    prompt_description = prompt_job_description.strip() or None
+    now = datetime.now(UTC).isoformat(timespec="seconds")
+    with connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT resume_content
+            FROM applications
+            WHERE job_id = ?
+            """,
+            (job_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"Application row was not found for job_id={job_id}.")
+
+        score = _calculate_ats_score(
+            resume_content=row["resume_content"],
+            job_description=prompt_description or parsed_description,
+        )
+        connection.execute(
+            """
+            UPDATE applications
+            SET job_description = ?,
+                prompt_job_description = ?,
+                ats_score = ?,
+                ats_parsing_score = ?,
+                ats_keyword_score = ?,
+                ats_semantic_score = ?,
+                ats_formatting_risk = ?,
+                ats_missing_terms = ?,
+                ats_updated_at = ?,
+                updated_at = ?
+            WHERE job_id = ?
+            """,
+            (
+                parsed_description,
+                prompt_description,
+                score.overall_score if score is not None else None,
+                score.parsing_score if score is not None else None,
+                score.keyword_match_score if score is not None else None,
+                score.semantic_match_score if score is not None else None,
+                score.formatting_risk if score is not None else None,
+                _format_missing_terms(score) if score is not None else None,
+                now if score is not None else None,
+                now,
+                job_id,
+            ),
+        )
+        connection.commit()
+    return score
 
 
 def render_cover_letter_pdf_from_clo_html(body_html: str) -> bytes:
@@ -1527,7 +1596,40 @@ def create_app(
         row = _fetch_application(database_path, job_id)
         if row is None:
             abort(404)
-        return render_template_string(DESCRIPTION_COMPARE_TEMPLATE, row=row)
+        return render_template_string(
+            DESCRIPTION_COMPARE_TEMPLATE,
+            row=row,
+            return_to=_safe_index_return_path(request.args.get("return_to")),
+            removed_text=_description_removed_text(
+                row["job_description"],
+                row["prompt_job_description"],
+            ),
+            diff_rows=_description_diff_rows(
+                row["job_description"],
+                row["prompt_job_description"],
+            ),
+        )
+
+    @app.post("/descriptions/<job_id>")
+    def compare_descriptions_save(job_id: str):
+        row = _fetch_application(database_path, job_id)
+        if row is None:
+            abort(404)
+        try:
+            score = save_description_edit(
+                database_path=database_path,
+                job_id=job_id,
+                job_description=request.form.get("job_description", ""),
+                prompt_job_description=request.form.get("prompt_job_description", ""),
+            )
+        except ValueError as exc:
+            flash(f"Description save failed: {exc}")
+        else:
+            score_text = f" ATS: {score.overall_score}/100." if score is not None else ""
+            flash(f"Saved descriptions and refreshed ATS fields.{score_text}")
+        return redirect(
+            _description_edit_return_path(job_id, request.form.get("return_to"))
+        )
 
     @app.get("/output/<path:relative_path>")
     def output_file(relative_path: str):
@@ -1747,6 +1849,54 @@ def _cover_letter_node_markup(node: Any) -> str:
         if href.startswith(("http://", "https://", "mailto:")):
             return f'<a href="{html_escape(href, quote=True)}" color="blue">{inner}</a>'
     return inner
+
+
+def _description_lines(value: Any) -> list[str]:
+    return [line.rstrip() for line in str(value or "").splitlines()]
+
+
+def _description_diff_rows(
+    job_description: Any,
+    prompt_job_description: Any,
+) -> list[DescriptionDiffRow]:
+    left_lines = _description_lines(job_description)
+    right_lines = _description_lines(prompt_job_description)
+    matcher = difflib.SequenceMatcher(
+        a=left_lines,
+        b=right_lines,
+        autojunk=False,
+    )
+    rows: list[DescriptionDiffRow] = []
+    for tag, left_start, left_end, right_start, right_end in matcher.get_opcodes():
+        if tag == "equal":
+            continue
+        left_chunk = left_lines[left_start:left_end]
+        right_chunk = right_lines[right_start:right_end]
+        span = max(len(left_chunk), len(right_chunk))
+        for index in range(span):
+            left_text = left_chunk[index] if index < len(left_chunk) else ""
+            right_text = right_chunk[index] if index < len(right_chunk) else ""
+            rows.append(
+                DescriptionDiffRow(
+                    status=tag,
+                    left_line_no=left_start + index + 1 if left_text else None,
+                    right_line_no=right_start + index + 1 if right_text else None,
+                    left_text=left_text,
+                    right_text=right_text,
+                )
+            )
+    return rows
+
+
+def _description_removed_text(
+    job_description: Any,
+    prompt_job_description: Any,
+) -> str:
+    removed_lines: list[str] = []
+    for row in _description_diff_rows(job_description, prompt_job_description):
+        if row.status in {"delete", "replace"} and row.left_text.strip():
+            removed_lines.append(row.left_text)
+    return "\n".join(removed_lines)
 
 
 def _resume_template_path(template_path: Path | None = None) -> Path:
@@ -2030,6 +2180,11 @@ def _resume_edit_return_path(job_id: str, return_to: Any) -> str:
 def _cover_letter_edit_return_path(job_id: str, return_to: Any) -> str:
     query = urlencode({"return_to": _safe_index_return_path(return_to)})
     return f"/cover-letters/{job_id}/edit?{query}"
+
+
+def _description_edit_return_path(job_id: str, return_to: Any) -> str:
+    query = urlencode({"return_to": _safe_index_return_path(return_to)})
+    return f"/descriptions/{job_id}?{query}"
 
 
 def cleanup_downloaded_application_pdfs(download_dir: Path | None = None) -> int:
@@ -2806,6 +2961,7 @@ INDEX_TEMPLATE = """
                 <div class="actions">
                   <a class="preserve-state-link" href="/linkedin/{{ row.job_id }}">LinkedIn</a>
                   <a
+                    class="preserve-state-link"
                     href="/descriptions/{{ row.job_id }}"
                     target="_blank"
                     rel="noreferrer"
@@ -4080,7 +4236,7 @@ DESCRIPTION_COMPARE_TEMPLATE = """
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Description Compare - {{ row.company }} - {{ row.job_title }}</title>
+  <title>Edit Descriptions - {{ row.company }} - {{ row.job_title }}</title>
   <style>
     :root {
       color-scheme: light;
@@ -4090,6 +4246,10 @@ DESCRIPTION_COMPARE_TEMPLATE = """
       --surface: #ffffff;
       --band: #f4f6f8;
       --accent: #0b6e69;
+      --accent-strong: #074f4b;
+      --removed: #fff1f1;
+      --added: #edf8f0;
+      --changed: #fff8e6;
     }
     * { box-sizing: border-box; }
     body {
@@ -4100,27 +4260,72 @@ DESCRIPTION_COMPARE_TEMPLATE = """
     }
     header {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: space-between;
-      gap: 16px;
+      gap: 18px;
       padding: 18px 24px;
       background: var(--surface);
       border-bottom: 1px solid var(--line);
     }
-    h1 { margin: 0; font-size: 20px; font-weight: 650; }
-    .meta { color: var(--muted); margin-top: 4px; }
+    h1 { margin: 3px 0 2px; font-size: 20px; font-weight: 650; }
+    .meta, .muted { color: var(--muted); }
     a { color: var(--accent); font-weight: 650; }
+    .top-links { display: flex; gap: 10px; flex-wrap: wrap; }
     main {
+      padding: 18px 24px 40px;
+    }
+    .flash {
+      margin: 0 0 12px;
+      padding: 10px 12px;
+      border: 1px solid #b9d8d5;
+      background: #eef8f6;
+    }
+    .save-bar {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: -18px -24px 18px;
+      padding: 12px 24px;
+      background: rgba(255, 255, 255, .96);
+      border-bottom: 1px solid var(--line);
+    }
+    button, .button-link {
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 650;
+      padding: 8px 10px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    button:hover, .button-link:hover { background: var(--accent-strong); }
+    .button-link.secondary {
+      background: #fff;
+      color: var(--accent);
+    }
+    .button-link.secondary:hover {
+      background: #eff7f6;
+      color: var(--accent-strong);
+    }
+    .editor-grid, .diff-grid {
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      gap: 16px;
-      padding: 16px 24px 24px;
+      gap: 14px;
+      margin-bottom: 14px;
     }
     section {
       min-width: 0;
       background: var(--surface);
       border: 1px solid var(--line);
     }
+    .wide { margin-bottom: 14px; }
     h2 {
       margin: 0;
       padding: 12px 14px;
@@ -4128,9 +4333,26 @@ DESCRIPTION_COMPARE_TEMPLATE = """
       font-size: 14px;
       font-weight: 700;
     }
+    textarea {
+      display: block;
+      width: 100%;
+      min-height: calc(100vh - 270px);
+      max-height: 72vh;
+      margin: 0;
+      overflow: auto;
+      resize: vertical;
+      border: 0;
+      border-radius: 0;
+      padding: 14px;
+      background: #fff;
+      color: var(--ink);
+      font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    textarea:focus {
+      outline: 2px solid #b9d8d5;
+      outline-offset: -2px;
+    }
     pre {
-      min-height: calc(100vh - 160px);
-      max-height: calc(100vh - 160px);
       margin: 0;
       overflow: auto;
       padding: 14px;
@@ -4140,38 +4362,164 @@ DESCRIPTION_COMPARE_TEMPLATE = """
       color: var(--ink);
       font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
+    .removed-text { max-height: 360px; background: var(--removed); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      table-layout: fixed;
+    }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      border-right: 1px solid var(--line);
+      padding: 7px 8px;
+      vertical-align: top;
+      text-align: left;
+    }
+    th {
+      background: #fafbfc;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+    td.line-no {
+      width: 52px;
+      color: var(--muted);
+      font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      text-align: right;
+    }
+    td.status {
+      width: 86px;
+      font-weight: 700;
+    }
+    td pre { padding: 0; background: transparent; }
+    tr.delete { background: var(--removed); }
+    tr.insert { background: var(--added); }
+    tr.replace { background: var(--changed); }
+    .score-panel {
+      min-width: 230px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      background: #fbfcfd;
+    }
+    .score-grid {
+      display: grid;
+      grid-template-columns: auto auto;
+      gap: 2px 12px;
+      margin-top: 6px;
+      font-size: 12px;
+    }
     @media (max-width: 900px) {
-      header {
-        align-items: flex-start;
-        flex-direction: column;
+      header, .save-bar { align-items: flex-start; flex-direction: column; }
+      main { padding: 14px; }
+      .save-bar { margin: -14px -14px 14px; padding: 12px 14px; }
+      .editor-grid, .diff-grid { grid-template-columns: 1fr; }
+      textarea {
+        min-height: 46vh;
+        max-height: 56vh;
       }
-      main {
-        grid-template-columns: 1fr;
-        padding: 12px;
-      }
-      pre {
-        min-height: 48vh;
-        max-height: 48vh;
-      }
+      .score-panel { min-width: 0; width: 100%; }
     }
   </style>
 </head>
 <body>
   <header>
     <div>
-      <h1>{{ row.job_title }}</h1>
-      <div class="meta">{{ row.company }} · {{ row.job_id }}</div>
+      <div class="top-links">
+        <a href="{{ return_to }}">Back to tracker</a>
+        {% if row.linkedin_url %}
+          <a href="{{ row.linkedin_url }}" target="_blank" rel="noreferrer">LinkedIn</a>
+        {% endif %}
+      </div>
+      <h1>Edit Job Descriptions</h1>
+      <div class="meta">{{ row.company }} - {{ row.job_title }} - {{ row.job_id }}</div>
     </div>
-    <a href="/" target="_self">Applications</a>
+    <div class="score-panel">
+      <strong>ATS proxy score</strong>
+      <div class="score-grid">
+        <span>Overall</span><strong>{{ row.ats_score if row.ats_score is not none else '-' }}/100</strong>
+        <span>Keyword</span><strong>{{ row.ats_keyword_score if row.ats_keyword_score is not none else '-' }}/100</strong>
+        <span>Semantic</span><strong>{{ row.ats_semantic_score if row.ats_semantic_score is not none else '-' }}/100</strong>
+        <span>Risk</span><strong>{{ row.ats_formatting_risk or '-' }}</strong>
+      </div>
+      {% if row.ats_missing_terms %}
+        <div class="muted">{{ row.ats_missing_terms }}</div>
+      {% endif %}
+    </div>
   </header>
   <main>
-    <section>
-      <h2>Parsed Job Description</h2>
-      <pre>{{ row.job_description or "No parsed job description is stored." }}</pre>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        {% for message in messages %}
+          <p class="flash">{{ message }}</p>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+    <form method="post" action="/descriptions/{{ row.job_id }}">
+      <input type="hidden" name="return_to" value="{{ return_to }}">
+      <div class="save-bar">
+        <div>
+          <button type="submit">Save And Rescore</button>
+          <a class="button-link secondary" href="{{ return_to }}">Close</a>
+        </div>
+        <span class="muted">ATS source: Prompt Job Description when present</span>
+      </div>
+      <div class="editor-grid">
+        <section>
+          <h2>Parsed Job Description</h2>
+          <textarea name="job_description">{{ row.job_description or "" }}</textarea>
+        </section>
+        <section>
+          <h2>Prompt Job Description</h2>
+          <textarea name="prompt_job_description">{{ row.prompt_job_description or "" }}</textarea>
+        </section>
+      </div>
+    </form>
+
+    <section class="wide">
+      <h2>Removed By Trimming</h2>
+      {% if removed_text %}
+        <pre class="removed-text">{{ removed_text }}</pre>
+      {% else %}
+        <pre class="removed-text">No removed text detected.</pre>
+      {% endif %}
     </section>
-    <section>
-      <h2>Prompt Job Description</h2>
-      <pre>{{ row.prompt_job_description or "No prompt job description is stored." }}</pre>
+
+    <section class="wide">
+      <h2>Description Diff</h2>
+      {% if diff_rows %}
+        <table>
+          <thead>
+            <tr>
+              <th class="status">Type</th>
+              <th>Parsed Line</th>
+              <th>Parsed Text</th>
+              <th>Prompt Line</th>
+              <th>Prompt Text</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for diff in diff_rows %}
+              <tr class="{{ diff.status }}">
+                <td class="status">
+                  {% if diff.status == "delete" %}Removed
+                  {% elif diff.status == "insert" %}Added
+                  {% elif diff.status == "replace" %}Changed
+                  {% else %}{{ diff.status }}
+                  {% endif %}
+                </td>
+                <td class="line-no">{{ diff.left_line_no or "" }}</td>
+                <td><pre>{{ diff.left_text }}</pre></td>
+                <td class="line-no">{{ diff.right_line_no or "" }}</td>
+                <td><pre>{{ diff.right_text }}</pre></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <pre>No line-level differences detected.</pre>
+      {% endif %}
     </section>
   </main>
 </body>
