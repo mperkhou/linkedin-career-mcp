@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "linkedin-career-mcp"
-version = "0.1.5"
+version = "1.0.0"
 description = "Python-centric MCP server for LinkedIn public job search and future career workflows."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -22,14 +22,17 @@ keywords = [
 ]
 dependencies = [
   "beautifulsoup4>=4.12,<5",
+  "extruct>=0.16,<1",
   "flask>=3.0,<4",
   "httpx>=0.27,<1",
   "mcp[cli]>=1.13,<2",
   "openpyxl>=3.1,<4",
   "pydantic>=2.7,<3",
   "pypdf>=5.0,<7",
+  "pyyaml>=6.0,<7",
   "python-docx>=1.1,<2",
-  "reportlab>=4.2,<5"
+  "reportlab>=4.2,<5",
+  "trafilatura>=1.12,<3"
 ]
 
 [project.optional-dependencies]
@@ -44,11 +47,7 @@ browser = [
 
 [project.scripts]
 linkedin-career-mcp = "linkedin_career_mcp.__main__:main"
-linkedin-career-match-jobs = "linkedin_career_mcp.workflows.matching:main"
-linkedin-career-regenerate-resumes = "linkedin_career_mcp.workflows.matching:regenerate_main"
-linkedin-career-regenerate-cover-letters = "linkedin_career_mcp.workflows.matching:regenerate_cover_letters_main"
-linkedin-career-regenerate-all = "linkedin_career_mcp.workflows.matching:regenerate_all_main"
-linkedin-career-refresh-static-artifacts = "linkedin_career_mcp.artifact_refresh:refresh_static_artifacts_main"
+linkedin-career-seed-jobs = "linkedin_career_mcp.workflows.matching:main"
 linkedin-career-audit-jods = "linkedin_career_mcp.jod_cleaner_audit:main"
 linkedin-career-webapp = "linkedin_career_mcp.webapp:main"
 

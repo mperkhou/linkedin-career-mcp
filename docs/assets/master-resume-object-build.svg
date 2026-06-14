@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="360" viewBox="0 0 1180 360" role="img" aria-labelledby="title desc">
+  <title id="title">Master resume object build workflow</title>
+  <desc id="desc">Master resume text flows through Codex skills and guidelines into MASTER-RESUME.yml with links between experience bullets and Core Technical Skills categories.</desc>
+  <defs>
+    <style>
+      .bg { fill: #f7fbfa; }
+      .box { fill: #ffffff; stroke: #0f766e; stroke-width: 2; rx: 10; }
+      .box2 { fill: #f0fdf4; stroke: #15803d; stroke-width: 2; rx: 10; }
+      .box3 { fill: #fffbeb; stroke: #b45309; stroke-width: 2; rx: 10; }
+      .title { font: 700 20px Arial, sans-serif; fill: #0f172a; }
+      .text { font: 15px Arial, sans-serif; fill: #334155; }
+      .small { font: 13px Arial, sans-serif; fill: #475569; }
+      .arrow { stroke: #0f766e; stroke-width: 3; marker-end: url(#arrow); fill: none; }
+      .label { font: 700 14px Arial, sans-serif; fill: #0f766e; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0f766e" />
+    </marker>
+  </defs>
+  <rect class="bg" x="0" y="0" width="1180" height="360" />
+  <text class="title" x="32" y="42">Build The Master Resume Object</text>
+  <text class="text" x="32" y="68">This stage happens before any job search or per-job tailoring. The output is factual, reusable, and reviewable.</text>
+
+  <rect class="box" x="34" y="112" width="210" height="132" />
+  <text class="title" x="58" y="145">Master Text</text>
+  <text class="text" x="58" y="174">profile/MP-MASTER-</text>
+  <text class="text" x="58" y="196">RESUME.txt</text>
+  <text class="small" x="58" y="224">Human-maintained source</text>
+
+  <path class="arrow" d="M 250 178 L 335 178" />
+  <rect class="box3" x="350" y="112" width="245" height="132" />
+  <text class="title" x="374" y="145">Codex Skills</text>
+  <text class="text" x="374" y="174">Structured setup pass</text>
+  <text class="text" x="374" y="197">Mapping guidelines</text>
+  <text class="small" x="374" y="224">No LinkedIn or ATS pass yet</text>
+
+  <path class="arrow" d="M 602 178 L 685 178" />
+  <rect class="box2" x="700" y="90" width="246" height="176" />
+  <text class="title" x="724" y="123">MASTER-RESUME.yml</text>
+  <text class="text" x="724" y="153">Header and sections</text>
+  <text class="text" x="724" y="176">Core skill categories</text>
+  <text class="text" x="724" y="199">Experience bullets</text>
+  <text class="text" x="724" y="222">Render flags and limits</text>
+  <text class="small" x="724" y="247">Canonical resume object</text>
+
+  <path class="arrow" d="M 950 178 L 1025 178" />
+  <rect class="box" x="1040" y="112" width="110" height="132" />
+  <text class="title" x="1060" y="145">Links</text>
+  <text class="text" x="1060" y="174">Direct</text>
+  <text class="text" x="1060" y="197">Indirect</text>
+  <text class="text" x="1060" y="220">Category</text>
+
+  <path class="arrow" d="M 824 270 C 824 320 470 320 470 252" />
+  <text class="label" x="515" y="316">Iterate category/skill linkages until bullets and skill buckets agree</text>
+</svg>

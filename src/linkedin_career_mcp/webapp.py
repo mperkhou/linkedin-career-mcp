@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
+import difflib
 import sqlite3
 import subprocess
 import sys
@@ -9,47 +11,59 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from html import escape as html_escape
 from io import BytesIO
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
-from openpyxl import load_workbook
+import yaml
+from bs4 import BeautifulSoup, Comment, NavigableString, Tag
+from reportlab.lib.colors import HexColor
+from reportlab.lib.pagesizes import LETTER
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer
 
 from linkedin_career_mcp.ats import AtsProxyScore, calculate_ats_proxy_score
+from linkedin_career_mcp.config import load_settings
+from linkedin_career_mcp.errors import LinkedInCareerMcpError
+from linkedin_career_mcp.generic_job_scraper import fetch_generic_job_details
+from linkedin_career_mcp.jod import clean_job_description_for_prompt
+from linkedin_career_mcp.models import JobDetails
+from linkedin_career_mcp.providers.linkedin_public import (
+    LinkedInPublicJobsProvider,
+    extract_job_id,
+)
+from linkedin_career_mcp.resume_rendering import (
+    render_resume_html_from_mapping,
+    render_resume_pdf_from_html,
+    rich_text,
+    sanitize_resume_rich_text,
+)
 
 DEFAULT_OUTPUT_DIR = Path("output")
-TRACKING_WORKBOOK = Path("tracking/read_applications/linkedin_applications.xlsx")
 DEFAULT_DATABASE = Path("tracking/applications.sqlite3")
-
-TRACKING_COLUMNS = (
-    "job_id",
-    "company",
-    "job_title",
-    "linkedin_url",
-    "customized_resume",
-    "cover_letter",
-    "applied_to",
-    "date_applied",
-)
+DEFAULT_RESUME_TEMPLATE = Path("templates/resume/master_resume.html.j2")
 APPLICATION_STATUSES = {"No", "Yes", "N/A", "Rejected", "Accepted for interview"}
 APPLICATION_STATUS_FILTERS = {"all", *APPLICATION_STATUSES}
 VIEW_STATE_SORTS = {"company", "matched", "ats", "resume", "cover_letter"}
 VIEW_STATE_DIRECTIONS = {"asc", "desc"}
 VIEW_STATE_QUERY_KEYS = {"q", "status", "sort", "direction"}
-REQUIRED_TRACKING_COLUMNS = (
-    "job_id",
-    "company",
-    "job_title",
-    "linkedin_url",
-    "customized_resume",
-    "applied_to",
-    "date_applied",
-)
 APPLICATION_EXTRA_COLUMNS = {
     "job_description": "TEXT",
     "prompt_job_description": "TEXT",
+    "application_resume_object": "TEXT",
+    "application_resume_updated_at": "TEXT",
+    "application_resume_backup_object": "TEXT",
+    "application_resume_backup_created_at": "TEXT",
+    "resume_html_filename": "TEXT NOT NULL DEFAULT ''",
+    "resume_html_content": "TEXT",
+    "resume_html_mime_type": "TEXT NOT NULL DEFAULT 'text/html; charset=utf-8'",
+    "source_resume_html_path": "TEXT NOT NULL DEFAULT ''",
+    "resume_html_updated_at": "TEXT",
     "resume_updated_at": "TEXT",
+    "cover_letter_object": "TEXT",
+    "cover_letter_object_updated_at": "TEXT",
     "cover_letter_filename": "TEXT NOT NULL DEFAULT ''",
     "cover_letter_content": "BLOB",
     "cover_letter_mime_type": "TEXT NOT NULL DEFAULT 'application/pdf'",
@@ -67,20 +81,16 @@ APPLICATION_EXTRA_COLUMNS = {
     "ats_updated_at": "TEXT",
 }
 REGENERATE_ACTION_TARGETS = {
-    "resumes": "regenerate-resumes",
-    "cover_letters": "regenerate-cover-letters",
-    "all": "regenerate-all",
+    "draft_resumes": "regenerate-draft-resumes",
+    "aro_objects": "regenerate-aro-objects",
+    "sync_draft_to_aro": "sync-draft-to-aro",
 }
+_DRAFT_REGENERATE_MODES = {"draft_resumes"}
+COVER_LETTER_OBJECT_SCHEMA_VERSION = "cover_letter_object.v0.1"
+EMERALD_ACCENT = HexColor("#57ba86")
+RESUME_BODY_COLOR = HexColor("#111827")
 MAX_ACTION_RUNS = 8
 MAX_ACTION_MESSAGES = 160
-
-
-@dataclass(frozen=True)
-class ImportResult:
-    rows_seen: int
-    rows_imported: int
-    missing_resumes: int
-    missing_cover_letters: int = 0
 
 
 @dataclass(frozen=True)
@@ -94,6 +104,15 @@ class ApplicationJobRecord:
     date_matched: str | None
     date_posted: str | None
     experience_level: str | None
+
+
+@dataclass(frozen=True)
+class DescriptionDiffRow:
+    status: str
+    left_line_no: int | None
+    right_line_no: int | None
+    left_text: str
+    right_text: str
 
 
 @dataclass
@@ -132,11 +151,22 @@ def init_database(connection: sqlite3.Connection) -> None:
             linkedin_url TEXT NOT NULL,
             job_description TEXT,
             prompt_job_description TEXT,
+            application_resume_object TEXT,
+            application_resume_updated_at TEXT,
+            application_resume_backup_object TEXT,
+            application_resume_backup_created_at TEXT,
+            resume_html_filename TEXT NOT NULL DEFAULT '',
+            resume_html_content TEXT,
+            resume_html_mime_type TEXT NOT NULL DEFAULT 'text/html; charset=utf-8',
+            source_resume_html_path TEXT NOT NULL DEFAULT '',
+            resume_html_updated_at TEXT,
             resume_filename TEXT NOT NULL,
             resume_content BLOB,
             resume_mime_type TEXT NOT NULL DEFAULT 'application/pdf',
             source_resume_path TEXT NOT NULL,
             resume_updated_at TEXT,
+            cover_letter_object TEXT,
+            cover_letter_object_updated_at TEXT,
             cover_letter_filename TEXT NOT NULL DEFAULT '',
             cover_letter_content BLOB,
             cover_letter_mime_type TEXT NOT NULL DEFAULT 'application/pdf',
@@ -334,44 +364,72 @@ def upsert_application_artifact(
                     applications.prompt_job_description
                 ),
                 resume_filename = CASE
+                    WHEN COALESCE(NULLIF(applications.application_resume_object, ''), '') != ''
+                    THEN applications.resume_filename
                     WHEN excluded.resume_filename != '' THEN excluded.resume_filename
                     ELSE applications.resume_filename
                 END,
-                resume_content = COALESCE(excluded.resume_content, applications.resume_content),
+                resume_content = CASE
+                    WHEN COALESCE(NULLIF(applications.application_resume_object, ''), '') != ''
+                    THEN applications.resume_content
+                    ELSE COALESCE(excluded.resume_content, applications.resume_content)
+                END,
                 resume_mime_type = CASE
+                    WHEN COALESCE(NULLIF(applications.application_resume_object, ''), '') != ''
+                    THEN applications.resume_mime_type
                     WHEN excluded.resume_content IS NOT NULL THEN excluded.resume_mime_type
                     ELSE applications.resume_mime_type
                 END,
                 source_resume_path = CASE
+                    WHEN COALESCE(NULLIF(applications.application_resume_object, ''), '') != ''
+                    THEN applications.source_resume_path
                     WHEN excluded.source_resume_path != '' THEN excluded.source_resume_path
                     ELSE applications.source_resume_path
                 END,
-                resume_updated_at = COALESCE(
-                    excluded.resume_updated_at,
-                    applications.resume_updated_at
-                ),
+                resume_updated_at = CASE
+                    WHEN COALESCE(NULLIF(applications.application_resume_object, ''), '') != ''
+                    THEN applications.resume_updated_at
+                    ELSE COALESCE(
+                        excluded.resume_updated_at,
+                        applications.resume_updated_at
+                    )
+                END,
                 cover_letter_filename = CASE
+                    WHEN COALESCE(NULLIF(applications.cover_letter_object, ''), '') != ''
+                    THEN applications.cover_letter_filename
                     WHEN excluded.cover_letter_filename != '' THEN excluded.cover_letter_filename
                     ELSE applications.cover_letter_filename
                 END,
-                cover_letter_content = COALESCE(
-                    excluded.cover_letter_content,
-                    applications.cover_letter_content
-                ),
+                cover_letter_content = CASE
+                    WHEN COALESCE(NULLIF(applications.cover_letter_object, ''), '') != ''
+                    THEN applications.cover_letter_content
+                    ELSE COALESCE(
+                        excluded.cover_letter_content,
+                        applications.cover_letter_content
+                    )
+                END,
                 cover_letter_mime_type = CASE
+                    WHEN COALESCE(NULLIF(applications.cover_letter_object, ''), '') != ''
+                    THEN applications.cover_letter_mime_type
                     WHEN excluded.cover_letter_content IS NOT NULL
                     THEN excluded.cover_letter_mime_type
                     ELSE applications.cover_letter_mime_type
                 END,
                 source_cover_letter_path = CASE
+                    WHEN COALESCE(NULLIF(applications.cover_letter_object, ''), '') != ''
+                    THEN applications.source_cover_letter_path
                     WHEN excluded.source_cover_letter_path != ''
                     THEN excluded.source_cover_letter_path
                     ELSE applications.source_cover_letter_path
                 END,
-                cover_letter_updated_at = COALESCE(
-                    excluded.cover_letter_updated_at,
-                    applications.cover_letter_updated_at
-                ),
+                cover_letter_updated_at = CASE
+                    WHEN COALESCE(NULLIF(applications.cover_letter_object, ''), '') != ''
+                    THEN applications.cover_letter_updated_at
+                    ELSE COALESCE(
+                        excluded.cover_letter_updated_at,
+                        applications.cover_letter_updated_at
+                    )
+                END,
                 date_matched = COALESCE(
                     NULLIF(applications.date_matched, ''),
                     excluded.date_matched
@@ -384,28 +442,56 @@ def upsert_application_artifact(
                     NULLIF(excluded.experience_level, ''),
                     applications.experience_level
                 ),
-                ats_score = COALESCE(excluded.ats_score, applications.ats_score),
-                ats_parsing_score = COALESCE(
-                    excluded.ats_parsing_score,
-                    applications.ats_parsing_score
-                ),
-                ats_keyword_score = COALESCE(
-                    excluded.ats_keyword_score,
-                    applications.ats_keyword_score
-                ),
-                ats_semantic_score = COALESCE(
-                    excluded.ats_semantic_score,
-                    applications.ats_semantic_score
-                ),
-                ats_formatting_risk = COALESCE(
-                    excluded.ats_formatting_risk,
-                    applications.ats_formatting_risk
-                ),
-                ats_missing_terms = COALESCE(
-                    excluded.ats_missing_terms,
-                    applications.ats_missing_terms
-                ),
-                ats_updated_at = COALESCE(excluded.ats_updated_at, applications.ats_updated_at),
+                ats_score = CASE
+                    WHEN COALESCE(NULLIF(applications.application_resume_object, ''), '') != ''
+                    THEN applications.ats_score
+                    ELSE COALESCE(excluded.ats_score, applications.ats_score)
+                END,
+                ats_parsing_score = CASE
+                    WHEN COALESCE(NULLIF(applications.application_resume_object, ''), '') != ''
+                    THEN applications.ats_parsing_score
+                    ELSE COALESCE(
+                        excluded.ats_parsing_score,
+                        applications.ats_parsing_score
+                    )
+                END,
+                ats_keyword_score = CASE
+                    WHEN COALESCE(NULLIF(applications.application_resume_object, ''), '') != ''
+                    THEN applications.ats_keyword_score
+                    ELSE COALESCE(
+                        excluded.ats_keyword_score,
+                        applications.ats_keyword_score
+                    )
+                END,
+                ats_semantic_score = CASE
+                    WHEN COALESCE(NULLIF(applications.application_resume_object, ''), '') != ''
+                    THEN applications.ats_semantic_score
+                    ELSE COALESCE(
+                        excluded.ats_semantic_score,
+                        applications.ats_semantic_score
+                    )
+                END,
+                ats_formatting_risk = CASE
+                    WHEN COALESCE(NULLIF(applications.application_resume_object, ''), '') != ''
+                    THEN applications.ats_formatting_risk
+                    ELSE COALESCE(
+                        excluded.ats_formatting_risk,
+                        applications.ats_formatting_risk
+                    )
+                END,
+                ats_missing_terms = CASE
+                    WHEN COALESCE(NULLIF(applications.application_resume_object, ''), '') != ''
+                    THEN applications.ats_missing_terms
+                    ELSE COALESCE(
+                        excluded.ats_missing_terms,
+                        applications.ats_missing_terms
+                    )
+                END,
+                ats_updated_at = CASE
+                    WHEN COALESCE(NULLIF(applications.application_resume_object, ''), '') != ''
+                    THEN applications.ats_updated_at
+                    ELSE COALESCE(excluded.ats_updated_at, applications.ats_updated_at)
+                END,
                 applied_to = CASE
                     WHEN applications.applied_to != 'No' THEN applications.applied_to
                     ELSE excluded.applied_to
@@ -449,11 +535,546 @@ def upsert_application_artifact(
         connection.commit()
 
 
+def add_linkedin_application_from_url(
+    *,
+    database_path: Path,
+    linkedin_url: str,
+) -> str:
+    url = str(linkedin_url or "").strip()
+    job_id = extract_job_id(url)
+    if not job_id:
+        raise ValueError("Paste a valid LinkedIn job URL.")
+
+    details = asyncio.run(_fetch_linkedin_job_details(url))
+    raw_description = str(details.description or "").strip() or None
+    prompt_description = (
+        _clean_prompt_job_description(raw_description) if raw_description else None
+    )
+    stored_job_id = details.job_id or job_id
+    upsert_application_artifact(
+        database_path=database_path,
+        job_id=stored_job_id,
+        company=details.company or "",
+        job_title=details.title or "Unknown title",
+        linkedin_url=str(details.job_url or url),
+        resume_path=None,
+        cover_letter_path=None,
+        job_description=raw_description,
+        prompt_job_description=prompt_description,
+        date_posted=details.listed_at,
+        experience_level=details.seniority_level,
+    )
+    return stored_job_id
+
+
+def add_generic_application_from_url(
+    *,
+    database_path: Path,
+    job_url: str,
+) -> str:
+    url = str(job_url or "").strip()
+    details = asyncio.run(_fetch_generic_job_details(url))
+    raw_description = str(details.description or "").strip() or None
+    if raw_description is None:
+        raise ValueError("No usable job description was found at that URL.")
+    prompt_description = _clean_prompt_job_description(raw_description)
+    upsert_application_artifact(
+        database_path=database_path,
+        job_id=details.job_id,
+        company=details.company or "",
+        job_title=details.title or "Job Posting",
+        linkedin_url=str(details.job_url or url),
+        resume_path=None,
+        cover_letter_path=None,
+        job_description=raw_description,
+        prompt_job_description=prompt_description,
+        date_posted=details.listed_at,
+        experience_level=details.seniority_level,
+    )
+    return details.job_id
+
+
+async def _fetch_linkedin_job_details(linkedin_url: str) -> JobDetails:
+    settings = load_settings()
+    provider = LinkedInPublicJobsProvider(
+        user_agent=settings.user_agent,
+        timeout_seconds=settings.timeout_seconds,
+    )
+    try:
+        return await provider.get_job_details(linkedin_url)
+    finally:
+        await provider.aclose()
+
+
+async def _fetch_generic_job_details(job_url: str) -> JobDetails:
+    settings = load_settings()
+    return await fetch_generic_job_details(
+        url=job_url,
+        user_agent=settings.user_agent,
+        timeout_seconds=settings.timeout_seconds,
+    )
+
+
+def _clean_prompt_job_description(description: str) -> str:
+    return clean_job_description_for_prompt(description)
+
+
+def store_application_resume_first_draft(
+    *,
+    database_path: Path,
+    job_id: str,
+    application_resume_object: str,
+    resume_html: str,
+    resume_pdf: bytes,
+    resume_html_path: Path | None = None,
+    resume_pdf_path: Path | None = None,
+) -> None:
+    now = datetime.now(UTC).isoformat(timespec="seconds")
+    with connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT job_id, job_title, prompt_job_description, job_description
+            FROM applications
+            WHERE job_id = ?
+            """,
+            (job_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"Application row was not found for job_id={job_id}.")
+
+        ats_score = _calculate_ats_score(
+            resume_content=resume_pdf,
+            job_description=row["prompt_job_description"] or row["job_description"],
+        )
+        connection.execute(
+            """
+            UPDATE applications
+            SET application_resume_object = ?,
+                application_resume_updated_at = ?,
+                resume_html_filename = ?,
+                resume_html_content = ?,
+                resume_html_mime_type = 'text/html; charset=utf-8',
+                source_resume_html_path = ?,
+                resume_html_updated_at = ?,
+                resume_filename = ?,
+                resume_content = ?,
+                resume_mime_type = 'application/pdf',
+                source_resume_path = ?,
+                resume_updated_at = ?,
+                ats_score = ?,
+                ats_parsing_score = ?,
+                ats_keyword_score = ?,
+                ats_semantic_score = ?,
+                ats_formatting_risk = ?,
+                ats_missing_terms = ?,
+                ats_updated_at = ?,
+                updated_at = ?
+            WHERE job_id = ?
+            """,
+            (
+                application_resume_object,
+                now,
+                (
+                    resume_html_path.name
+                    if resume_html_path is not None
+                    else _resume_html_filename(row)
+                ),
+                resume_html,
+                str(resume_html_path) if resume_html_path is not None else "",
+                now,
+                resume_pdf_path.name if resume_pdf_path is not None else _resume_pdf_filename(row),
+                resume_pdf,
+                str(resume_pdf_path) if resume_pdf_path is not None else "",
+                now,
+                ats_score.overall_score if ats_score is not None else None,
+                ats_score.parsing_score if ats_score is not None else None,
+                ats_score.keyword_match_score if ats_score is not None else None,
+                ats_score.semantic_match_score if ats_score is not None else None,
+                ats_score.formatting_risk if ats_score is not None else None,
+                _format_missing_terms(ats_score) if ats_score is not None else None,
+                now if ats_score is not None else None,
+                now,
+                job_id,
+            ),
+        )
+        connection.commit()
+
+
+def store_application_resume_object(
+    *,
+    database_path: Path,
+    job_id: str,
+    application_resume_object: str,
+) -> None:
+    _parse_application_resume_yaml(application_resume_object)
+    now = datetime.now(UTC).isoformat(timespec="seconds")
+    with connect_database(database_path) as connection:
+        cursor = connection.execute(
+            """
+            UPDATE applications
+            SET application_resume_object = ?,
+                application_resume_updated_at = ?,
+                updated_at = ?
+            WHERE job_id = ?
+            """,
+            (application_resume_object, now, now, job_id),
+        )
+        if cursor.rowcount == 0:
+            raise ValueError(f"Application row was not found for job_id={job_id}.")
+        connection.commit()
+
+
+def save_application_resume_edit(
+    *,
+    database_path: Path,
+    job_id: str,
+    application_resume_object: str,
+    template_path: Path | None = None,
+    backup_current: bool = True,
+) -> AtsProxyScore | None:
+    resume = _parse_application_resume_yaml(application_resume_object)
+    resume_html = render_resume_html_from_mapping(
+        resume=resume,
+        template_path=_resume_template_path(template_path),
+    )
+    resume_pdf = render_resume_pdf_from_html(resume_html)
+    now = datetime.now(UTC).isoformat(timespec="seconds")
+    with connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT *
+            FROM applications
+            WHERE job_id = ?
+            """,
+            (job_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"Application row was not found for job_id={job_id}.")
+        ats_score = _calculate_ats_score(
+            resume_content=resume_pdf,
+            job_description=row["prompt_job_description"] or row["job_description"],
+        )
+        connection.execute(
+            """
+            UPDATE applications
+            SET application_resume_backup_object = ?,
+                application_resume_backup_created_at = ?,
+                application_resume_object = ?,
+                application_resume_updated_at = ?,
+                resume_html_filename = ?,
+                resume_html_content = ?,
+                resume_html_mime_type = 'text/html; charset=utf-8',
+                source_resume_html_path = '',
+                resume_html_updated_at = ?,
+                resume_filename = ?,
+                resume_content = ?,
+                resume_mime_type = 'application/pdf',
+                source_resume_path = '',
+                resume_updated_at = ?,
+                ats_score = ?,
+                ats_parsing_score = ?,
+                ats_keyword_score = ?,
+                ats_semantic_score = ?,
+                ats_formatting_risk = ?,
+                ats_missing_terms = ?,
+                ats_updated_at = ?,
+                updated_at = ?
+            WHERE job_id = ?
+            """,
+            (
+                row["application_resume_object"] if backup_current else row[
+                    "application_resume_backup_object"
+                ],
+                now if backup_current else row["application_resume_backup_created_at"],
+                application_resume_object,
+                now,
+                _resume_html_filename(row),
+                resume_html,
+                now,
+                _resume_pdf_filename(row),
+                resume_pdf,
+                now,
+                ats_score.overall_score if ats_score is not None else None,
+                ats_score.parsing_score if ats_score is not None else None,
+                ats_score.keyword_match_score if ats_score is not None else None,
+                ats_score.semantic_match_score if ats_score is not None else None,
+                ats_score.formatting_risk if ats_score is not None else None,
+                _format_missing_terms(ats_score) if ats_score is not None else None,
+                now if ats_score is not None else None,
+                now,
+                job_id,
+            ),
+        )
+        connection.commit()
+    return ats_score
+
+
+def sync_application_resume_to_draft(
+    *,
+    database_path: Path,
+    job_id: str,
+    template_path: Path | None = None,
+) -> AtsProxyScore | None:
+    with connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT *
+            FROM applications
+            WHERE job_id = ?
+            """,
+            (job_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"Application row was not found for job_id={job_id}.")
+        application_resume_object = str(row["application_resume_object"] or "").strip()
+        if not application_resume_object:
+            raise ValueError("Application resume object was not found.")
+
+        resume = _parse_application_resume_yaml(application_resume_object)
+        resume_html = render_resume_html_from_mapping(
+            resume=resume,
+            template_path=_resume_template_path(template_path),
+        )
+        resume_pdf = render_resume_pdf_from_html(resume_html)
+        ats_score = _calculate_ats_score(
+            resume_content=resume_pdf,
+            job_description=row["prompt_job_description"] or row["job_description"],
+        )
+        now = datetime.now(UTC).isoformat(timespec="seconds")
+        connection.execute(
+            """
+            UPDATE applications
+            SET resume_html_filename = ?,
+                resume_html_content = ?,
+                resume_html_mime_type = 'text/html; charset=utf-8',
+                source_resume_html_path = '',
+                resume_html_updated_at = ?,
+                resume_filename = ?,
+                resume_content = ?,
+                resume_mime_type = 'application/pdf',
+                source_resume_path = '',
+                resume_updated_at = ?,
+                ats_score = ?,
+                ats_parsing_score = ?,
+                ats_keyword_score = ?,
+                ats_semantic_score = ?,
+                ats_formatting_risk = ?,
+                ats_missing_terms = ?,
+                ats_updated_at = ?,
+                updated_at = ?
+            WHERE job_id = ?
+            """,
+            (
+                _resume_html_filename(row),
+                resume_html,
+                now,
+                _resume_pdf_filename(row),
+                resume_pdf,
+                now,
+                ats_score.overall_score if ats_score is not None else None,
+                ats_score.parsing_score if ats_score is not None else None,
+                ats_score.keyword_match_score if ats_score is not None else None,
+                ats_score.semantic_match_score if ats_score is not None else None,
+                ats_score.formatting_risk if ats_score is not None else None,
+                _format_missing_terms(ats_score) if ats_score is not None else None,
+                now if ats_score is not None else None,
+                now,
+                job_id,
+            ),
+        )
+        connection.commit()
+    return ats_score
+
+
+def revert_application_resume_edit(
+    *,
+    database_path: Path,
+    job_id: str,
+    template_path: Path | None = None,
+) -> AtsProxyScore | None:
+    with connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT application_resume_backup_object
+            FROM applications
+            WHERE job_id = ?
+            """,
+            (job_id,),
+        ).fetchone()
+    if row is None:
+        raise ValueError(f"Application row was not found for job_id={job_id}.")
+    backup_object = str(row["application_resume_backup_object"] or "").strip()
+    if not backup_object:
+        raise ValueError("No manual resume backup is available for this application.")
+    return save_application_resume_edit(
+        database_path=database_path,
+        job_id=job_id,
+        application_resume_object=backup_object,
+        template_path=template_path,
+        backup_current=True,
+    )
+
+
+def save_cover_letter_edit(
+    *,
+    database_path: Path,
+    job_id: str,
+    body_html: str,
+) -> None:
+    sanitized_html = _sanitize_cover_letter_body_html(body_html)
+    body_text = _cover_letter_plain_text(sanitized_html)
+    if not body_text:
+        raise ValueError("Cover letter text is empty.")
+    cover_letter_object = _dump_cover_letter_object(
+        {
+            "schema_version": COVER_LETTER_OBJECT_SCHEMA_VERSION,
+            "source": "manual",
+            "body_html": sanitized_html,
+            "body_text": body_text,
+        }
+    )
+    cover_letter_pdf = render_cover_letter_pdf_from_clo_html(sanitized_html)
+    now = datetime.now(UTC).isoformat(timespec="seconds")
+    with connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT *
+            FROM applications
+            WHERE job_id = ?
+            """,
+            (job_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"Application row was not found for job_id={job_id}.")
+        connection.execute(
+            """
+            UPDATE applications
+            SET cover_letter_object = ?,
+                cover_letter_object_updated_at = ?,
+                cover_letter_filename = ?,
+                cover_letter_content = ?,
+                cover_letter_mime_type = 'application/pdf',
+                source_cover_letter_path = '',
+                cover_letter_updated_at = ?,
+                updated_at = ?
+            WHERE job_id = ?
+            """,
+            (
+                cover_letter_object,
+                now,
+                _cover_letter_pdf_filename(row),
+                cover_letter_pdf,
+                now,
+                now,
+                job_id,
+            ),
+        )
+        connection.commit()
+
+
+def save_description_edit(
+    *,
+    database_path: Path,
+    job_id: str,
+    job_description: str,
+    prompt_job_description: str,
+) -> AtsProxyScore | None:
+    parsed_description = job_description.strip() or None
+    prompt_description = prompt_job_description.strip() or None
+    now = datetime.now(UTC).isoformat(timespec="seconds")
+    with connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT resume_content
+            FROM applications
+            WHERE job_id = ?
+            """,
+            (job_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"Application row was not found for job_id={job_id}.")
+
+        score = _calculate_ats_score(
+            resume_content=row["resume_content"],
+            job_description=prompt_description or parsed_description,
+        )
+        connection.execute(
+            """
+            UPDATE applications
+            SET job_description = ?,
+                prompt_job_description = ?,
+                ats_score = ?,
+                ats_parsing_score = ?,
+                ats_keyword_score = ?,
+                ats_semantic_score = ?,
+                ats_formatting_risk = ?,
+                ats_missing_terms = ?,
+                ats_updated_at = ?,
+                updated_at = ?
+            WHERE job_id = ?
+            """,
+            (
+                parsed_description,
+                prompt_description,
+                score.overall_score if score is not None else None,
+                score.parsing_score if score is not None else None,
+                score.keyword_match_score if score is not None else None,
+                score.semantic_match_score if score is not None else None,
+                score.formatting_risk if score is not None else None,
+                _format_missing_terms(score) if score is not None else None,
+                now if score is not None else None,
+                now,
+                job_id,
+            ),
+        )
+        connection.commit()
+    return score
+
+
+def render_cover_letter_pdf_from_clo_html(body_html: str) -> bytes:
+    styles = getSampleStyleSheet()
+    body = ParagraphStyle(
+        "ManualCoverLetterBody",
+        parent=styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=10.5,
+        leading=14.5,
+        spaceAfter=10,
+        textColor=RESUME_BODY_COLOR,
+    )
+    story: list[Any] = [
+        HRFlowable(
+            width="100%",
+            thickness=7.2,
+            color=EMERALD_ACCENT,
+            spaceBefore=0,
+            spaceAfter=0,
+        ),
+        Spacer(1, 34),
+    ]
+    paragraphs = _cover_letter_paragraph_markup(body_html)
+    if not paragraphs:
+        paragraphs = ["Cover letter content was empty."]
+    for paragraph in paragraphs:
+        story.append(Paragraph(paragraph, body))
+
+    buffer = BytesIO()
+    document = SimpleDocTemplate(
+        buffer,
+        pagesize=LETTER,
+        rightMargin=72,
+        leftMargin=72,
+        topMargin=54,
+        bottomMargin=72,
+    )
+    document.build(story)
+    return buffer.getvalue()
+
+
 def delete_applications(
     *,
     database_path: Path,
     job_ids: list[str],
-    tracking_path: Path | None = None,
 ) -> int:
     normalized_job_ids = sorted({job_id.strip() for job_id in job_ids if job_id.strip()})
     if not normalized_job_ids:
@@ -468,100 +1089,7 @@ def delete_applications(
         deleted_count = cursor.rowcount
         connection.commit()
 
-    if tracking_path is not None:
-        _delete_tracking_rows(tracking_path=tracking_path, job_ids=set(normalized_job_ids))
     return deleted_count
-
-
-def import_output_artifacts(*, output_dir: Path, database_path: Path) -> ImportResult:
-    tracking_path = output_dir / TRACKING_WORKBOOK
-    if not tracking_path.exists():
-        raise FileNotFoundError(f"Tracking workbook was not found: {tracking_path}")
-
-    connection = connect_database(database_path)
-    connection.close()
-    workbook = load_workbook(tracking_path, data_only=True)
-    sheet = workbook.active
-    headers = [str(cell.value or "").strip() for cell in sheet[1]]
-    column_indexes = {header: index for index, header in enumerate(headers)}
-    missing_columns = [
-        column for column in REQUIRED_TRACKING_COLUMNS if column not in column_indexes
-    ]
-    if missing_columns:
-        raise ValueError(f"Tracking workbook is missing columns: {', '.join(missing_columns)}")
-
-    rows_seen = 0
-    rows_imported = 0
-    missing_resumes = 0
-    missing_cover_letters = 0
-
-    for row in sheet.iter_rows(min_row=2, values_only=True):
-        values = {
-            column: row[column_indexes[column]]
-            for column in REQUIRED_TRACKING_COLUMNS
-        }
-        job_id = str(values["job_id"] or "").strip()
-        if not job_id:
-            continue
-        rows_seen += 1
-
-        resume_path_text = str(values["customized_resume"] or "").strip()
-        resume_path = (
-            _resolve_output_path(output_dir=output_dir, path_text=resume_path_text)
-            if resume_path_text
-            else None
-        )
-        if resume_path_text and (resume_path is None or not resume_path.exists()):
-            missing_resumes += 1
-
-        cover_letter_path_text = ""
-        if "cover_letter" in column_indexes:
-            cover_letter_value = row[column_indexes["cover_letter"]]
-            cover_letter_path_text = str(cover_letter_value or "").strip()
-        cover_letter_path = (
-            _resolve_output_path(output_dir=output_dir, path_text=cover_letter_path_text)
-            if cover_letter_path_text
-            else None
-        )
-        if cover_letter_path_text and (
-            cover_letter_path is None or not cover_letter_path.exists()
-        ):
-            missing_cover_letters += 1
-
-        upsert_application_artifact(
-            database_path=database_path,
-            job_id=job_id,
-            company=str(values["company"] or ""),
-            job_title=str(values["job_title"] or ""),
-            linkedin_url=str(values["linkedin_url"] or ""),
-            resume_path=resume_path,
-            cover_letter_path=cover_letter_path,
-            applied_to=str(values["applied_to"] or "No"),
-            date_applied=_date_value(values["date_applied"]),
-            date_matched=_optional_row_value(
-                row=row,
-                column_indexes=column_indexes,
-                column="date_matched",
-            ),
-            date_posted=_optional_row_value(
-                row=row,
-                column_indexes=column_indexes,
-                column="date_posted",
-            ),
-            experience_level=_optional_row_value(
-                row=row,
-                column_indexes=column_indexes,
-                column="experience_level",
-            ),
-        )
-        rows_imported += 1
-
-    return ImportResult(
-        rows_seen=rows_seen,
-        rows_imported=rows_imported,
-        missing_resumes=missing_resumes,
-        missing_cover_letters=missing_cover_letters,
-    )
 
 
 def refresh_missing_ats_scores(database_path: Path) -> int:
@@ -617,16 +1145,12 @@ def refresh_missing_ats_scores(database_path: Path) -> int:
 
 def start_background_action(
     *,
-    database_path: Path,
-    output_dir: Path,
-    sync_requested: bool,
     regenerate_mode: str,
     job_ids: list[str],
     runner: BackgroundActionRunner | None = None,
 ) -> BackgroundActionRun:
     run = _create_background_action_run(
         title=_background_action_title(
-            sync_requested=sync_requested,
             regenerate_mode=regenerate_mode,
             job_ids=job_ids,
         )
@@ -636,9 +1160,6 @@ def start_background_action(
         target=target,
         kwargs={
             "run_id": run.run_id,
-            "database_path": database_path,
-            "output_dir": output_dir,
-            "sync_requested": sync_requested,
             "regenerate_mode": regenerate_mode,
             "job_ids": job_ids,
         },
@@ -723,47 +1244,17 @@ def _finish_background_action_run(
 def _run_background_action(
     *,
     run_id: str,
-    database_path: Path,
-    output_dir: Path,
-    sync_requested: bool,
     regenerate_mode: str,
     job_ids: list[str],
 ) -> None:
     try:
-        if sync_requested:
-            _run_sync_action(run_id=run_id, database_path=database_path, output_dir=output_dir)
         if regenerate_mode:
             _run_regenerate_action(run_id=run_id, regenerate_mode=regenerate_mode, job_ids=job_ids)
-            _run_sync_action(
-                run_id=run_id,
-                database_path=database_path,
-                output_dir=output_dir,
-                label="Refreshing tracker after regeneration",
-            )
         _append_background_action_message(run_id, "Background action completed.")
         _finish_background_action_run(run_id, status="completed", return_code=0)
     except Exception as exc:
         _append_background_action_message(run_id, f"Background action failed: {exc}")
         _finish_background_action_run(run_id, status="failed", return_code=1)
-
-
-def _run_sync_action(
-    *,
-    run_id: str,
-    database_path: Path,
-    output_dir: Path,
-    label: str = "Syncing from output",
-) -> None:
-    _append_background_action_message(run_id, f"{label}.")
-    result = import_output_artifacts(output_dir=output_dir, database_path=database_path)
-    _append_background_action_message(
-        run_id,
-        (
-            f"Sync complete: imported {result.rows_imported}/{result.rows_seen} workbook rows "
-            f"({result.missing_resumes} missing resumes, "
-            f"{result.missing_cover_letters} missing cover letters)."
-        ),
-    )
 
 
 def _run_regenerate_action(
@@ -798,7 +1289,10 @@ def _regenerate_make_command(*, regenerate_mode: str, job_ids: list[str]) -> lis
         raise ValueError(f"Unsupported regeneration mode: {regenerate_mode}")
     if not job_ids:
         raise ValueError("At least one job id is required for regeneration.")
-    return ["make", target, f"JOB_IDS={' '.join(job_ids)}"]
+    command = ["make", target, f"JOB_IDS={' '.join(job_ids)}"]
+    if regenerate_mode in _DRAFT_REGENERATE_MODES:
+        command.append("FIRST_DRAFT_FORCE=1")
+    return command
 
 
 def _project_root() -> Path:
@@ -822,18 +1316,15 @@ def _selected_job_ids(values: list[str]) -> list[str]:
 
 def _background_action_title(
     *,
-    sync_requested: bool,
     regenerate_mode: str,
     job_ids: list[str],
 ) -> str:
     parts: list[str] = []
-    if sync_requested:
-        parts.append("sync output")
     if regenerate_mode:
         label = {
-            "resumes": "regenerate resumes",
-            "cover_letters": "regenerate cover letters",
-            "all": "regenerate all docs",
+            "draft_resumes": "regenerate draft resume",
+            "aro_objects": "regenerate ARO object(s)",
+            "sync_draft_to_aro": "sync draft to ARO",
         }.get(regenerate_mode, "regenerate docs")
         parts.append(f"{label} for {len(job_ids)} job(s)")
     return " + ".join(parts) or "background action"
@@ -863,6 +1354,9 @@ def create_app(
     app.config["OUTPUT_DIR"] = output_dir
     app.jinja_env.filters["display_date"] = _display_date
     app.jinja_env.filters["display_timestamp"] = _display_timestamp
+    app.jinja_env.filters["rich_text"] = rich_text
+    app.jinja_env.globals["bullet_text_for_editing"] = _bullet_text_for_editing
+    app.jinja_env.globals["job_bulk_bullet_text"] = _job_bulk_bullet_text
 
     def redirect_to_index_state():
         return redirect(_safe_index_return_path(request.values.get("return_to")))
@@ -915,23 +1409,57 @@ def create_app(
             flash("Application updated.")
         return redirect_to_index_state()
 
-    @app.post("/sync")
-    def sync_from_output():
-        result = import_output_artifacts(output_dir=output_dir, database_path=database_path)
-        flash(
-            f"Imported {result.rows_imported} workbook rows "
-            f"({result.missing_resumes} missing resume files, "
-            f"{result.missing_cover_letters} missing cover letter files)."
+    @app.get("/applications/add")
+    def add_application():
+        return render_template_string(
+            ADD_APPLICATION_TEMPLATE,
+            return_to=_safe_index_return_path(request.args.get("return_to")),
         )
-        return redirect_to_index_state()
+
+    @app.post("/applications/add/linkedin")
+    def add_linkedin_application():
+        try:
+            job_id = add_linkedin_application_from_url(
+                database_path=database_path,
+                linkedin_url=request.form.get("linkedin_url", ""),
+            )
+        except (ValueError, LinkedInCareerMcpError) as exc:
+            flash(f"LinkedIn add failed: {exc}")
+            return redirect(_add_application_return_path(request.form.get("return_to")))
+
+        run = start_background_action(
+            regenerate_mode="draft_resumes",
+            job_ids=[job_id],
+            runner=background_action_runner,
+        )
+        flash(f"Added LinkedIn job {job_id}. Started background action: {run.title}.")
+        return redirect(_add_application_return_path(request.form.get("return_to")))
+
+    @app.post("/applications/add/other")
+    def add_other_application():
+        try:
+            job_id = add_generic_application_from_url(
+                database_path=database_path,
+                job_url=request.form.get("other_url", ""),
+            )
+        except (ValueError, LinkedInCareerMcpError) as exc:
+            flash(f"Other URL add failed: {exc}")
+            return redirect(_add_application_return_path(request.form.get("return_to")))
+
+        run = start_background_action(
+            regenerate_mode="draft_resumes",
+            job_ids=[job_id],
+            runner=background_action_runner,
+        )
+        flash(f"Added job URL {job_id}. Started background action: {run.title}.")
+        return redirect(_add_application_return_path(request.form.get("return_to")))
 
     @app.post("/actions/run")
     def run_actions():
-        sync_requested = request.form.get("action_sync") == "1"
-        regenerate_requested = request.form.get("action_regenerate") == "1"
-        regenerate_mode = request.form.get("regenerate_mode", "all")
+        regenerate_mode = str(request.form.get("regenerate_mode") or "").strip()
+        regenerate_requested = bool(regenerate_mode)
         job_ids = _selected_job_ids(request.form.getlist("job_id"))
-        if not sync_requested and not regenerate_requested:
+        if not regenerate_requested:
             flash("Choose at least one action to run.")
             return redirect_to_index_state()
         if regenerate_requested and not job_ids:
@@ -942,9 +1470,6 @@ def create_app(
             return redirect_to_index_state()
 
         run = start_background_action(
-            database_path=database_path,
-            output_dir=output_dir,
-            sync_requested=sync_requested,
             regenerate_mode=regenerate_mode if regenerate_requested else "",
             job_ids=job_ids,
             runner=background_action_runner,
@@ -962,7 +1487,6 @@ def create_app(
         deleted_count = delete_applications(
             database_path=database_path,
             job_ids=job_ids,
-            tracking_path=output_dir / TRACKING_WORKBOOK,
         )
         flash(f"Deleted {deleted_count} application rows.")
         return redirect_to_index_state()
@@ -973,7 +1497,7 @@ def create_app(
         if row is None or not row["linkedin_url"]:
             abort(404)
         _open_url_in_chromium(str(row["linkedin_url"]))
-        flash("Opened LinkedIn job in Chromium.")
+        flash("Opened job URL in Chromium.")
         return redirect_to_index_state()
 
     @app.get("/resumes/<job_id>")
@@ -987,6 +1511,82 @@ def create_app(
             download_name=row["resume_filename"],
             as_attachment=False,
         )
+
+    @app.get("/resume-html/<job_id>")
+    def resume_html(job_id: str):
+        row = _fetch_application(database_path, job_id)
+        if row is None or not row["resume_html_content"]:
+            return Response("Resume HTML was not found in the database.", status=404)
+        return Response(
+            row["resume_html_content"],
+            mimetype=row["resume_html_mime_type"] or "text/html; charset=utf-8",
+        )
+
+    @app.get("/resumes/<job_id>/edit")
+    def resume_edit(job_id: str):
+        row = _fetch_application(database_path, job_id)
+        if row is None or not row["application_resume_object"]:
+            return Response("Application resume object was not found.", status=404)
+        try:
+            resume = _parse_application_resume_yaml(row["application_resume_object"])
+        except (TypeError, ValueError, yaml.YAMLError) as exc:
+            return Response(f"Application resume object could not be parsed: {exc}", status=500)
+        return_to = _safe_index_return_path(request.args.get("return_to"))
+        return render_template_string(
+            RESUME_EDIT_TEMPLATE,
+            row=row,
+            resume=resume,
+            return_to=return_to,
+        )
+
+    @app.post("/resumes/<job_id>/edit")
+    def resume_edit_save(job_id: str):
+        row = _fetch_application(database_path, job_id)
+        if row is None or not row["application_resume_object"]:
+            return Response("Application resume object was not found.", status=404)
+        try:
+            resume = _parse_application_resume_yaml(row["application_resume_object"])
+            updated_resume = _apply_resume_editor_form(resume, request.form)
+            updated_aro = _dump_application_resume_yaml(updated_resume)
+            score = save_application_resume_edit(
+                database_path=database_path,
+                job_id=job_id,
+                application_resume_object=updated_aro,
+            )
+        except (TypeError, ValueError, yaml.YAMLError) as exc:
+            flash(f"Resume save failed: {exc}")
+            return redirect(_resume_edit_return_path(job_id, request.form.get("return_to")))
+        score_text = f" ATS: {score.overall_score}/100." if score is not None else ""
+        flash(f"Saved resume edits and regenerated artifacts.{score_text}")
+        return redirect(_resume_edit_return_path(job_id, request.form.get("return_to")))
+
+    @app.post("/resumes/<job_id>/edit/revert")
+    def resume_edit_revert(job_id: str):
+        try:
+            score = revert_application_resume_edit(
+                database_path=database_path,
+                job_id=job_id,
+            )
+        except ValueError as exc:
+            flash(str(exc))
+        else:
+            score_text = f" ATS: {score.overall_score}/100." if score is not None else ""
+            flash(f"Reverted resume to the prior manual backup.{score_text}")
+        return redirect(_resume_edit_return_path(job_id, request.form.get("return_to")))
+
+    @app.post("/resumes/<job_id>/sync")
+    def resume_sync_to_aro(job_id: str):
+        try:
+            score = sync_application_resume_to_draft(
+                database_path=database_path,
+                job_id=job_id,
+            )
+        except (TypeError, ValueError, yaml.YAMLError) as exc:
+            flash(f"Draft sync failed: {exc}")
+        else:
+            score_text = f" ATS: {score.overall_score}/100." if score is not None else ""
+            flash(f"Synced draft resume to the current ARO.{score_text}")
+        return redirect(_resume_edit_return_path(job_id, request.form.get("return_to")))
 
     @app.get("/resumes/<job_id>/download")
     def resume_download(job_id: str):
@@ -1009,13 +1609,47 @@ def create_app(
             destination = copy_application_artifact_to_downloads(
                 row=row,
                 artifact_kind="resume",
-                output_dir=output_dir,
             )
         except (OSError, subprocess.SubprocessError) as exc:
             flash(f"Resume copy failed: {exc}")
         else:
             flash(f"Copied resume to {_download_display_path(destination)}.")
         return redirect_to_index_state()
+
+    @app.get("/cover-letters/<job_id>/edit")
+    def cover_letter_edit(job_id: str):
+        row = _fetch_application(database_path, job_id)
+        if row is None:
+            abort(404)
+        try:
+            cover_letter_object = _parse_cover_letter_object(row["cover_letter_object"])
+        except (TypeError, ValueError, yaml.YAMLError) as exc:
+            return Response(f"Cover letter object could not be parsed: {exc}", status=500)
+        return render_template_string(
+            COVER_LETTER_EDIT_TEMPLATE,
+            row=row,
+            cover_letter_object=cover_letter_object,
+            return_to=_safe_index_return_path(request.args.get("return_to")),
+        )
+
+    @app.post("/cover-letters/<job_id>/edit")
+    def cover_letter_edit_save(job_id: str):
+        row = _fetch_application(database_path, job_id)
+        if row is None:
+            abort(404)
+        try:
+            save_cover_letter_edit(
+                database_path=database_path,
+                job_id=job_id,
+                body_html=request.form.get("body_html", ""),
+            )
+        except (TypeError, ValueError, yaml.YAMLError) as exc:
+            flash(f"Cover letter save failed: {exc}")
+        else:
+            flash("Saved cover letter and rendered PDF.")
+        return redirect(
+            _cover_letter_edit_return_path(job_id, request.form.get("return_to"))
+        )
 
     @app.get("/cover-letters/<job_id>")
     def cover_letter(job_id: str):
@@ -1050,7 +1684,6 @@ def create_app(
             destination = copy_application_artifact_to_downloads(
                 row=row,
                 artifact_kind="cover_letter",
-                output_dir=output_dir,
             )
         except (OSError, subprocess.SubprocessError) as exc:
             flash(f"Cover letter copy failed: {exc}")
@@ -1063,17 +1696,40 @@ def create_app(
         row = _fetch_application(database_path, job_id)
         if row is None:
             abort(404)
-        return render_template_string(DESCRIPTION_COMPARE_TEMPLATE, row=row)
+        return render_template_string(
+            DESCRIPTION_COMPARE_TEMPLATE,
+            row=row,
+            return_to=_safe_index_return_path(request.args.get("return_to")),
+            removed_text=_description_removed_text(
+                row["job_description"],
+                row["prompt_job_description"],
+            ),
+            diff_rows=_description_diff_rows(
+                row["job_description"],
+                row["prompt_job_description"],
+            ),
+        )
 
-    @app.get("/output/<path:relative_path>")
-    def output_file(relative_path: str):
-        target = (output_dir / relative_path).resolve()
-        output_root = output_dir.resolve()
-        if target != output_root and output_root not in target.parents:
+    @app.post("/descriptions/<job_id>")
+    def compare_descriptions_save(job_id: str):
+        row = _fetch_application(database_path, job_id)
+        if row is None:
             abort(404)
-        if not target.is_file():
-            abort(404)
-        return send_file(target, as_attachment=False)
+        try:
+            score = save_description_edit(
+                database_path=database_path,
+                job_id=job_id,
+                job_description=request.form.get("job_description", ""),
+                prompt_job_description=request.form.get("prompt_job_description", ""),
+            )
+        except ValueError as exc:
+            flash(f"Description save failed: {exc}")
+        else:
+            score_text = f" ATS: {score.overall_score}/100." if score is not None else ""
+            flash(f"Saved descriptions and refreshed ATS fields.{score_text}")
+        return redirect(
+            _description_edit_return_path(job_id, request.form.get("return_to"))
+        )
 
     return app
 
@@ -1085,14 +1741,11 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--debug", action="store_true")
-    parser.add_argument("--no-import", action="store_true")
     parser.add_argument("--open-browser", action="store_true")
     args = parser.parse_args(argv)
 
     output_dir = Path(args.output_dir)
     database_path = Path(args.database) if args.database else output_dir / DEFAULT_DATABASE
-    if not args.no_import:
-        import_output_artifacts(output_dir=output_dir, database_path=database_path)
     app = create_app(database_path=database_path, output_dir=output_dir)
     if args.open_browser:
         _schedule_browser_open(host=args.host, port=args.port)
@@ -1103,8 +1756,8 @@ def _fetch_applications(database_path: Path) -> list[sqlite3.Row]:
     with connect_database(database_path) as connection:
         return list(
             connection.execute(
-                """
-                SELECT *
+                f"""
+                SELECT {_application_select_columns()}
                 FROM applications
                 ORDER BY
                     CASE applied_to
@@ -1125,30 +1778,35 @@ def _fetch_applications(database_path: Path) -> list[sqlite3.Row]:
 def _fetch_application(database_path: Path, job_id: str) -> sqlite3.Row | None:
     with connect_database(database_path) as connection:
         return connection.execute(
-            "SELECT * FROM applications WHERE job_id = ?",
+            f"SELECT {_application_select_columns()} FROM applications WHERE job_id = ?",
             (job_id,),
         ).fetchone()
 
 
-def _resolve_output_path(*, output_dir: Path, path_text: str) -> Path:
-    artifact_path = Path(path_text)
-    if artifact_path.is_absolute():
-        return artifact_path
-    if artifact_path.parts and artifact_path.parts[0] == output_dir.name:
-        return output_dir.parent / artifact_path
-    return output_dir / artifact_path
-
-
-def _optional_row_value(
-    *,
-    row: tuple[Any, ...],
-    column_indexes: dict[str, int],
-    column: str,
-) -> Any:
-    index = column_indexes.get(column)
-    if index is None:
-        return None
-    return row[index]
+def _application_select_columns() -> str:
+    sync_status = """
+        CASE
+            WHEN COALESCE(NULLIF(applications.application_resume_object, ''), '') = ''
+            THEN 'No'
+            WHEN COALESCE(NULLIF(applications.application_resume_updated_at, ''), '') = ''
+            THEN 'No'
+            WHEN applications.resume_content IS NULL
+              OR applications.resume_html_content IS NULL
+            THEN 'No'
+            WHEN COALESCE(NULLIF(applications.resume_updated_at, ''), '') = ''
+              OR COALESCE(NULLIF(applications.resume_html_updated_at, ''), '') = ''
+            THEN 'No'
+            WHEN applications.resume_updated_at >= applications.application_resume_updated_at
+              AND applications.resume_html_updated_at >= applications.application_resume_updated_at
+            THEN 'Yes'
+            ELSE 'No'
+        END
+    """
+    return f"""
+        applications.*,
+        {sync_status} AS aro_resume_sync_status,
+        CASE WHEN {sync_status} = 'Yes' THEN 0 ELSE 1 END AS aro_resume_out_of_sync
+    """
 
 
 def _calculate_ats_score(
@@ -1168,6 +1826,406 @@ def _format_missing_terms(score: AtsProxyScore) -> str:
     return ", ".join(score.missing_high_value_terms)
 
 
+def _parse_application_resume_yaml(value: str) -> dict[str, Any]:
+    parsed = yaml.safe_load(value)
+    if not isinstance(parsed, dict):
+        raise ValueError("Application resume object must be a YAML mapping.")
+    return parsed
+
+
+def _dump_application_resume_yaml(resume: dict[str, Any]) -> str:
+    return yaml.safe_dump(resume, sort_keys=False, allow_unicode=False)
+
+
+def _parse_cover_letter_object(value: Any) -> dict[str, Any]:
+    text = str(value or "").strip()
+    if not text:
+        return {
+            "schema_version": COVER_LETTER_OBJECT_SCHEMA_VERSION,
+            "source": "manual",
+            "body_html": "",
+            "body_text": "",
+        }
+    parsed = yaml.safe_load(text)
+    if not isinstance(parsed, dict):
+        raise ValueError("Cover letter object must be a YAML mapping.")
+    parsed.setdefault("schema_version", COVER_LETTER_OBJECT_SCHEMA_VERSION)
+    parsed.setdefault("source", "manual")
+    parsed["body_html"] = _sanitize_cover_letter_body_html(parsed.get("body_html"))
+    parsed["body_text"] = _cover_letter_plain_text(parsed["body_html"])
+    return parsed
+
+
+def _dump_cover_letter_object(value: dict[str, Any]) -> str:
+    return yaml.safe_dump(value, sort_keys=False, allow_unicode=False)
+
+
+def _sanitize_cover_letter_body_html(value: Any) -> str:
+    soup = BeautifulSoup(str(value or ""), "html.parser")
+    for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
+        comment.extract()
+    for tag in list(soup.find_all(True)):
+        name = (tag.name or "").lower()
+        if name in {"strong", "b"}:
+            tag.name = "b"
+            tag.attrs = {}
+        elif name in {"em", "i"}:
+            tag.name = "i"
+            tag.attrs = {}
+        elif name in {"p", "div", "br"}:
+            tag.attrs = {}
+        elif name == "a":
+            href = str(tag.get("href") or "").strip()
+            if href.startswith(("http://", "https://", "mailto:")):
+                tag.attrs = {"href": href}
+            else:
+                tag.unwrap()
+        else:
+            tag.unwrap()
+    return str(soup).strip()
+
+
+def _cover_letter_plain_text(body_html: str) -> str:
+    soup = BeautifulSoup(body_html or "", "html.parser")
+    return "\n".join(
+        line.strip()
+        for line in soup.get_text("\n").splitlines()
+        if line.strip()
+    ).strip()
+
+
+def _cover_letter_paragraph_markup(body_html: str) -> list[str]:
+    soup = BeautifulSoup(body_html or "", "html.parser")
+    paragraphs: list[str] = []
+    current: list[str] = []
+
+    def flush_current() -> None:
+        value = "".join(current).strip()
+        if value:
+            paragraphs.append(value)
+        current.clear()
+
+    for child in soup.contents:
+        if isinstance(child, NavigableString):
+            text = str(child)
+            if text.strip():
+                current.append(html_escape(text))
+        elif isinstance(child, Tag) and child.name in {"p", "div"}:
+            flush_current()
+            markup = _cover_letter_node_markup(child).strip()
+            if markup:
+                paragraphs.append(markup)
+        elif isinstance(child, Tag) and child.name == "br":
+            flush_current()
+        else:
+            current.append(_cover_letter_node_markup(child))
+    flush_current()
+    return paragraphs
+
+
+def _cover_letter_node_markup(node: Any) -> str:
+    if isinstance(node, NavigableString):
+        return html_escape(str(node))
+    if not isinstance(node, Tag):
+        return ""
+    name = (node.name or "").lower()
+    if name == "br":
+        return "<br/>"
+    inner = "".join(_cover_letter_node_markup(child) for child in node.children)
+    if name == "b":
+        return f"<b>{inner}</b>"
+    if name == "i":
+        return f"<i>{inner}</i>"
+    if name == "a":
+        href = str(node.get("href") or "").strip()
+        if href.startswith(("http://", "https://", "mailto:")):
+            return f'<a href="{html_escape(href, quote=True)}" color="blue">{inner}</a>'
+    return inner
+
+
+def _description_tokens(value: Any) -> list[str]:
+    return str(value or "").split()
+
+
+def _join_description_tokens(tokens: list[str]) -> str:
+    return " ".join(tokens).strip()
+
+
+def _description_diff_rows(
+    job_description: Any,
+    prompt_job_description: Any,
+) -> list[DescriptionDiffRow]:
+    left_tokens = _description_tokens(job_description)
+    right_tokens = _description_tokens(prompt_job_description)
+    matcher = difflib.SequenceMatcher(
+        a=left_tokens,
+        b=right_tokens,
+        autojunk=False,
+    )
+    rows: list[DescriptionDiffRow] = []
+    for tag, left_start, left_end, right_start, right_end in matcher.get_opcodes():
+        if tag == "equal":
+            continue
+        left_text = _join_description_tokens(left_tokens[left_start:left_end])
+        right_text = _join_description_tokens(right_tokens[right_start:right_end])
+        rows.append(
+            DescriptionDiffRow(
+                status=tag,
+                left_line_no=left_start + 1 if left_text else None,
+                right_line_no=right_start + 1 if right_text else None,
+                left_text=left_text,
+                right_text=right_text,
+            )
+        )
+    return rows
+
+
+def _description_removed_text(
+    job_description: Any,
+    prompt_job_description: Any,
+) -> str:
+    removed_lines: list[str] = []
+    for row in _description_diff_rows(job_description, prompt_job_description):
+        if row.status in {"delete", "replace"} and row.left_text.strip():
+            removed_lines.append(row.left_text)
+    return "\n".join(removed_lines)
+
+
+def _resume_template_path(template_path: Path | None = None) -> Path:
+    if template_path is not None:
+        return template_path
+    if DEFAULT_RESUME_TEMPLATE.is_file():
+        return DEFAULT_RESUME_TEMPLATE
+    return _project_root() / DEFAULT_RESUME_TEMPLATE
+
+
+def _apply_resume_editor_form(resume: dict[str, Any], form: Any) -> dict[str, Any]:
+    header = _ensure_mapping(resume, "header_top")
+    header["line_1_name_header_text"] = _form_text(form, "header_name")
+    header["line_2_header_text"] = _form_rich_text(form, "header_line_2")
+    header["line_3_applicant_info_text"] = _form_rich_text(form, "header_info")
+    header.pop("line_2_applicant_info_text", None)
+    header["contact_items"] = _form_lines(form, "header_contact_items")
+
+    summary = _ensure_mapping(resume, "professional_summary")
+    summary["render"] = _form_bool(form, "summary_render")
+    summary["header_text"] = _form_text(form, "summary_header_text")
+    summary["paragraph"] = _form_rich_text(form, "summary_paragraph")
+    summary["summary_note"] = _form_rich_text(form, "summary_note")
+
+    skills = _ensure_mapping(resume, "core_technical_skills")
+    skills["render"] = _form_bool(form, "skills_render")
+    skills["header_text"] = _form_text(form, "skills_header_text")
+    for index, bullet in enumerate(_mapping_list(skills.get("bullet_points"))):
+        bullet["category"] = _form_text_or_existing(
+            form,
+            f"skill_{index}_category",
+            bullet.get("category"),
+        )
+        items = bullet.get("items")
+        if not isinstance(items, dict):
+            items = {}
+            bullet["items"] = items
+        items["primary"] = _form_lines_or_existing(
+            form,
+            f"skill_{index}_primary",
+            items.get("primary"),
+        )
+        items["additional"] = _form_lines_or_existing(
+            form,
+            f"skill_{index}_additional",
+            items.get("additional"),
+        )
+        bullet["jod_matched_items"] = _form_lines_or_existing(
+            form,
+            f"skill_{index}_jod_matched",
+            bullet.get("jod_matched_items"),
+        )
+
+    experience = _ensure_mapping(resume, "professional_experience")
+    experience["render"] = _form_bool(form, "experience_render")
+    experience["header_text"] = _form_text(form, "experience_header_text")
+    for job_index, job in enumerate(_mapping_list(experience.get("jobs"))):
+        job["render"] = _form_bool(form, f"job_{job_index}_render")
+        line_1 = _ensure_mapping(job, "line_1")
+        line_1["company_name_text"] = _form_text(form, f"job_{job_index}_company")
+        line_1["position_name_text"] = _form_text(form, f"job_{job_index}_position")
+        line_1["position_dates_text"] = _form_text(form, f"job_{job_index}_dates")
+        line_2 = _ensure_mapping(job, "line_2")
+        line_2["position_intro_text"] = _form_rich_text(form, f"job_{job_index}_intro")
+        _apply_job_bullet_edits(job=job, job_index=job_index, form=form)
+
+    education = _ensure_mapping(resume, "education")
+    education["render"] = _form_bool(form, "education_render")
+    education["header_text"] = _form_text(form, "education_header_text")
+    for entry_index, entry in enumerate(_mapping_list(education.get("entries"))):
+        entry["render"] = _form_bool(form, f"education_{entry_index}_render")
+        line_1 = _ensure_mapping(entry, "line_1")
+        line_1["institution_name_text"] = _form_text(
+            form,
+            f"education_{entry_index}_institution",
+        )
+        line_2 = _ensure_mapping(entry, "line_2")
+        line_2["degree_name_text"] = _form_text(form, f"education_{entry_index}_degree")
+        line_2["degree_dates_text"] = _form_text(form, f"education_{entry_index}_dates")
+        for bullet_index, bullet in enumerate(_mapping_list(entry.get("bullet_points"))):
+            bullet["render"] = _form_bool(
+                form,
+                f"education_{entry_index}_bullet_{bullet_index}_render",
+            )
+            bullet["text"] = _form_rich_text(
+                form,
+                f"education_{entry_index}_bullet_{bullet_index}_text",
+            )
+
+    certifications = _ensure_mapping(resume, "certifications")
+    certifications["render"] = _form_bool(form, "certifications_render")
+    certifications["header_text"] = _form_text(form, "certifications_header_text")
+    for index, bullet in enumerate(_mapping_list(certifications.get("bullet_points"))):
+        bullet["render"] = _form_bool(form, f"certification_{index}_render")
+        bullet["text"] = _form_rich_text(form, f"certification_{index}_text")
+
+    portfolio = _ensure_mapping(resume, "portfolio")
+    portfolio["render"] = _form_bool(form, "portfolio_render")
+    portfolio["header_text"] = _form_text(form, "portfolio_header_text")
+    for index, project in enumerate(_mapping_list(portfolio.get("projects"))):
+        project["render"] = _form_bool(form, f"portfolio_{index}_render")
+        project["title_text"] = _form_text(form, f"portfolio_{index}_title")
+        project["url"] = _form_text(form, f"portfolio_{index}_url")
+        project["description_text"] = _form_rich_text(form, f"portfolio_{index}_description")
+
+    return resume
+
+
+def _apply_job_bullet_edits(*, job: dict[str, Any], job_index: int, form: Any) -> None:
+    bullets = _normalizable_bullet_list(job)
+    bulk_name = f"job_{job_index}_bulk"
+    bulk_original_name = f"job_{job_index}_bulk_original"
+    bulk_text = _form_text(form, bulk_name)
+    bulk_original = _form_text(form, bulk_original_name)
+    if bulk_text != bulk_original:
+        lines = _textarea_lines(bulk_text)
+        for index, line in enumerate(lines):
+            if index < len(bullets):
+                bullet = bullets[index]
+            else:
+                bullet = {"order": _next_bullet_order(bullets), "render": True}
+                bullets.append(bullet)
+            bullet["text"] = sanitize_resume_rich_text(line)
+            bullet["render"] = True
+        for bullet in bullets[len(lines) :]:
+            bullet["render"] = False
+        job["bullet_points"] = bullets
+        return
+
+    for index, bullet in enumerate(bullets):
+        bullet["render"] = _form_bool(form, f"job_{job_index}_bullet_{index}_render")
+        bullet["text"] = _form_rich_text(form, f"job_{job_index}_bullet_{index}_text")
+    job["bullet_points"] = bullets
+
+
+def _normalizable_bullet_list(job: dict[str, Any]) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for index, bullet in enumerate(_list_value(job.get("bullet_points"))):
+        if isinstance(bullet, dict):
+            normalized.append(bullet)
+        elif isinstance(bullet, str):
+            normalized.append({"order": index + 1, "text": bullet, "render": True})
+    return normalized
+
+
+def _ensure_mapping(parent: dict[str, Any], key: str) -> dict[str, Any]:
+    value = parent.get(key)
+    if isinstance(value, dict):
+        return value
+    value = {}
+    parent[key] = value
+    return value
+
+
+def _mapping_list(value: object) -> list[dict[str, Any]]:
+    return [item for item in _list_value(value) if isinstance(item, dict)]
+
+
+def _list_value(value: object) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def _next_bullet_order(bullets: list[dict[str, Any]]) -> int:
+    orders = [
+        int(bullet.get("order", 0))
+        for bullet in bullets
+        if str(bullet.get("order", "")).isdigit()
+    ]
+    return (max(orders) if orders else len(bullets)) + 1
+
+
+def _form_text(form: Any, name: str) -> str:
+    return str(form.get(name) or "").strip()
+
+
+def _form_text_or_existing(form: Any, name: str, existing: Any) -> str:
+    if name not in form:
+        return str(existing or "").strip()
+    return _form_text(form, name)
+
+
+def _form_rich_text(form: Any, name: str) -> str:
+    return sanitize_resume_rich_text(form.get(name))
+
+
+def _form_bool(form: Any, name: str) -> bool:
+    return form.get(name) == "1"
+
+
+def _form_lines(form: Any, name: str) -> list[str]:
+    return _textarea_lines(_form_text(form, name))
+
+
+def _form_lines_or_existing(form: Any, name: str, existing: Any) -> list[str]:
+    existing_items = _string_list(existing)
+    if name in form:
+        submitted_items = _form_lines(form, name)
+        return submitted_items or existing_items
+    return existing_items
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _textarea_lines(value: str) -> list[str]:
+    lines: list[str] = []
+    for raw_line in value.splitlines():
+        line = raw_line.strip()
+        while line[:1] in {"-", "*", "\u2022"}:
+            line = line[1:].strip()
+        if line:
+            lines.append(line)
+    return lines
+
+
+def _job_bulk_bullet_text(job: dict[str, Any]) -> str:
+    return "\n".join(
+        _bullet_text_for_editing(bullet)
+        for bullet in _list_value(job.get("bullet_points"))
+    )
+
+
+def _bullet_text_for_editing(bullet: object) -> str:
+    if isinstance(bullet, str):
+        return bullet
+    if not isinstance(bullet, dict):
+        return ""
+    for key in ("text", "rendered_text"):
+        value = bullet.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
 def _date_value(value: Any) -> str | None:
     if value is None:
         return None
@@ -1185,6 +2243,24 @@ def _artifact_timestamp(path: Path | None) -> str | None:
     except OSError:
         return None
     return datetime.fromtimestamp(modified_at, UTC).isoformat(timespec="seconds")
+
+
+def _resume_html_filename(row: sqlite3.Row) -> str:
+    return f"mp_resume_{_filename_part(str(row['job_title'] or row['job_id']))}.html"
+
+
+def _resume_pdf_filename(row: sqlite3.Row) -> str:
+    return f"mp_resume_{_filename_part(str(row['job_title'] or row['job_id']))}.pdf"
+
+
+def _cover_letter_pdf_filename(row: sqlite3.Row) -> str:
+    return f"mp_cover_letter_{_filename_part(str(row['job_title'] or row['job_id']))}.pdf"
+
+
+def _filename_part(value: str) -> str:
+    characters = [character.lower() if character.isalnum() else "_" for character in value]
+    compact = "_".join(part for part in "".join(characters).split("_") if part)
+    return compact or "resume"
 
 
 def _normalize_applied_to(value: Any) -> str:
@@ -1234,6 +2310,26 @@ def _safe_index_return_path(value: Any) -> str:
     return f"/?{query}" if query else "/"
 
 
+def _resume_edit_return_path(job_id: str, return_to: Any) -> str:
+    query = urlencode({"return_to": _safe_index_return_path(return_to)})
+    return f"/resumes/{job_id}/edit?{query}"
+
+
+def _cover_letter_edit_return_path(job_id: str, return_to: Any) -> str:
+    query = urlencode({"return_to": _safe_index_return_path(return_to)})
+    return f"/cover-letters/{job_id}/edit?{query}"
+
+
+def _description_edit_return_path(job_id: str, return_to: Any) -> str:
+    query = urlencode({"return_to": _safe_index_return_path(return_to)})
+    return f"/descriptions/{job_id}?{query}"
+
+
+def _add_application_return_path(return_to: Any) -> str:
+    query = urlencode({"return_to": _safe_index_return_path(return_to)})
+    return f"/applications/add?{query}"
+
+
 def cleanup_downloaded_application_pdfs(download_dir: Path | None = None) -> int:
     target_dir = download_dir or Path.home() / "Downloads"
     if not target_dir.is_dir():
@@ -1255,16 +2351,13 @@ def copy_application_artifact_to_downloads(
     *,
     row: sqlite3.Row,
     artifact_kind: str,
-    output_dir: Path,
     download_dir: Path | None = None,
 ) -> Path:
     if artifact_kind == "resume":
-        source_column = "source_resume_path"
         filename_column = "resume_filename"
         content_column = "resume_content"
         default_prefix = "mp_resume"
     elif artifact_kind == "cover_letter":
-        source_column = "source_cover_letter_path"
         filename_column = "cover_letter_filename"
         content_column = "cover_letter_content"
         default_prefix = "mp_cover_letter"
@@ -1278,18 +2371,6 @@ def copy_application_artifact_to_downloads(
     if not filename:
         filename = f"{default_prefix}_{row['job_id']}.pdf"
     destination = target_dir / filename
-
-    source_path_text = str(row[source_column] or "").strip()
-    if source_path_text:
-        source_path = _resolve_output_path(output_dir=output_dir, path_text=source_path_text)
-        if source_path.is_file():
-            subprocess.run(
-                ["cp", str(source_path), str(destination)],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            return destination
 
     content = row[content_column]
     if content is None:
@@ -1323,24 +2404,6 @@ def _display_timestamp(value: Any) -> str:
     except ValueError:
         return text
     return parsed.strftime("%Y-%m-%d %H:%M")
-
-
-def _delete_tracking_rows(*, tracking_path: Path, job_ids: set[str]) -> None:
-    if not tracking_path.exists():
-        return
-
-    workbook = load_workbook(tracking_path)
-    sheet = workbook.active
-    headers = [str(cell.value or "").strip() for cell in sheet[1]]
-    if "job_id" not in headers:
-        return
-
-    job_id_column = headers.index("job_id") + 1
-    for row_index in range(sheet.max_row, 1, -1):
-        job_id = str(sheet.cell(row=row_index, column=job_id_column).value or "").strip()
-        if job_id in job_ids:
-            sheet.delete_rows(row_index, 1)
-    workbook.save(tracking_path)
 
 
 def _schedule_browser_open(*, host: str, port: int) -> None:
@@ -1591,23 +2654,65 @@ INDEX_TEMPLATE = """
       font-size: 12px;
     }
     .action-status {
-      background: #fff8e6;
-      border-bottom: 1px solid #f1d48a;
+      background: var(--surface);
+      border: 1px solid #f1d48a;
+      border-radius: 8px;
+      bottom: 14px;
+      box-shadow: 0 16px 44px rgba(20, 33, 45, .22);
       color: #5c4100;
-      padding: 10px 24px;
+      left: 24px;
+      margin: 0 auto;
+      max-width: 920px;
+      overflow: hidden;
+      padding: 0;
+      position: fixed;
+      right: 24px;
+      z-index: 20;
     }
+    .action-status[hidden] { display: none; }
     .action-status.is-running {
-      background: #eef8f6;
-      border-bottom-color: #c8dfdc;
+      border-color: #c8dfdc;
       color: var(--accent-strong);
+    }
+    .action-status.is-failed {
+      border-color: #e3b6b6;
+      color: #7b2424;
+    }
+    .action-status.is-collapsed .action-status-body {
+      display: none;
     }
     .action-status-header {
       align-items: center;
       display: flex;
       gap: 10px;
       justify-content: space-between;
+      min-height: 48px;
+      padding: 9px 12px;
     }
-    .action-status-title { font-weight: 750; }
+    .action-status-summary {
+      display: grid;
+      gap: 2px;
+      min-width: 0;
+    }
+    .action-status-title {
+      font-weight: 750;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .action-status-latest {
+      color: var(--muted);
+      font-size: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .action-status-controls {
+      align-items: center;
+      display: flex;
+      flex: 0 0 auto;
+      gap: 6px;
+    }
     .action-status-state {
       border: 1px solid currentColor;
       border-radius: 999px;
@@ -1616,14 +2721,62 @@ INDEX_TEMPLATE = """
       padding: 2px 8px;
       text-transform: uppercase;
     }
-    .action-status-messages {
-      margin: 8px 0 0;
-      max-height: 112px;
+    .action-status-icon-button {
+      align-items: center;
+      background: transparent;
+      border: 1px solid currentColor;
+      border-radius: 999px;
+      color: inherit;
+      display: inline-flex;
+      height: 26px;
+      justify-content: center;
+      padding: 0;
+      width: 26px;
+    }
+    .action-status-icon-button:hover {
+      background: rgba(11, 110, 105, .08);
+    }
+    .action-status-body {
+      background: #fffdf6;
+      border-bottom: 1px solid #f1d48a;
+      max-height: 150px;
       overflow: auto;
+      padding: 10px 14px;
+    }
+    .action-status.is-running .action-status-body {
+      background: #f5fbfa;
+      border-bottom-color: #c8dfdc;
+    }
+    .action-status-progress {
+      background: #e5eceb;
+      height: 4px;
+      overflow: hidden;
+    }
+    .action-status-progress-fill {
+      background: var(--accent);
+      display: block;
+      height: 100%;
+      transition: width .2s ease;
+      width: 100%;
+    }
+    .action-status.is-running .action-status-progress-fill {
+      animation: action-status-progress 1.35s linear infinite;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      width: 42%;
+    }
+    .action-status.is-failed .action-status-progress-fill {
+      background: #9d2f2f;
+    }
+    .action-status-messages {
+      margin: 0;
       padding-left: 18px;
     }
     .action-status-messages li {
       margin: 2px 0;
+    }
+    @keyframes action-status-progress {
+      from { transform: translateX(-120%); }
+      to { transform: translateX(260%); }
     }
     main { padding: 20px 24px 32px; }
     .flash {
@@ -1712,6 +2865,27 @@ INDEX_TEMPLATE = """
       margin-top: 2px;
     }
     .score-row strong { font-weight: 700; }
+    .sync-col {
+      min-width: 112px;
+      text-align: center;
+    }
+    .sync-status {
+      border-radius: 999px;
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 800;
+      min-width: 42px;
+      padding: 3px 8px;
+      text-transform: uppercase;
+    }
+    .sync-status.is-synced {
+      background: #e6f5ef;
+      color: #047857;
+    }
+    .sync-status.is-stale {
+      background: #fff3d8;
+      color: #8a5a00;
+    }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; min-width: 170px; }
     .actions form { margin: 0; }
     .artifact-cell { min-width: 132px; }
@@ -1751,6 +2925,11 @@ INDEX_TEMPLATE = """
       .stats { flex-wrap: wrap; }
       main { padding: 12px; overflow-x: auto; }
       th { top: 104px; }
+      .action-status {
+        bottom: 8px;
+        left: 8px;
+        right: 8px;
+      }
     }
   </style>
 </head>
@@ -1796,6 +2975,13 @@ INDEX_TEMPLATE = """
         N/A
       </option>
     </select>
+    <form id="bulk-delete-form" method="post" action="/applications/delete">
+      <input type="hidden" class="return-to-state" name="return_to" value="{{ current_path }}">
+      <button id="delete-selected" type="submit" class="danger" disabled>
+        Delete selected
+      </button>
+    </form>
+    <button id="add-application" type="button" class="ghost">Add</button>
     <details class="actions-menu">
       <summary>Actions</summary>
       <div class="actions-panel">
@@ -1806,27 +2992,19 @@ INDEX_TEMPLATE = """
             name="return_to"
             value="{{ current_path }}"
           >
-          <label class="action-choice">
-            <input id="action-sync" type="checkbox" name="action_sync" value="1">
-            <span>Sync from output</span>
-          </label>
-          <label class="action-choice">
-            <input id="action-regenerate" type="checkbox" name="action_regenerate" value="1">
-            <span>Regenerate docs</span>
-          </label>
-          <fieldset id="regenerate-options" class="regenerate-options" disabled>
-            <legend>Document type</legend>
+          <fieldset class="regenerate-options" id="regenerate-options">
+            <legend>Resume actions</legend>
             <label>
-              <input type="radio" name="regenerate_mode" value="cover_letters">
-              <span>Cover letters</span>
+              <input type="radio" name="regenerate_mode" value="aro_objects">
+              <span>Regenerate ARO Objects</span>
             </label>
             <label>
-              <input type="radio" name="regenerate_mode" value="resumes">
-              <span>Resumes</span>
+              <input type="radio" name="regenerate_mode" value="draft_resumes">
+              <span>Regenerate Draft Resume</span>
             </label>
             <label>
-              <input type="radio" name="regenerate_mode" value="all" checked>
-              <span>All</span>
+              <input type="radio" name="regenerate_mode" value="sync_draft_to_aro">
+              <span>Sync Draft to ARO</span>
             </label>
           </fieldset>
           <div class="actions-menu-footer">
@@ -1838,20 +3016,37 @@ INDEX_TEMPLATE = """
         </form>
       </div>
     </details>
-    <form id="bulk-delete-form" method="post" action="/applications/delete">
-      <input type="hidden" class="return-to-state" name="return_to" value="{{ current_path }}">
-      <button id="delete-selected" type="submit" class="danger" disabled>
-        Delete selected
-      </button>
-    </form>
     <span id="selected-count" class="selected-count">0 selected</span>
   </div>
   <section id="action-status" class="action-status" hidden aria-live="polite">
-    <div class="action-status-header">
-      <span id="action-status-title" class="action-status-title">Background action</span>
-      <span id="action-status-state" class="action-status-state">Running</span>
+    <div id="action-status-body" class="action-status-body">
+      <ol id="action-status-messages" class="action-status-messages"></ol>
     </div>
-    <ol id="action-status-messages" class="action-status-messages"></ol>
+    <div class="action-status-progress" aria-hidden="true">
+      <span id="action-status-progress-fill" class="action-status-progress-fill"></span>
+    </div>
+    <div class="action-status-header">
+      <div class="action-status-summary">
+        <span id="action-status-title" class="action-status-title">Background action</span>
+        <span id="action-status-latest" class="action-status-latest"></span>
+      </div>
+      <div class="action-status-controls">
+        <span id="action-status-state" class="action-status-state">Running</span>
+        <button
+          id="action-status-toggle"
+          class="action-status-icon-button"
+          type="button"
+          aria-expanded="true"
+          aria-label="Collapse background status"
+        >v</button>
+        <button
+          id="action-status-close"
+          class="action-status-icon-button"
+          type="button"
+          aria-label="Close background status"
+        >x</button>
+      </div>
+    </div>
   </section>
   <main>
     {% with messages = get_flashed_messages() %}
@@ -1924,6 +3119,7 @@ INDEX_TEMPLATE = """
                 </span>
               </button>
             </th>
+            <th>ARO/Resume Sync</th>
             <th id="cover-letter-header" aria-sort="none">
               <button
                 id="cover-letter-sort"
@@ -2020,8 +3216,9 @@ INDEX_TEMPLATE = """
               </td>
               <td>
                 <div class="actions">
-                  <a class="preserve-state-link" href="/linkedin/{{ row.job_id }}">LinkedIn</a>
+                  <a class="preserve-state-link" href="/linkedin/{{ row.job_id }}">Job URL</a>
                   <a
+                    class="preserve-state-link"
                     href="/descriptions/{{ row.job_id }}"
                     target="_blank"
                     rel="noreferrer"
@@ -2037,6 +3234,21 @@ INDEX_TEMPLATE = """
                     <a href="/resumes/{{ row.job_id }}" target="_blank" rel="noreferrer">
                       Resume
                     </a>
+                    {% if row.resume_html_content %}
+                      <a href="/resume-html/{{ row.job_id }}" target="_blank" rel="noreferrer">
+                        HTML
+                      </a>
+                    {% endif %}
+                    {% if row.application_resume_object %}
+                      <a
+                        class="preserve-state-link"
+                        href="/resumes/{{ row.job_id }}/edit"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Edit
+                      </a>
+                    {% endif %}
                     <form method="post" action="/resumes/{{ row.job_id }}/copy-to-downloads">
                       <input
                         type="hidden"
@@ -2057,9 +3269,27 @@ INDEX_TEMPLATE = """
                   {% endif %}
                 </div>
               </td>
+              <td class="sync-col">
+                {% if row.aro_resume_sync_status == 'Yes' %}
+                  {% set sync_class = 'is-synced' %}
+                {% else %}
+                  {% set sync_class = 'is-stale' %}
+                {% endif %}
+                <span class="sync-status {{ sync_class }}">
+                  {{ row.aro_resume_sync_status }}
+                </span>
+              </td>
               <td>
                 <div class="artifact-cell">
                   <div class="actions">
+                    <a
+                      class="preserve-state-link"
+                      href="/cover-letters/{{ row.job_id }}/edit"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Edit
+                    </a>
                   {% if row.cover_letter_content %}
                     <a href="/cover-letters/{{ row.job_id }}" target="_blank" rel="noreferrer">
                       Cover Letter
@@ -2135,6 +3365,7 @@ INDEX_TEMPLATE = """
     const statusFilter = document.querySelector("#status-filter");
     const selectAll = document.querySelector("#select-all");
     const deleteButton = document.querySelector("#delete-selected");
+    const addApplicationButton = document.querySelector("#add-application");
     const selectedCount = document.querySelector("#selected-count");
     const bulkDeleteForm = document.querySelector("#bulk-delete-form");
     const companySortButton = document.querySelector("#company-sort");
@@ -2158,15 +3389,17 @@ INDEX_TEMPLATE = """
     const returnToFields = [...document.querySelectorAll(".return-to-state")];
     const preserveStateLinks = [...document.querySelectorAll(".preserve-state-link")];
     const actionsForm = document.querySelector("#actions-form");
-    const actionSync = document.querySelector("#action-sync");
-    const actionRegenerate = document.querySelector("#action-regenerate");
-    const regenerateOptions = document.querySelector("#regenerate-options");
+    const regenerateModeInputs = [...document.querySelectorAll("input[name='regenerate_mode']")];
     const runActionsButton = document.querySelector("#run-actions");
     const actionsSelectedSummary = document.querySelector("#actions-selected-summary");
     const actionStatus = document.querySelector("#action-status");
     const actionStatusTitle = document.querySelector("#action-status-title");
+    const actionStatusLatest = document.querySelector("#action-status-latest");
     const actionStatusState = document.querySelector("#action-status-state");
     const actionStatusMessages = document.querySelector("#action-status-messages");
+    const actionStatusProgressFill = document.querySelector("#action-status-progress-fill");
+    const actionStatusToggle = document.querySelector("#action-status-toggle");
+    const actionStatusClose = document.querySelector("#action-status-close");
     const initialSort = {{ view_state.sort|tojson }};
     const initialDirection = {{ view_state.direction|tojson }};
     let companySortDirection = null;
@@ -2174,6 +3407,14 @@ INDEX_TEMPLATE = """
     let atsSortDirection = null;
     let resumeSortDirection = null;
     let coverLetterSortDirection = null;
+    let dismissedActionRunId =
+      window.sessionStorage.getItem("actionStatusDismissedRunId") || "";
+    let actionStatusCollapsed =
+      window.sessionStorage.getItem("actionStatusCollapsed") === "1";
+    let observedRunningRunId = null;
+    const reloadedActionRunIds = new Set(
+      JSON.parse(window.sessionStorage.getItem("actionStatusReloadedRunIds") || "[]"),
+    );
     function activeSortState() {
       if (companySortDirection) {
         return { sort: "company", direction: companySortDirection };
@@ -2475,18 +3716,18 @@ INDEX_TEMPLATE = """
         .filter((checkbox) => checkbox.checked)
         .map((checkbox) => checkbox.value);
     }
+    function selectedRegenerateMode() {
+      const selected = regenerateModeInputs.find((input) => input.checked);
+      return selected ? selected.value : "";
+    }
     function updateActionsState() {
       const selected = selectedJobIds();
-      if (regenerateOptions && actionRegenerate) {
-        regenerateOptions.disabled = !actionRegenerate.checked;
-      }
       if (actionsSelectedSummary) {
         actionsSelectedSummary.textContent = `${selected.length} selected`;
       }
-      if (runActionsButton && actionSync && actionRegenerate) {
-        const hasAction = actionSync.checked || actionRegenerate.checked;
-        const missingRegenerateSelection = actionRegenerate.checked && selected.length === 0;
-        runActionsButton.disabled = !hasAction || missingRegenerateSelection;
+      if (runActionsButton) {
+        const hasResumeAction = Boolean(selectedRegenerateMode());
+        runActionsButton.disabled = !hasResumeAction || selected.length === 0;
       }
     }
     function syncActionsFormJobIds() {
@@ -2503,24 +3744,83 @@ INDEX_TEMPLATE = """
         actionsForm.appendChild(input);
       });
     }
-    function renderActionStatus(run) {
-      if (!actionStatus || !actionStatusTitle || !actionStatusState || !actionStatusMessages) {
+    function persistReloadedActionRunIds() {
+      window.sessionStorage.setItem(
+        "actionStatusReloadedRunIds",
+        JSON.stringify([...reloadedActionRunIds].slice(-12)),
+      );
+    }
+    function applyActionStatusCollapsedState() {
+      if (!actionStatus || !actionStatusToggle) {
         return;
       }
-      if (!run) {
+      actionStatus.classList.toggle("is-collapsed", actionStatusCollapsed);
+      actionStatusToggle.textContent = actionStatusCollapsed ? "^" : "v";
+      actionStatusToggle.setAttribute(
+        "aria-expanded",
+        actionStatusCollapsed ? "false" : "true",
+      );
+      actionStatusToggle.setAttribute(
+        "aria-label",
+        actionStatusCollapsed
+          ? "Expand background status"
+          : "Collapse background status",
+      );
+    }
+    function latestActionMessage(run) {
+      const messages = run.messages || [];
+      return messages.length ? messages[messages.length - 1] : "";
+    }
+    function maybeReloadAfterCompletedAction(run) {
+      if (!run || !run.id) {
+        return;
+      }
+      if (run.status === "running") {
+        observedRunningRunId = run.id;
+        return;
+      }
+      if (
+        run.status === "completed"
+        && observedRunningRunId === run.id
+        && dismissedActionRunId !== run.id
+        && !reloadedActionRunIds.has(run.id)
+      ) {
+        reloadedActionRunIds.add(run.id);
+        persistReloadedActionRunIds();
+        window.setTimeout(() => window.location.reload(), 1200);
+      }
+    }
+    function renderActionStatus(run) {
+      if (
+        !actionStatus
+        || !actionStatusTitle
+        || !actionStatusLatest
+        || !actionStatusState
+        || !actionStatusMessages
+        || !actionStatusProgressFill
+      ) {
+        return;
+      }
+      if (!run || (run.id && dismissedActionRunId === run.id)) {
         actionStatus.hidden = true;
         return;
       }
       actionStatus.hidden = false;
+      actionStatus.dataset.runId = run.id || "";
       actionStatus.classList.toggle("is-running", run.status === "running");
+      actionStatus.classList.toggle("is-failed", run.status === "failed");
       actionStatusTitle.textContent = run.title || "Background action";
       actionStatusState.textContent = run.status || "running";
+      actionStatusLatest.textContent = latestActionMessage(run);
+      actionStatusProgressFill.style.width = run.status === "running" ? "" : "100%";
       actionStatusMessages.replaceChildren();
       (run.messages || []).slice(-8).forEach((message) => {
         const item = document.createElement("li");
         item.textContent = message;
         actionStatusMessages.appendChild(item);
       });
+      applyActionStatusCollapsedState();
+      maybeReloadAfterCompletedAction(run);
     }
     async function refreshActionStatus() {
       try {
@@ -2569,14 +3869,44 @@ INDEX_TEMPLATE = """
     document.querySelectorAll("form").forEach((form) => {
       form.addEventListener("submit", syncReturnState);
     });
-    if (actionSync) {
-      actionSync.addEventListener("change", updateActionsState);
-    }
-    if (actionRegenerate) {
-      actionRegenerate.addEventListener("change", updateActionsState);
-    }
+    regenerateModeInputs.forEach((input) => {
+      input.addEventListener("change", updateActionsState);
+    });
     if (actionsForm) {
       actionsForm.addEventListener("submit", syncActionsFormJobIds);
+    }
+    if (actionStatusToggle) {
+      actionStatusToggle.addEventListener("click", () => {
+        actionStatusCollapsed = !actionStatusCollapsed;
+        window.sessionStorage.setItem(
+          "actionStatusCollapsed",
+          actionStatusCollapsed ? "1" : "0",
+        );
+        applyActionStatusCollapsedState();
+      });
+    }
+    if (actionStatusClose && actionStatus) {
+      actionStatusClose.addEventListener("click", () => {
+        dismissedActionRunId = actionStatus.dataset.runId || "";
+        if (dismissedActionRunId) {
+          window.sessionStorage.setItem(
+            "actionStatusDismissedRunId",
+            dismissedActionRunId,
+          );
+        }
+        actionStatus.hidden = true;
+      });
+    }
+    if (addApplicationButton) {
+      addApplicationButton.addEventListener("click", () => {
+        const url = new URL("/applications/add", window.location.origin);
+        url.searchParams.set("return_to", currentReturnPath());
+        window.open(
+          url.toString(),
+          "add-application",
+          "popup,width=560,height=470,noopener,noreferrer",
+        );
+      });
     }
     preserveStateLinks.forEach((link) => {
       link.addEventListener("click", () => {
@@ -2627,13 +3957,13 @@ INDEX_TEMPLATE = """
 """
 
 
-DESCRIPTION_COMPARE_TEMPLATE = """
+ADD_APPLICATION_TEMPLATE = """
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Description Compare - {{ row.company }} - {{ row.job_title }}</title>
+  <title>Add Application</title>
   <style>
     :root {
       color-scheme: light;
@@ -2643,6 +3973,156 @@ DESCRIPTION_COMPARE_TEMPLATE = """
       --surface: #ffffff;
       --band: #f4f6f8;
       --accent: #0b6e69;
+      --accent-strong: #074f4b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--band);
+      font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    header {
+      padding: 18px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+    }
+    h1 {
+      margin: 0 0 4px;
+      font-size: 20px;
+      font-weight: 650;
+    }
+    main {
+      display: grid;
+      gap: 14px;
+      padding: 16px 20px 22px;
+    }
+    form, .field-group {
+      display: grid;
+      gap: 10px;
+      padding: 14px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+    }
+    label {
+      display: grid;
+      gap: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    input[type="url"] {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 9px 10px;
+      color: var(--ink);
+      font: inherit;
+      text-transform: none;
+    }
+    button, .button-link {
+      justify-self: start;
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 650;
+      padding: 8px 10px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    button:hover, .button-link:hover { background: var(--accent-strong); }
+    button:disabled {
+      cursor: not-allowed;
+      opacity: .5;
+    }
+    .flash {
+      margin: 0;
+      padding: 10px 12px;
+      border: 1px solid #b9d8d5;
+      background: #eef8f6;
+      color: var(--accent-strong);
+    }
+    .muted { color: var(--muted); }
+    .top-links {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+    a { color: var(--accent); font-weight: 650; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="top-links">
+      <a href="{{ return_to }}">Back to tracker</a>
+    </div>
+    <h1>Add Application</h1>
+    <div class="muted">Load a public job posting into the tracker.</div>
+  </header>
+  <main>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        {% for message in messages %}
+          <p class="flash">{{ message }}</p>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <form method="post" action="/applications/add/linkedin">
+      <input type="hidden" name="return_to" value="{{ return_to }}">
+      <label>
+        LinkedIn URL
+        <input
+          type="url"
+          name="linkedin_url"
+          placeholder="https://www.linkedin.com/jobs/view/1234567890"
+          required
+        >
+      </label>
+      <button type="submit">Load</button>
+    </form>
+
+    <form method="post" action="/applications/add/other">
+      <input type="hidden" name="return_to" value="{{ return_to }}">
+      <label>
+        Other
+        <input
+          type="url"
+          name="other_url"
+          placeholder="https://company.example/jobs/software-engineer"
+          required
+        >
+      </label>
+      <button type="submit">Load</button>
+    </form>
+  </main>
+</body>
+</html>
+"""
+
+
+COVER_LETTER_EDIT_TEMPLATE = """
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Edit Cover Letter - {{ row.company }}</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #202124;
+      --muted: #626a73;
+      --line: #d9dee5;
+      --surface: #ffffff;
+      --band: #f4f6f8;
+      --accent: #0b6e69;
+      --accent-strong: #074f4b;
     }
     * { box-sizing: border-box; }
     body {
@@ -2653,27 +4133,1013 @@ DESCRIPTION_COMPARE_TEMPLATE = """
     }
     header {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: space-between;
-      gap: 16px;
+      gap: 18px;
       padding: 18px 24px;
       background: var(--surface);
       border-bottom: 1px solid var(--line);
     }
-    h1 { margin: 0; font-size: 20px; font-weight: 650; }
-    .meta { color: var(--muted); margin-top: 4px; }
+    h1 { margin: 3px 0 2px; font-size: 20px; font-weight: 650; }
     a { color: var(--accent); font-weight: 650; }
+    .muted { color: var(--muted); }
+    .top-links { display: flex; gap: 10px; flex-wrap: wrap; }
+    main { padding: 18px 24px 40px; }
+    .flash {
+      margin: 0 0 12px;
+      padding: 10px 12px;
+      border: 1px solid #b9d8d5;
+      background: #eef8f6;
+    }
+    .sync-warning {
+      align-items: center;
+      background: #fff8e7;
+      border: 1px solid #f2d28b;
+      color: #5c4100;
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+      margin: 0 0 14px;
+      padding: 12px;
+    }
+    .sync-warning p {
+      margin: 3px 0 0;
+    }
+    .sync-warning form {
+      margin: 0;
+    }
+    .save-bar {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: -18px -24px 18px;
+      padding: 12px 24px;
+      background: rgba(255, 255, 255, .96);
+      border-bottom: 1px solid var(--line);
+    }
+    button, .button-link {
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 650;
+      padding: 8px 10px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    button:hover, .button-link:hover { background: var(--accent-strong); }
+    button.secondary, .button-link.secondary {
+      background: #fff;
+      color: var(--accent);
+    }
+    button.secondary:hover, .button-link.secondary:hover {
+      background: #eff7f6;
+      color: var(--accent-strong);
+    }
+    .editor-shell {
+      background: var(--surface);
+      border: 1px solid var(--line);
+    }
+    .editor-toolbar {
+      display: flex;
+      gap: 6px;
+      padding: 10px;
+      border-bottom: 1px solid var(--line);
+      background: #fafbfc;
+    }
+    .editor-toolbar button {
+      min-width: 38px;
+      padding: 6px 8px;
+    }
+    .cover-editor {
+      min-height: 620px;
+      padding: 28px 32px;
+      background: #fff;
+      color: var(--ink);
+      font: 16px/1.58 Georgia, "Times New Roman", serif;
+      outline: none;
+      white-space: normal;
+    }
+    .cover-editor:focus {
+      box-shadow: inset 0 0 0 2px #b9d8d5;
+    }
+    .cover-editor p, .cover-editor div {
+      margin: 0 0 14px;
+    }
+    @media (max-width: 900px) {
+      header, .save-bar { align-items: flex-start; flex-direction: column; }
+      main { padding: 14px; }
+      .save-bar { margin: -14px -14px 14px; padding: 12px 14px; }
+      .cover-editor { min-height: 480px; padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <div class="top-links">
+        <a href="{{ return_to }}">Back to tracker</a>
+        {% if row.cover_letter_content %}
+          <a
+            href="/cover-letters/{{ row.job_id }}"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Cover Letter PDF
+          </a>
+        {% endif %}
+      </div>
+      <h1>Edit Cover Letter</h1>
+      <div class="muted">{{ row.company }} - {{ row.job_title }} - {{ row.job_id }}</div>
+    </div>
+    {% if row.cover_letter_object_updated_at %}
+      <div class="muted">{{ row.cover_letter_object_updated_at|display_timestamp }}</div>
+    {% endif %}
+  </header>
+  <main>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        {% for message in messages %}
+          <p class="flash">{{ message }}</p>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+    <form id="cover-letter-form" method="post" action="/cover-letters/{{ row.job_id }}/edit">
+      <input type="hidden" name="return_to" value="{{ return_to }}">
+      <input id="body-html" type="hidden" name="body_html">
+      <div class="save-bar">
+        <div>
+          <button type="submit">Save PDF</button>
+          <a class="button-link secondary" href="{{ return_to }}">Close</a>
+        </div>
+        <span class="muted">{{ row.cover_letter_filename or 'No cover letter' }}</span>
+      </div>
+      <div class="editor-shell">
+        <div class="editor-toolbar" aria-label="Formatting">
+          <button type="button" data-command="bold"><strong>B</strong></button>
+          <button type="button" data-command="italic"><em>I</em></button>
+        </div>
+        <div id="cover-editor" class="cover-editor" contenteditable="true">
+          {{ cover_letter_object.body_html | safe }}
+        </div>
+      </div>
+    </form>
+  </main>
+  <script>
+    const form = document.querySelector("#cover-letter-form");
+    const editor = document.querySelector("#cover-editor");
+    const bodyHtml = document.querySelector("#body-html");
+    document.querySelectorAll("[data-command]").forEach((button) => {
+      button.addEventListener("click", () => {
+        editor.focus();
+        document.execCommand(button.dataset.command, false, null);
+      });
+    });
+    form.addEventListener("submit", () => {
+      bodyHtml.value = editor.innerHTML;
+    });
+  </script>
+</body>
+</html>
+"""
+
+
+RESUME_EDIT_TEMPLATE = """
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Edit Resume - {{ row.company }}</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #202124;
+      --muted: #626a73;
+      --line: #d9dee5;
+      --surface: #ffffff;
+      --band: #f4f6f8;
+      --accent: #0b6e69;
+      --accent-strong: #074f4b;
+      --danger: #a13d2d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--band);
+      font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 18px 24px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+    }
+    h1 { margin: 3px 0 2px; font-size: 20px; font-weight: 650; }
+    h2 { margin: 0; font-size: 15px; }
+    h3 { margin: 0 0 8px; font-size: 14px; }
+    a { color: var(--accent); font-weight: 650; }
+    .muted { color: var(--muted); }
+    .top-links { display: flex; gap: 10px; flex-wrap: wrap; }
+    .score-panel {
+      min-width: 280px;
+      border: 1px solid var(--line);
+      background: var(--band);
+      padding: 10px 12px;
+    }
+    .score-grid {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 3px 14px;
+      margin-top: 6px;
+      font-size: 13px;
+    }
+    main { padding: 18px 24px 40px; }
+    .flash {
+      margin: 0 0 12px;
+      padding: 10px 12px;
+      border: 1px solid #b9d8d5;
+      background: #eef8f6;
+    }
+    .save-bar {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: -18px -24px 18px;
+      padding: 12px 24px;
+      background: rgba(255, 255, 255, .96);
+      border-bottom: 1px solid var(--line);
+    }
+    button, .button-link {
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 650;
+      padding: 8px 10px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    button:hover, .button-link:hover { background: var(--accent-strong); }
+    button.secondary, .button-link.secondary {
+      background: #fff;
+      color: var(--accent);
+    }
+    button.secondary:hover, .button-link.secondary:hover {
+      background: #eff7f6;
+      color: var(--accent-strong);
+    }
+    button.danger {
+      border-color: var(--danger);
+      background: #fff;
+      color: var(--danger);
+    }
+    button.danger:hover {
+      background: #fff3f0;
+      color: #7f2b1d;
+    }
+    .section {
+      margin: 0 0 14px;
+      padding: 14px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+    }
+    .section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .section-title label, .render-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-weight: 650;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    label.field {
+      display: grid;
+      gap: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      text-transform: uppercase;
+    }
+    input[type="text"], textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px 9px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+      text-transform: none;
+    }
+    textarea {
+      min-height: 76px;
+      resize: vertical;
+      line-height: 1.4;
+    }
+    textarea.tall { min-height: 126px; }
+    textarea.bulk {
+      min-height: 160px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .rich-field {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      overflow: hidden;
+      background: #fff;
+    }
+    .rich-field .editor-toolbar {
+      display: flex;
+      gap: 5px;
+      padding: 6px;
+      border-bottom: 1px solid var(--line);
+      background: #fafbfc;
+    }
+    .rich-field .editor-toolbar button {
+      min-width: 32px;
+      padding: 4px 7px;
+    }
+    .rich-editor {
+      min-height: 39px;
+      padding: 8px 9px;
+      outline: none;
+      white-space: pre-wrap;
+    }
+    .rich-editor.tall { min-height: 126px; }
+    .rich-editor:focus {
+      box-shadow: inset 0 0 0 2px #b9d8d5;
+    }
+    .job-card, .nested-card {
+      margin-top: 12px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      background: #fbfcfd;
+    }
+    .bullet-row {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 9px;
+      align-items: start;
+      margin-top: 8px;
+    }
+    .bullet-row textarea { min-height: 54px; }
+    .compact-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .actions-inline {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    @media (max-width: 900px) {
+      header, .save-bar, .section-title { align-items: flex-start; flex-direction: column; }
+      main { padding: 14px; }
+      .save-bar { margin: -14px -14px 14px; padding: 12px 14px; }
+      .grid { grid-template-columns: 1fr; }
+      .score-panel { min-width: 0; width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  {% set header_top = resume.header_top | default({}) %}
+  {% set summary = resume.professional_summary | default({}) %}
+  {% set skills = resume.core_technical_skills | default({}) %}
+  {% set experience = resume.professional_experience | default({}) %}
+  {% set education = resume.education | default({}) %}
+  {% set certifications = resume.certifications | default({}) %}
+  {% set portfolio = resume.portfolio | default({}) %}
+  {% macro rich_editor(name, value, tall=False) -%}
+    <div class="rich-field">
+      <div class="editor-toolbar" aria-label="Formatting">
+        <button type="button" data-rich-command="bold"><strong>B</strong></button>
+        <button type="button" data-rich-command="italic"><em>I</em></button>
+      </div>
+      <input
+        type="hidden"
+        name="{{ name }}"
+        data-rich-input="{{ name }}"
+        value="{{ value | default('', true) }}"
+      >
+      <div
+        class="rich-editor {{ 'tall' if tall else '' }}"
+        contenteditable="true"
+        data-rich-target="{{ name }}"
+      >{{ value | default('', true) | rich_text }}</div>
+    </div>
+  {%- endmacro %}
+  <header>
+    <div>
+      <div class="top-links">
+        <a href="{{ return_to }}">Back to tracker</a>
+        {% if row.resume_content %}
+          <a href="/resumes/{{ row.job_id }}" target="_blank" rel="noreferrer">
+            Resume PDF
+          </a>
+        {% endif %}
+        {% if row.resume_html_content %}
+          <a href="/resume-html/{{ row.job_id }}" target="_blank" rel="noreferrer">
+            Resume HTML
+          </a>
+        {% endif %}
+      </div>
+      <h1>Edit Resume</h1>
+      <div class="muted">{{ row.company }} - {{ row.job_title }} - {{ row.job_id }}</div>
+    </div>
+    <div class="score-panel">
+      <strong>ATS proxy score</strong>
+      <div class="score-grid">
+        <span>Overall</span>
+        <strong>{{ row.ats_score if row.ats_score is not none else '-' }}/100</strong>
+        <span>Parsing</span>
+        <strong>
+          {{ row.ats_parsing_score if row.ats_parsing_score is not none else '-' }}/100
+        </strong>
+        <span>Keyword</span>
+        <strong>
+          {{ row.ats_keyword_score if row.ats_keyword_score is not none else '-' }}/100
+        </strong>
+        <span>Semantic</span>
+        <strong>
+          {{ row.ats_semantic_score if row.ats_semantic_score is not none else '-' }}/100
+        </strong>
+        <span>Risk</span><strong>{{ row.ats_formatting_risk or '-' }}</strong>
+      </div>
+      {% if row.ats_missing_terms %}
+        <p class="muted">{{ row.ats_missing_terms }}</p>
+      {% endif %}
+    </div>
+  </header>
+  <main>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        {% for message in messages %}
+          <p class="flash">{{ message }}</p>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+    {% if row.aro_resume_out_of_sync %}
+      <section class="sync-warning">
+        <div>
+          <strong>ARO and draft resume are out of sync.</strong>
+          <p>
+            The ARO changed after the rendered draft resume. Sync before editing if
+            you want the draft HTML/PDF/ATS to reflect the current ARO.
+          </p>
+        </div>
+        <form method="post" action="/resumes/{{ row.job_id }}/sync">
+          <input type="hidden" name="return_to" value="{{ return_to }}">
+          <button type="submit">Sync Draft to ARO</button>
+        </form>
+      </section>
+    {% endif %}
+    <form id="resume-edit-form" method="post" action="/resumes/{{ row.job_id }}/edit">
+      <input type="hidden" name="return_to" value="{{ return_to }}">
+      <div class="save-bar">
+        <div class="actions-inline">
+          <button type="submit">Save, Render, Rescore</button>
+          <a class="button-link secondary" href="{{ return_to }}">Close</a>
+        </div>
+        {% if row.application_resume_backup_object %}
+          <span class="muted">
+            Backup: {{ row.application_resume_backup_created_at|display_timestamp }}
+          </span>
+        {% else %}
+          <span class="muted">Backup: none</span>
+        {% endif %}
+      </div>
+
+      <section class="section">
+        <div class="section-title">
+          <h2>Header</h2>
+        </div>
+        <div class="grid">
+          <label class="field">Name
+            <input
+              type="text"
+              name="header_name"
+              value="{{ header_top.line_1_name_header_text | default('', true) }}"
+            >
+          </label>
+          <label class="field">Header Line 2
+            {{ rich_editor('header_line_2', header_top.line_2_header_text | default('', true)) }}
+          </label>
+          <label class="field">Fallback Contact Line
+            {% set header_info = header_top.line_3_applicant_info_text | default('', true) %}
+            {% if not header_info %}
+              {% set header_info = header_top.line_2_applicant_info_text | default('', true) %}
+            {% endif %}
+            {{ rich_editor('header_info', header_info) }}
+          </label>
+        </div>
+        <label class="field">Contact Items
+          <textarea name="header_contact_items">
+            {{- (header_top.contact_items | default([])) | join('\n') -}}
+          </textarea>
+        </label>
+      </section>
+
+      <section class="section">
+        <div class="section-title">
+          <label>
+            <input
+              type="checkbox"
+              name="summary_render"
+              value="1"
+              {{ 'checked' if summary.render | default(true) else '' }}
+            >
+            Professional Summary
+          </label>
+        </div>
+        <div class="grid">
+          <label class="field">Heading
+            <input
+              type="text"
+              name="summary_header_text"
+              value="{{ summary.header_text | default('Professional Summary', true) }}"
+            >
+          </label>
+          <label class="field">Note
+            {{ rich_editor('summary_note', summary.summary_note | default('', true)) }}
+          </label>
+        </div>
+        <label class="field">Paragraph
+          {{ rich_editor('summary_paragraph', summary.paragraph | default('', true), tall=True) }}
+        </label>
+      </section>
+
+      <section class="section">
+        <div class="section-title">
+          <label>
+            <input
+              type="checkbox"
+              name="skills_render"
+              value="1"
+              {{ 'checked' if skills.render | default(true) else '' }}
+            >
+            Core Technical Skills
+          </label>
+        </div>
+        <label class="field">Heading
+          <input
+            type="text"
+            name="skills_header_text"
+            value="{{ skills.header_text | default('Core Technical Skills', true) }}"
+          >
+        </label>
+        {% for bullet in skills.bullet_points | default([]) %}
+          {% set skill_index = loop.index0 %}
+          {% set skill_items = bullet["items"] | default({}) %}
+          <div class="nested-card">
+            <label class="field">Category
+              <input
+                type="text"
+                name="skill_{{ skill_index }}_category"
+                value="{{ bullet.category | default('', true) }}"
+              >
+            </label>
+            <div class="grid">
+              <label class="field">Primary Items
+                <textarea name="skill_{{ skill_index }}_primary">
+                  {{- (skill_items.primary | default([])) | join('\n') -}}
+                </textarea>
+              </label>
+              <label class="field">Additional Items
+                <textarea name="skill_{{ skill_index }}_additional">
+                  {{- (skill_items.additional | default([])) | join('\n') -}}
+                </textarea>
+              </label>
+            </div>
+            <label class="field">JOD Matched Items
+              <textarea name="skill_{{ skill_index }}_jod_matched">
+                {{- (bullet.jod_matched_items | default([])) | join('\n') -}}
+              </textarea>
+            </label>
+          </div>
+        {% endfor %}
+      </section>
+
+      <section class="section">
+        <div class="section-title">
+          <label>
+            <input
+              type="checkbox"
+              name="experience_render"
+              value="1"
+              {{ 'checked' if experience.render | default(true) else '' }}
+            >
+            Professional Experience
+          </label>
+        </div>
+        <label class="field">Heading
+          <input
+            type="text"
+            name="experience_header_text"
+            value="{{ experience.header_text | default('Professional Experience', true) }}"
+          >
+        </label>
+        {% for job in experience.jobs | default([]) %}
+          {% set job_index = loop.index0 %}
+          {% set line_1 = job.line_1 | default({}) %}
+          {% set line_2 = job.line_2 | default({}) %}
+          {% set bulk_text = job_bulk_bullet_text(job) %}
+          <div class="job-card">
+            <div class="section-title">
+              <h3>Job {{ loop.index }}</h3>
+              <label class="render-toggle">
+                <input
+                  type="checkbox"
+                  name="job_{{ job_index }}_render"
+                  value="1"
+                  {{ 'checked' if job.render | default(true) else '' }}
+                >
+                Render job
+              </label>
+            </div>
+            <div class="grid">
+              <label class="field">Company
+                <input
+                  type="text"
+                  name="job_{{ job_index }}_company"
+                  value="{{ line_1.company_name_text | default('', true) }}"
+                >
+              </label>
+              <label class="field">Position
+                <input
+                  type="text"
+                  name="job_{{ job_index }}_position"
+                  value="{{ line_1.position_name_text | default('', true) }}"
+                >
+              </label>
+              <label class="field">Dates
+                <input
+                  type="text"
+                  name="job_{{ job_index }}_dates"
+                  value="{{ line_1.position_dates_text | default('', true) }}"
+                >
+              </label>
+              <label class="field">Intro
+                {{ rich_editor(
+                  'job_' ~ job_index ~ '_intro',
+                  line_2.position_intro_text | default('', true)
+                ) }}
+              </label>
+            </div>
+            <label class="field">All Bullet Points
+              <textarea class="bulk" name="job_{{ job_index }}_bulk">{{ bulk_text }}</textarea>
+              <textarea hidden name="job_{{ job_index }}_bulk_original">{{ bulk_text }}</textarea>
+            </label>
+            <div class="compact-list">
+              {% for bullet in job.bullet_points | default([]) %}
+                {% set bullet_index = loop.index0 %}
+                <div class="bullet-row">
+                  <input
+                    type="checkbox"
+                    name="job_{{ job_index }}_bullet_{{ bullet_index }}_render"
+                    value="1"
+                    aria-label="Render bullet {{ bullet_index + 1 }}"
+                    {{ 'checked' if bullet is string or (bullet.render | default(true)) else '' }}
+                  >
+                  {{ rich_editor(
+                    'job_' ~ job_index ~ '_bullet_' ~ bullet_index ~ '_text',
+                    bullet_text_for_editing(bullet)
+                  ) }}
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+      </section>
+
+      <section class="section">
+        <div class="section-title">
+          <label>
+            <input
+              type="checkbox"
+              name="education_render"
+              value="1"
+              {{ 'checked' if education.render | default(true) else '' }}
+            >
+            Education
+          </label>
+        </div>
+        <label class="field">Heading
+          <input
+            type="text"
+            name="education_header_text"
+            value="{{ education.header_text | default('Education', true) }}"
+          >
+        </label>
+        {% for entry in education.entries | default([]) %}
+          {% set entry_index = loop.index0 %}
+          {% set line_1 = entry.line_1 | default({}) %}
+          {% set line_2 = entry.line_2 | default({}) %}
+          <div class="nested-card">
+            <label class="render-toggle">
+              <input
+                type="checkbox"
+                name="education_{{ entry_index }}_render"
+                value="1"
+                {{ 'checked' if entry.render | default(true) else '' }}
+              >
+              Render entry
+            </label>
+            <div class="grid">
+              <label class="field">Institution
+                <input
+                  type="text"
+                  name="education_{{ entry_index }}_institution"
+                  value="{{ line_1.institution_name_text | default('', true) }}"
+                >
+              </label>
+              <label class="field">Degree
+                <input
+                  type="text"
+                  name="education_{{ entry_index }}_degree"
+                  value="{{ line_2.degree_name_text | default('', true) }}"
+                >
+              </label>
+              <label class="field">Dates
+                <input
+                  type="text"
+                  name="education_{{ entry_index }}_dates"
+                  value="{{ line_2.degree_dates_text | default('', true) }}"
+                >
+              </label>
+            </div>
+            {% for bullet in entry.bullet_points | default([]) %}
+              {% set bullet_index = loop.index0 %}
+              <div class="bullet-row">
+                <input
+                  type="checkbox"
+                  name="education_{{ entry_index }}_bullet_{{ bullet_index }}_render"
+                  value="1"
+                  {{ 'checked' if bullet.render | default(true) else '' }}
+                >
+                {{ rich_editor(
+                  'education_' ~ entry_index ~ '_bullet_' ~ bullet_index ~ '_text',
+                  bullet.text | default('', true)
+                ) }}
+              </div>
+            {% endfor %}
+          </div>
+        {% endfor %}
+      </section>
+
+      <section class="section">
+        <div class="section-title">
+          <label>
+            <input
+              type="checkbox"
+              name="certifications_render"
+              value="1"
+              {{ 'checked' if certifications.render | default(true) else '' }}
+            >
+            Certifications
+          </label>
+        </div>
+        <label class="field">Heading
+          <input
+            type="text"
+            name="certifications_header_text"
+            value="{{ certifications.header_text | default('Certifications', true) }}"
+          >
+        </label>
+        {% for bullet in certifications.bullet_points | default([]) %}
+          {% set bullet_index = loop.index0 %}
+          <div class="bullet-row">
+            <input
+              type="checkbox"
+              name="certification_{{ bullet_index }}_render"
+              value="1"
+              {{ 'checked' if bullet.render | default(true) else '' }}
+            >
+            {{ rich_editor(
+              'certification_' ~ bullet_index ~ '_text',
+              bullet.text | default('', true)
+            ) }}
+          </div>
+        {% endfor %}
+      </section>
+
+      <section class="section">
+        <div class="section-title">
+          <label>
+            <input
+              type="checkbox"
+              name="portfolio_render"
+              value="1"
+              {{ 'checked' if portfolio.render | default(true) else '' }}
+            >
+            Portfolio
+          </label>
+        </div>
+        <label class="field">Heading
+          <input
+            type="text"
+            name="portfolio_header_text"
+            value="{{ portfolio.header_text | default('Portfolio', true) }}"
+          >
+        </label>
+        {% for project in portfolio.projects | default([]) %}
+          {% set project_index = loop.index0 %}
+          <div class="nested-card">
+            <label class="render-toggle">
+              <input
+                type="checkbox"
+                name="portfolio_{{ project_index }}_render"
+                value="1"
+                {{ 'checked' if project.render | default(true) else '' }}
+              >
+              Render project
+            </label>
+            <div class="grid">
+              <label class="field">Title
+                <input
+                  type="text"
+                  name="portfolio_{{ project_index }}_title"
+                  value="{{ project.title_text | default('', true) }}"
+                >
+              </label>
+              <label class="field">URL
+                <input
+                  type="text"
+                  name="portfolio_{{ project_index }}_url"
+                  value="{{ project.url | default('', true) }}"
+                >
+              </label>
+            </div>
+            <label class="field">Description
+              {{ rich_editor(
+                'portfolio_' ~ project_index ~ '_description',
+                project.description_text | default('', true)
+              ) }}
+            </label>
+          </div>
+        {% endfor %}
+      </section>
+    </form>
+
+    <form method="post" action="/resumes/{{ row.job_id }}/edit/revert">
+      <input type="hidden" name="return_to" value="{{ return_to }}">
+      <button
+        class="danger"
+        type="submit"
+        {{ 'disabled' if not row.application_resume_backup_object else '' }}
+      >
+        Revert To Backup
+      </button>
+    </form>
+  </main>
+  <script>
+    const resumeForm = document.querySelector("#resume-edit-form");
+    document.querySelectorAll("[data-rich-command]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const editor = button.closest(".rich-field").querySelector(".rich-editor");
+        editor.focus();
+        document.execCommand(button.dataset.richCommand, false, null);
+      });
+    });
+    if (resumeForm) {
+      resumeForm.addEventListener("submit", () => {
+        document.querySelectorAll(".rich-editor[data-rich-target]").forEach((editor) => {
+          const target = editor.dataset.richTarget;
+          const input = document.querySelector(`[data-rich-input="${target}"]`);
+          if (input) {
+            input.value = editor.innerHTML;
+          }
+        });
+      });
+    }
+  </script>
+</body>
+</html>
+"""
+
+
+DESCRIPTION_COMPARE_TEMPLATE = """
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Edit Descriptions - {{ row.company }} - {{ row.job_title }}</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #202124;
+      --muted: #626a73;
+      --line: #d9dee5;
+      --surface: #ffffff;
+      --band: #f4f6f8;
+      --accent: #0b6e69;
+      --accent-strong: #074f4b;
+      --removed: #fff1f1;
+      --added: #edf8f0;
+      --changed: #fff8e6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--band);
+      font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 18px 24px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+    }
+    h1 { margin: 3px 0 2px; font-size: 20px; font-weight: 650; }
+    .meta, .muted { color: var(--muted); }
+    a { color: var(--accent); font-weight: 650; }
+    .top-links { display: flex; gap: 10px; flex-wrap: wrap; }
     main {
+      padding: 18px 24px 40px;
+    }
+    .flash {
+      margin: 0 0 12px;
+      padding: 10px 12px;
+      border: 1px solid #b9d8d5;
+      background: #eef8f6;
+    }
+    .save-bar {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: -18px -24px 18px;
+      padding: 12px 24px;
+      background: rgba(255, 255, 255, .96);
+      border-bottom: 1px solid var(--line);
+    }
+    button, .button-link {
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 650;
+      padding: 8px 10px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    button:hover, .button-link:hover { background: var(--accent-strong); }
+    .button-link.secondary {
+      background: #fff;
+      color: var(--accent);
+    }
+    .button-link.secondary:hover {
+      background: #eff7f6;
+      color: var(--accent-strong);
+    }
+    .editor-grid, .diff-grid {
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      gap: 16px;
-      padding: 16px 24px 24px;
+      gap: 14px;
+      margin-bottom: 14px;
     }
     section {
       min-width: 0;
       background: var(--surface);
       border: 1px solid var(--line);
     }
+    .wide { margin-bottom: 14px; }
     h2 {
       margin: 0;
       padding: 12px 14px;
@@ -2681,9 +5147,26 @@ DESCRIPTION_COMPARE_TEMPLATE = """
       font-size: 14px;
       font-weight: 700;
     }
+    textarea {
+      display: block;
+      width: 100%;
+      min-height: calc(100vh - 270px);
+      max-height: 72vh;
+      margin: 0;
+      overflow: auto;
+      resize: vertical;
+      border: 0;
+      border-radius: 0;
+      padding: 14px;
+      background: #fff;
+      color: var(--ink);
+      font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    textarea:focus {
+      outline: 2px solid #b9d8d5;
+      outline-offset: -2px;
+    }
     pre {
-      min-height: calc(100vh - 160px);
-      max-height: calc(100vh - 160px);
       margin: 0;
       overflow: auto;
       padding: 14px;
@@ -2693,38 +5176,171 @@ DESCRIPTION_COMPARE_TEMPLATE = """
       color: var(--ink);
       font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
+    .removed-text { max-height: 360px; background: var(--removed); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      table-layout: fixed;
+    }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      border-right: 1px solid var(--line);
+      padding: 7px 8px;
+      vertical-align: top;
+      text-align: left;
+    }
+    th {
+      background: #fafbfc;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+    td.line-no {
+      width: 52px;
+      color: var(--muted);
+      font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      text-align: right;
+    }
+    td.status {
+      width: 86px;
+      font-weight: 700;
+    }
+    td pre { padding: 0; background: transparent; }
+    tr.delete { background: var(--removed); }
+    tr.insert { background: var(--added); }
+    tr.replace { background: var(--changed); }
+    .score-panel {
+      min-width: 230px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      background: #fbfcfd;
+    }
+    .score-grid {
+      display: grid;
+      grid-template-columns: auto auto;
+      gap: 2px 12px;
+      margin-top: 6px;
+      font-size: 12px;
+    }
     @media (max-width: 900px) {
-      header {
-        align-items: flex-start;
-        flex-direction: column;
+      header, .save-bar { align-items: flex-start; flex-direction: column; }
+      main { padding: 14px; }
+      .save-bar { margin: -14px -14px 14px; padding: 12px 14px; }
+      .editor-grid, .diff-grid { grid-template-columns: 1fr; }
+      textarea {
+        min-height: 46vh;
+        max-height: 56vh;
       }
-      main {
-        grid-template-columns: 1fr;
-        padding: 12px;
-      }
-      pre {
-        min-height: 48vh;
-        max-height: 48vh;
-      }
+      .score-panel { min-width: 0; width: 100%; }
     }
   </style>
 </head>
 <body>
   <header>
     <div>
-      <h1>{{ row.job_title }}</h1>
-      <div class="meta">{{ row.company }} · {{ row.job_id }}</div>
+      <div class="top-links">
+        <a href="{{ return_to }}">Back to tracker</a>
+        {% if row.linkedin_url %}
+          <a href="{{ row.linkedin_url }}" target="_blank" rel="noreferrer">Job URL</a>
+        {% endif %}
+      </div>
+      <h1>Edit Job Descriptions</h1>
+      <div class="meta">{{ row.company }} - {{ row.job_title }} - {{ row.job_id }}</div>
     </div>
-    <a href="/" target="_self">Applications</a>
+    <div class="score-panel">
+      <strong>ATS proxy score</strong>
+      <div class="score-grid">
+        <span>Overall</span>
+        <strong>{{ row.ats_score if row.ats_score is not none else '-' }}/100</strong>
+        <span>Keyword</span>
+        <strong>
+          {{ row.ats_keyword_score if row.ats_keyword_score is not none else '-' }}/100
+        </strong>
+        <span>Semantic</span>
+        <strong>
+          {{ row.ats_semantic_score if row.ats_semantic_score is not none else '-' }}/100
+        </strong>
+        <span>Risk</span><strong>{{ row.ats_formatting_risk or '-' }}</strong>
+      </div>
+      {% if row.ats_missing_terms %}
+        <div class="muted">{{ row.ats_missing_terms }}</div>
+      {% endif %}
+    </div>
   </header>
   <main>
-    <section>
-      <h2>Parsed Job Description</h2>
-      <pre>{{ row.job_description or "No parsed job description is stored." }}</pre>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        {% for message in messages %}
+          <p class="flash">{{ message }}</p>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+    <form method="post" action="/descriptions/{{ row.job_id }}">
+      <input type="hidden" name="return_to" value="{{ return_to }}">
+      <div class="save-bar">
+        <div>
+          <button type="submit">Save And Rescore</button>
+          <a class="button-link secondary" href="{{ return_to }}">Close</a>
+        </div>
+        <span class="muted">ATS source: Prompt Job Description when present</span>
+      </div>
+      <div class="editor-grid">
+        <section>
+          <h2>Parsed Job Description</h2>
+          <textarea name="job_description">{{ row.job_description or "" }}</textarea>
+        </section>
+        <section>
+          <h2>Prompt Job Description</h2>
+          <textarea name="prompt_job_description">{{ row.prompt_job_description or "" }}</textarea>
+        </section>
+      </div>
+    </form>
+
+    <section class="wide">
+      <h2>Removed By Trimming</h2>
+      {% if removed_text %}
+        <pre class="removed-text">{{ removed_text }}</pre>
+      {% else %}
+        <pre class="removed-text">No removed text detected.</pre>
+      {% endif %}
     </section>
-    <section>
-      <h2>Prompt Job Description</h2>
-      <pre>{{ row.prompt_job_description or "No prompt job description is stored." }}</pre>
+
+    <section class="wide">
+      <h2>Description Diff</h2>
+      {% if diff_rows %}
+        <table>
+          <thead>
+            <tr>
+              <th class="status">Type</th>
+              <th>Parsed Token</th>
+              <th>Parsed Text</th>
+              <th>Prompt Token</th>
+              <th>Prompt Text</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for diff in diff_rows %}
+              <tr class="{{ diff.status }}">
+                <td class="status">
+                  {% if diff.status == "delete" %}Removed
+                  {% elif diff.status == "insert" %}Added
+                  {% elif diff.status == "replace" %}Changed
+                  {% else %}{{ diff.status }}
+                  {% endif %}
+                </td>
+                <td class="line-no">{{ diff.left_line_no or "" }}</td>
+                <td><pre>{{ diff.left_text }}</pre></td>
+                <td class="line-no">{{ diff.right_line_no or "" }}</td>
+                <td><pre>{{ diff.right_text }}</pre></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <pre>No line-level differences detected.</pre>
+      {% endif %}
     </section>
   </main>
 </body>

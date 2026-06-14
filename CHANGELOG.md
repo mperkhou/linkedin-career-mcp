@@ -1,5 +1,36 @@
 # linkedin-career-mcp CHANGELOG
 
+## 2.0.0 - ARO structured resume refactor
+
+* commit `36ab962`: First commit of resume restructure
+* commit `d833805`: Add master resume YAML skill
+* commit `71060cb`: Add JOD match count placeholders
+* commit `9669b45`: Add ARO pass-one resume scoring workflow
+* commit `48b6835`: Add ARO predraft bullet selection
+* commit `9bc7766`: Rename ARO selection to first draft
+* commit `4f4d37d`: Add ARO first-draft storage and ATS scoring improvements
+* commit `f30c617`: Preserve ARO first-draft resume artifacts
+* commit `7b8f0b4`: Add manual ARO resume editor
+* commit `f88454d`: Add manual cover letter editor
+* commit `6d415c1`: Add editable job description comparison
+* commit `cc376f5`: Add manual LinkedIn job entry
+* commit `8f7e7b7`: Add generic URL first-draft workflow
+* commit `be57528`: Add resume rich-text editing and header line
+* commit `8018ae1`: Update master resume source text
+* commit `9257e96`: Refresh master resume YAML mappings
+* commit `1b7a17b`: Add ARO sync actions
+* commit `27dd305`: Fix JOD trimming diff display
+* commit `ca55e50`: Fix resume editor skill preservation
+* Remove the retired output/workbook artifact workflow and keep only the
+  database-backed ARO resume workflow.
+* Standardize the refactor terminology around MRO and ARO, removing the accidental
+  alternate object naming from commands, UI labels, docs, skills, and workflow prompts.
+* Decode escaped Streamdown rich-text spans in rendered resume headers.
+* Fix the job-description comparison view so wrapping differences do not make
+  kept prompt text appear as removed-by-trimming content.
+* Fix the resume editor so Core Technical Skills inventories render in the edit
+  form and cannot be blanked by missing or empty skill fields.
+
 ## 1.29.0 - PR #29: Remove standalone artifact stylizers
 
 * Remove the standalone resume and cover-letter PDF stylizer commands from this repo.
