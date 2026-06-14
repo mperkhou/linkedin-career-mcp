@@ -14,13 +14,19 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
+import yaml
 from openpyxl import load_workbook
 
 from linkedin_career_mcp.ats import AtsProxyScore, calculate_ats_proxy_score
+from linkedin_career_mcp.resume_rendering import (
+    render_resume_html_from_mapping,
+    render_resume_pdf_from_html,
+)
 
 DEFAULT_OUTPUT_DIR = Path("output")
 TRACKING_WORKBOOK = Path("tracking/read_applications/linkedin_applications.xlsx")
 DEFAULT_DATABASE = Path("tracking/applications.sqlite3")
+DEFAULT_RESUME_TEMPLATE = Path("templates/resume/master_resume.html.j2")
 
 TRACKING_COLUMNS = (
     "job_id",
@@ -51,6 +57,8 @@ APPLICATION_EXTRA_COLUMNS = {
     "prompt_job_description": "TEXT",
     "application_resume_object": "TEXT",
     "application_resume_updated_at": "TEXT",
+    "application_resume_backup_object": "TEXT",
+    "application_resume_backup_created_at": "TEXT",
     "resume_html_filename": "TEXT NOT NULL DEFAULT ''",
     "resume_html_content": "TEXT",
     "resume_html_mime_type": "TEXT NOT NULL DEFAULT 'text/html; charset=utf-8'",
@@ -141,6 +149,8 @@ def init_database(connection: sqlite3.Connection) -> None:
             prompt_job_description TEXT,
             application_resume_object TEXT,
             application_resume_updated_at TEXT,
+            application_resume_backup_object TEXT,
+            application_resume_backup_created_at TEXT,
             resume_html_filename TEXT NOT NULL DEFAULT '',
             resume_html_content TEXT,
             resume_html_mime_type TEXT NOT NULL DEFAULT 'text/html; charset=utf-8',
@@ -586,6 +596,120 @@ def store_application_resume_first_draft(
         connection.commit()
 
 
+def save_application_resume_edit(
+    *,
+    database_path: Path,
+    job_id: str,
+    application_resume_object: str,
+    template_path: Path | None = None,
+    backup_current: bool = True,
+) -> AtsProxyScore | None:
+    resume = _parse_application_resume_yaml(application_resume_object)
+    resume_html = render_resume_html_from_mapping(
+        resume=resume,
+        template_path=_resume_template_path(template_path),
+    )
+    resume_pdf = render_resume_pdf_from_html(resume_html)
+    now = datetime.now(UTC).isoformat(timespec="seconds")
+    with connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT *
+            FROM applications
+            WHERE job_id = ?
+            """,
+            (job_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"Application row was not found for job_id={job_id}.")
+        ats_score = _calculate_ats_score(
+            resume_content=resume_pdf,
+            job_description=row["prompt_job_description"] or row["job_description"],
+        )
+        connection.execute(
+            """
+            UPDATE applications
+            SET application_resume_backup_object = ?,
+                application_resume_backup_created_at = ?,
+                application_resume_object = ?,
+                application_resume_updated_at = ?,
+                resume_html_filename = ?,
+                resume_html_content = ?,
+                resume_html_mime_type = 'text/html; charset=utf-8',
+                source_resume_html_path = '',
+                resume_html_updated_at = ?,
+                resume_filename = ?,
+                resume_content = ?,
+                resume_mime_type = 'application/pdf',
+                source_resume_path = '',
+                resume_updated_at = ?,
+                ats_score = ?,
+                ats_parsing_score = ?,
+                ats_keyword_score = ?,
+                ats_semantic_score = ?,
+                ats_formatting_risk = ?,
+                ats_missing_terms = ?,
+                ats_updated_at = ?,
+                updated_at = ?
+            WHERE job_id = ?
+            """,
+            (
+                row["application_resume_object"] if backup_current else row[
+                    "application_resume_backup_object"
+                ],
+                now if backup_current else row["application_resume_backup_created_at"],
+                application_resume_object,
+                now,
+                _resume_html_filename(row),
+                resume_html,
+                now,
+                _resume_pdf_filename(row),
+                resume_pdf,
+                now,
+                ats_score.overall_score if ats_score is not None else None,
+                ats_score.parsing_score if ats_score is not None else None,
+                ats_score.keyword_match_score if ats_score is not None else None,
+                ats_score.semantic_match_score if ats_score is not None else None,
+                ats_score.formatting_risk if ats_score is not None else None,
+                _format_missing_terms(ats_score) if ats_score is not None else None,
+                now if ats_score is not None else None,
+                now,
+                job_id,
+            ),
+        )
+        connection.commit()
+    return ats_score
+
+
+def revert_application_resume_edit(
+    *,
+    database_path: Path,
+    job_id: str,
+    template_path: Path | None = None,
+) -> AtsProxyScore | None:
+    with connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT application_resume_backup_object
+            FROM applications
+            WHERE job_id = ?
+            """,
+            (job_id,),
+        ).fetchone()
+    if row is None:
+        raise ValueError(f"Application row was not found for job_id={job_id}.")
+    backup_object = str(row["application_resume_backup_object"] or "").strip()
+    if not backup_object:
+        raise ValueError("No manual resume backup is available for this application.")
+    return save_application_resume_edit(
+        database_path=database_path,
+        job_id=job_id,
+        application_resume_object=backup_object,
+        template_path=template_path,
+        backup_current=True,
+    )
+
+
 def delete_applications(
     *,
     database_path: Path,
@@ -1000,6 +1124,8 @@ def create_app(
     app.config["OUTPUT_DIR"] = output_dir
     app.jinja_env.filters["display_date"] = _display_date
     app.jinja_env.filters["display_timestamp"] = _display_timestamp
+    app.jinja_env.globals["bullet_text_for_editing"] = _bullet_text_for_editing
+    app.jinja_env.globals["job_bulk_bullet_text"] = _job_bulk_bullet_text
 
     def redirect_to_index_state():
         return redirect(_safe_index_return_path(request.values.get("return_to")))
@@ -1134,6 +1260,58 @@ def create_app(
             row["resume_html_content"],
             mimetype=row["resume_html_mime_type"] or "text/html; charset=utf-8",
         )
+
+    @app.get("/resumes/<job_id>/edit")
+    def resume_edit(job_id: str):
+        row = _fetch_application(database_path, job_id)
+        if row is None or not row["application_resume_object"]:
+            return Response("Application resume object was not found.", status=404)
+        try:
+            resume = _parse_application_resume_yaml(row["application_resume_object"])
+        except (TypeError, ValueError, yaml.YAMLError) as exc:
+            return Response(f"Application resume object could not be parsed: {exc}", status=500)
+        return_to = _safe_index_return_path(request.args.get("return_to"))
+        return render_template_string(
+            RESUME_EDIT_TEMPLATE,
+            row=row,
+            resume=resume,
+            return_to=return_to,
+        )
+
+    @app.post("/resumes/<job_id>/edit")
+    def resume_edit_save(job_id: str):
+        row = _fetch_application(database_path, job_id)
+        if row is None or not row["application_resume_object"]:
+            return Response("Application resume object was not found.", status=404)
+        try:
+            resume = _parse_application_resume_yaml(row["application_resume_object"])
+            updated_resume = _apply_resume_editor_form(resume, request.form)
+            updated_aro = _dump_application_resume_yaml(updated_resume)
+            score = save_application_resume_edit(
+                database_path=database_path,
+                job_id=job_id,
+                application_resume_object=updated_aro,
+            )
+        except (TypeError, ValueError, yaml.YAMLError) as exc:
+            flash(f"Resume save failed: {exc}")
+            return redirect(_resume_edit_return_path(job_id, request.form.get("return_to")))
+        score_text = f" ATS: {score.overall_score}/100." if score is not None else ""
+        flash(f"Saved resume edits and regenerated artifacts.{score_text}")
+        return redirect(_resume_edit_return_path(job_id, request.form.get("return_to")))
+
+    @app.post("/resumes/<job_id>/edit/revert")
+    def resume_edit_revert(job_id: str):
+        try:
+            score = revert_application_resume_edit(
+                database_path=database_path,
+                job_id=job_id,
+            )
+        except ValueError as exc:
+            flash(str(exc))
+        else:
+            score_text = f" ATS: {score.overall_score}/100." if score is not None else ""
+            flash(f"Reverted resume to the prior manual backup.{score_text}")
+        return redirect(_resume_edit_return_path(job_id, request.form.get("return_to")))
 
     @app.get("/resumes/<job_id>/download")
     def resume_download(job_id: str):
@@ -1315,6 +1493,206 @@ def _format_missing_terms(score: AtsProxyScore) -> str:
     return ", ".join(score.missing_high_value_terms)
 
 
+def _parse_application_resume_yaml(value: str) -> dict[str, Any]:
+    parsed = yaml.safe_load(value)
+    if not isinstance(parsed, dict):
+        raise ValueError("Application resume object must be a YAML mapping.")
+    return parsed
+
+
+def _dump_application_resume_yaml(resume: dict[str, Any]) -> str:
+    return yaml.safe_dump(resume, sort_keys=False, allow_unicode=False)
+
+
+def _resume_template_path(template_path: Path | None = None) -> Path:
+    if template_path is not None:
+        return template_path
+    if DEFAULT_RESUME_TEMPLATE.is_file():
+        return DEFAULT_RESUME_TEMPLATE
+    return _project_root() / DEFAULT_RESUME_TEMPLATE
+
+
+def _apply_resume_editor_form(resume: dict[str, Any], form: Any) -> dict[str, Any]:
+    header = _ensure_mapping(resume, "header_top")
+    header["line_1_name_header_text"] = _form_text(form, "header_name")
+    header["line_2_applicant_info_text"] = _form_text(form, "header_info")
+    header["contact_items"] = _form_lines(form, "header_contact_items")
+
+    summary = _ensure_mapping(resume, "professional_summary")
+    summary["render"] = _form_bool(form, "summary_render")
+    summary["header_text"] = _form_text(form, "summary_header_text")
+    summary["paragraph"] = _form_text(form, "summary_paragraph")
+    summary["summary_note"] = _form_text(form, "summary_note")
+
+    skills = _ensure_mapping(resume, "core_technical_skills")
+    skills["render"] = _form_bool(form, "skills_render")
+    skills["header_text"] = _form_text(form, "skills_header_text")
+    for index, bullet in enumerate(_mapping_list(skills.get("bullet_points"))):
+        bullet["category"] = _form_text(form, f"skill_{index}_category")
+        items = bullet.get("items")
+        if not isinstance(items, dict):
+            items = {}
+            bullet["items"] = items
+        items["primary"] = _form_lines(form, f"skill_{index}_primary")
+        items["additional"] = _form_lines(form, f"skill_{index}_additional")
+        bullet["jod_matched_items"] = _form_lines(form, f"skill_{index}_jod_matched")
+
+    experience = _ensure_mapping(resume, "professional_experience")
+    experience["render"] = _form_bool(form, "experience_render")
+    experience["header_text"] = _form_text(form, "experience_header_text")
+    for job_index, job in enumerate(_mapping_list(experience.get("jobs"))):
+        job["render"] = _form_bool(form, f"job_{job_index}_render")
+        line_1 = _ensure_mapping(job, "line_1")
+        line_1["company_name_text"] = _form_text(form, f"job_{job_index}_company")
+        line_1["position_name_text"] = _form_text(form, f"job_{job_index}_position")
+        line_1["position_dates_text"] = _form_text(form, f"job_{job_index}_dates")
+        line_2 = _ensure_mapping(job, "line_2")
+        line_2["position_intro_text"] = _form_text(form, f"job_{job_index}_intro")
+        _apply_job_bullet_edits(job=job, job_index=job_index, form=form)
+
+    education = _ensure_mapping(resume, "education")
+    education["render"] = _form_bool(form, "education_render")
+    education["header_text"] = _form_text(form, "education_header_text")
+    for entry_index, entry in enumerate(_mapping_list(education.get("entries"))):
+        entry["render"] = _form_bool(form, f"education_{entry_index}_render")
+        line_1 = _ensure_mapping(entry, "line_1")
+        line_1["institution_name_text"] = _form_text(
+            form,
+            f"education_{entry_index}_institution",
+        )
+        line_2 = _ensure_mapping(entry, "line_2")
+        line_2["degree_name_text"] = _form_text(form, f"education_{entry_index}_degree")
+        line_2["degree_dates_text"] = _form_text(form, f"education_{entry_index}_dates")
+        for bullet_index, bullet in enumerate(_mapping_list(entry.get("bullet_points"))):
+            bullet["render"] = _form_bool(
+                form,
+                f"education_{entry_index}_bullet_{bullet_index}_render",
+            )
+            bullet["text"] = _form_text(
+                form,
+                f"education_{entry_index}_bullet_{bullet_index}_text",
+            )
+
+    certifications = _ensure_mapping(resume, "certifications")
+    certifications["render"] = _form_bool(form, "certifications_render")
+    certifications["header_text"] = _form_text(form, "certifications_header_text")
+    for index, bullet in enumerate(_mapping_list(certifications.get("bullet_points"))):
+        bullet["render"] = _form_bool(form, f"certification_{index}_render")
+        bullet["text"] = _form_text(form, f"certification_{index}_text")
+
+    portfolio = _ensure_mapping(resume, "portfolio")
+    portfolio["render"] = _form_bool(form, "portfolio_render")
+    portfolio["header_text"] = _form_text(form, "portfolio_header_text")
+    for index, project in enumerate(_mapping_list(portfolio.get("projects"))):
+        project["render"] = _form_bool(form, f"portfolio_{index}_render")
+        project["title_text"] = _form_text(form, f"portfolio_{index}_title")
+        project["url"] = _form_text(form, f"portfolio_{index}_url")
+        project["description_text"] = _form_text(form, f"portfolio_{index}_description")
+
+    return resume
+
+
+def _apply_job_bullet_edits(*, job: dict[str, Any], job_index: int, form: Any) -> None:
+    bullets = _normalizable_bullet_list(job)
+    bulk_name = f"job_{job_index}_bulk"
+    bulk_original_name = f"job_{job_index}_bulk_original"
+    bulk_text = _form_text(form, bulk_name)
+    bulk_original = _form_text(form, bulk_original_name)
+    if bulk_text != bulk_original:
+        lines = _textarea_lines(bulk_text)
+        for index, line in enumerate(lines):
+            if index < len(bullets):
+                bullet = bullets[index]
+            else:
+                bullet = {"order": _next_bullet_order(bullets), "render": True}
+                bullets.append(bullet)
+            bullet["text"] = line
+            bullet["render"] = True
+        for bullet in bullets[len(lines) :]:
+            bullet["render"] = False
+        job["bullet_points"] = bullets
+        return
+
+    for index, bullet in enumerate(bullets):
+        bullet["render"] = _form_bool(form, f"job_{job_index}_bullet_{index}_render")
+        bullet["text"] = _form_text(form, f"job_{job_index}_bullet_{index}_text")
+    job["bullet_points"] = bullets
+
+
+def _normalizable_bullet_list(job: dict[str, Any]) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for index, bullet in enumerate(_list_value(job.get("bullet_points"))):
+        if isinstance(bullet, dict):
+            normalized.append(bullet)
+        elif isinstance(bullet, str):
+            normalized.append({"order": index + 1, "text": bullet, "render": True})
+    return normalized
+
+
+def _ensure_mapping(parent: dict[str, Any], key: str) -> dict[str, Any]:
+    value = parent.get(key)
+    if isinstance(value, dict):
+        return value
+    value = {}
+    parent[key] = value
+    return value
+
+
+def _mapping_list(value: object) -> list[dict[str, Any]]:
+    return [item for item in _list_value(value) if isinstance(item, dict)]
+
+
+def _list_value(value: object) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def _next_bullet_order(bullets: list[dict[str, Any]]) -> int:
+    orders = [int(bullet.get("order", 0)) for bullet in bullets if str(bullet.get("order", "")).isdigit()]
+    return (max(orders) if orders else len(bullets)) + 1
+
+
+def _form_text(form: Any, name: str) -> str:
+    return str(form.get(name) or "").strip()
+
+
+def _form_bool(form: Any, name: str) -> bool:
+    return form.get(name) == "1"
+
+
+def _form_lines(form: Any, name: str) -> list[str]:
+    return _textarea_lines(_form_text(form, name))
+
+
+def _textarea_lines(value: str) -> list[str]:
+    lines: list[str] = []
+    for raw_line in value.splitlines():
+        line = raw_line.strip()
+        while line[:1] in {"-", "*", "\u2022"}:
+            line = line[1:].strip()
+        if line:
+            lines.append(line)
+    return lines
+
+
+def _job_bulk_bullet_text(job: dict[str, Any]) -> str:
+    return "\n".join(
+        _bullet_text_for_editing(bullet)
+        for bullet in _list_value(job.get("bullet_points"))
+    )
+
+
+def _bullet_text_for_editing(bullet: object) -> str:
+    if isinstance(bullet, str):
+        return bullet
+    if not isinstance(bullet, dict):
+        return ""
+    for key in ("text", "rendered_text"):
+        value = bullet.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
 def _date_value(value: Any) -> str | None:
     if value is None:
         return None
@@ -1393,6 +1771,11 @@ def _safe_index_return_path(value: Any) -> str:
     ]
     query = urlencode(query_items)
     return f"/?{query}" if query else "/"
+
+
+def _resume_edit_return_path(job_id: str, return_to: Any) -> str:
+    query = urlencode({"return_to": _safe_index_return_path(return_to)})
+    return f"/resumes/{job_id}/edit?{query}"
 
 
 def cleanup_downloaded_application_pdfs(download_dir: Path | None = None) -> int:
@@ -2203,6 +2586,16 @@ INDEX_TEMPLATE = """
                         HTML
                       </a>
                     {% endif %}
+                    {% if row.application_resume_object %}
+                      <a
+                        class="preserve-state-link"
+                        href="/resumes/{{ row.job_id }}/edit"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Edit
+                      </a>
+                    {% endif %}
                     <form method="post" action="/resumes/{{ row.job_id }}/copy-to-downloads">
                       <input
                         type="hidden"
@@ -2788,6 +3181,467 @@ INDEX_TEMPLATE = """
     refreshActionStatus();
     window.setInterval(refreshActionStatus, 2500);
   </script>
+</body>
+</html>
+"""
+
+
+RESUME_EDIT_TEMPLATE = """
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Edit Resume - {{ row.company }}</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #202124;
+      --muted: #626a73;
+      --line: #d9dee5;
+      --surface: #ffffff;
+      --band: #f4f6f8;
+      --accent: #0b6e69;
+      --accent-strong: #074f4b;
+      --danger: #a13d2d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--band);
+      font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 18px 24px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+    }
+    h1 { margin: 3px 0 2px; font-size: 20px; font-weight: 650; }
+    h2 { margin: 0; font-size: 15px; }
+    h3 { margin: 0 0 8px; font-size: 14px; }
+    a { color: var(--accent); font-weight: 650; }
+    .muted { color: var(--muted); }
+    .top-links { display: flex; gap: 10px; flex-wrap: wrap; }
+    .score-panel {
+      min-width: 280px;
+      border: 1px solid var(--line);
+      background: var(--band);
+      padding: 10px 12px;
+    }
+    .score-grid {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 3px 14px;
+      margin-top: 6px;
+      font-size: 13px;
+    }
+    main { padding: 18px 24px 40px; }
+    .flash {
+      margin: 0 0 12px;
+      padding: 10px 12px;
+      border: 1px solid #b9d8d5;
+      background: #eef8f6;
+    }
+    .save-bar {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: -18px -24px 18px;
+      padding: 12px 24px;
+      background: rgba(255, 255, 255, .96);
+      border-bottom: 1px solid var(--line);
+    }
+    button, .button-link {
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 650;
+      padding: 8px 10px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    button:hover, .button-link:hover { background: var(--accent-strong); }
+    button.secondary, .button-link.secondary {
+      background: #fff;
+      color: var(--accent);
+    }
+    button.secondary:hover, .button-link.secondary:hover {
+      background: #eff7f6;
+      color: var(--accent-strong);
+    }
+    button.danger {
+      border-color: var(--danger);
+      background: #fff;
+      color: var(--danger);
+    }
+    button.danger:hover {
+      background: #fff3f0;
+      color: #7f2b1d;
+    }
+    .section {
+      margin: 0 0 14px;
+      padding: 14px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+    }
+    .section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .section-title label, .render-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-weight: 650;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    label.field {
+      display: grid;
+      gap: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      text-transform: uppercase;
+    }
+    input[type="text"], textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px 9px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+      text-transform: none;
+    }
+    textarea {
+      min-height: 76px;
+      resize: vertical;
+      line-height: 1.4;
+    }
+    textarea.tall { min-height: 126px; }
+    textarea.bulk { min-height: 160px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .job-card, .nested-card {
+      margin-top: 12px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      background: #fbfcfd;
+    }
+    .bullet-row {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 9px;
+      align-items: start;
+      margin-top: 8px;
+    }
+    .bullet-row textarea { min-height: 54px; }
+    .compact-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .actions-inline {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    @media (max-width: 900px) {
+      header, .save-bar, .section-title { align-items: flex-start; flex-direction: column; }
+      main { padding: 14px; }
+      .save-bar { margin: -14px -14px 14px; padding: 12px 14px; }
+      .grid { grid-template-columns: 1fr; }
+      .score-panel { min-width: 0; width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  {% set header_top = resume.header_top | default({}) %}
+  {% set summary = resume.professional_summary | default({}) %}
+  {% set skills = resume.core_technical_skills | default({}) %}
+  {% set experience = resume.professional_experience | default({}) %}
+  {% set education = resume.education | default({}) %}
+  {% set certifications = resume.certifications | default({}) %}
+  {% set portfolio = resume.portfolio | default({}) %}
+  <header>
+    <div>
+      <div class="top-links">
+        <a href="{{ return_to }}">Back to tracker</a>
+        {% if row.resume_content %}
+          <a href="/resumes/{{ row.job_id }}" target="_blank" rel="noreferrer">Resume PDF</a>
+        {% endif %}
+        {% if row.resume_html_content %}
+          <a href="/resume-html/{{ row.job_id }}" target="_blank" rel="noreferrer">Resume HTML</a>
+        {% endif %}
+      </div>
+      <h1>Edit Resume</h1>
+      <div class="muted">{{ row.company }} - {{ row.job_title }} - {{ row.job_id }}</div>
+    </div>
+    <div class="score-panel">
+      <strong>ATS proxy score</strong>
+      <div class="score-grid">
+        <span>Overall</span><strong>{{ row.ats_score if row.ats_score is not none else '-' }}/100</strong>
+        <span>Parsing</span><strong>{{ row.ats_parsing_score if row.ats_parsing_score is not none else '-' }}/100</strong>
+        <span>Keyword</span><strong>{{ row.ats_keyword_score if row.ats_keyword_score is not none else '-' }}/100</strong>
+        <span>Semantic</span><strong>{{ row.ats_semantic_score if row.ats_semantic_score is not none else '-' }}/100</strong>
+        <span>Risk</span><strong>{{ row.ats_formatting_risk or '-' }}</strong>
+      </div>
+      {% if row.ats_missing_terms %}
+        <p class="muted">{{ row.ats_missing_terms }}</p>
+      {% endif %}
+    </div>
+  </header>
+  <main>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        {% for message in messages %}
+          <p class="flash">{{ message }}</p>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+    <form method="post" action="/resumes/{{ row.job_id }}/edit">
+      <input type="hidden" name="return_to" value="{{ return_to }}">
+      <div class="save-bar">
+        <div class="actions-inline">
+          <button type="submit">Save, Render, Rescore</button>
+          <a class="button-link secondary" href="{{ return_to }}">Close</a>
+        </div>
+        {% if row.application_resume_backup_object %}
+          <span class="muted">Backup: {{ row.application_resume_backup_created_at|display_timestamp }}</span>
+        {% else %}
+          <span class="muted">Backup: none</span>
+        {% endif %}
+      </div>
+
+      <section class="section">
+        <div class="section-title">
+          <h2>Header</h2>
+        </div>
+        <div class="grid">
+          <label class="field">Name
+            <input type="text" name="header_name" value="{{ header_top.line_1_name_header_text | default('', true) }}">
+          </label>
+          <label class="field">Fallback Contact Line
+            <input type="text" name="header_info" value="{{ header_top.line_2_applicant_info_text | default('', true) }}">
+          </label>
+        </div>
+        <label class="field">Contact Items
+          <textarea name="header_contact_items">{{ (header_top.contact_items | default([])) | join('\n') }}</textarea>
+        </label>
+      </section>
+
+      <section class="section">
+        <div class="section-title">
+          <label><input type="checkbox" name="summary_render" value="1" {{ 'checked' if summary.render | default(true) else '' }}> Professional Summary</label>
+        </div>
+        <div class="grid">
+          <label class="field">Heading
+            <input type="text" name="summary_header_text" value="{{ summary.header_text | default('Professional Summary', true) }}">
+          </label>
+          <label class="field">Note
+            <input type="text" name="summary_note" value="{{ summary.summary_note | default('', true) }}">
+          </label>
+        </div>
+        <label class="field">Paragraph
+          <textarea class="tall" name="summary_paragraph">{{ summary.paragraph | default('', true) }}</textarea>
+        </label>
+      </section>
+
+      <section class="section">
+        <div class="section-title">
+          <label><input type="checkbox" name="skills_render" value="1" {{ 'checked' if skills.render | default(true) else '' }}> Core Technical Skills</label>
+        </div>
+        <label class="field">Heading
+          <input type="text" name="skills_header_text" value="{{ skills.header_text | default('Core Technical Skills', true) }}">
+        </label>
+        {% for bullet in skills.bullet_points | default([]) %}
+          {% set skill_index = loop.index0 %}
+          {% set items = bullet.items | default({}) %}
+          <div class="nested-card">
+            <label class="field">Category
+              <input type="text" name="skill_{{ skill_index }}_category" value="{{ bullet.category | default('', true) }}">
+            </label>
+            <div class="grid">
+              <label class="field">Primary Items
+                <textarea name="skill_{{ skill_index }}_primary">{{ (items.primary | default([])) | join('\n') }}</textarea>
+              </label>
+              <label class="field">Additional Items
+                <textarea name="skill_{{ skill_index }}_additional">{{ (items.additional | default([])) | join('\n') }}</textarea>
+              </label>
+            </div>
+            <label class="field">JOD Matched Items
+              <textarea name="skill_{{ skill_index }}_jod_matched">{{ (bullet.jod_matched_items | default([])) | join('\n') }}</textarea>
+            </label>
+          </div>
+        {% endfor %}
+      </section>
+
+      <section class="section">
+        <div class="section-title">
+          <label><input type="checkbox" name="experience_render" value="1" {{ 'checked' if experience.render | default(true) else '' }}> Professional Experience</label>
+        </div>
+        <label class="field">Heading
+          <input type="text" name="experience_header_text" value="{{ experience.header_text | default('Professional Experience', true) }}">
+        </label>
+        {% for job in experience.jobs | default([]) %}
+          {% set job_index = loop.index0 %}
+          {% set line_1 = job.line_1 | default({}) %}
+          {% set line_2 = job.line_2 | default({}) %}
+          {% set bulk_text = job_bulk_bullet_text(job) %}
+          <div class="job-card">
+            <div class="section-title">
+              <h3>Job {{ loop.index }}</h3>
+              <label class="render-toggle">
+                <input type="checkbox" name="job_{{ job_index }}_render" value="1" {{ 'checked' if job.render | default(true) else '' }}>
+                Render job
+              </label>
+            </div>
+            <div class="grid">
+              <label class="field">Company
+                <input type="text" name="job_{{ job_index }}_company" value="{{ line_1.company_name_text | default('', true) }}">
+              </label>
+              <label class="field">Position
+                <input type="text" name="job_{{ job_index }}_position" value="{{ line_1.position_name_text | default('', true) }}">
+              </label>
+              <label class="field">Dates
+                <input type="text" name="job_{{ job_index }}_dates" value="{{ line_1.position_dates_text | default('', true) }}">
+              </label>
+              <label class="field">Intro
+                <input type="text" name="job_{{ job_index }}_intro" value="{{ line_2.position_intro_text | default('', true) }}">
+              </label>
+            </div>
+            <label class="field">All Bullet Points
+              <textarea class="bulk" name="job_{{ job_index }}_bulk">{{ bulk_text }}</textarea>
+              <textarea hidden name="job_{{ job_index }}_bulk_original">{{ bulk_text }}</textarea>
+            </label>
+            <div class="compact-list">
+              {% for bullet in job.bullet_points | default([]) %}
+                {% set bullet_index = loop.index0 %}
+                <div class="bullet-row">
+                  <input
+                    type="checkbox"
+                    name="job_{{ job_index }}_bullet_{{ bullet_index }}_render"
+                    value="1"
+                    aria-label="Render bullet {{ bullet_index + 1 }}"
+                    {{ 'checked' if bullet is string or (bullet.render | default(true)) else '' }}
+                  >
+                  <textarea name="job_{{ job_index }}_bullet_{{ bullet_index }}_text">{{ bullet_text_for_editing(bullet) }}</textarea>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+      </section>
+
+      <section class="section">
+        <div class="section-title">
+          <label><input type="checkbox" name="education_render" value="1" {{ 'checked' if education.render | default(true) else '' }}> Education</label>
+        </div>
+        <label class="field">Heading
+          <input type="text" name="education_header_text" value="{{ education.header_text | default('Education', true) }}">
+        </label>
+        {% for entry in education.entries | default([]) %}
+          {% set entry_index = loop.index0 %}
+          {% set line_1 = entry.line_1 | default({}) %}
+          {% set line_2 = entry.line_2 | default({}) %}
+          <div class="nested-card">
+            <label class="render-toggle">
+              <input type="checkbox" name="education_{{ entry_index }}_render" value="1" {{ 'checked' if entry.render | default(true) else '' }}>
+              Render entry
+            </label>
+            <div class="grid">
+              <label class="field">Institution
+                <input type="text" name="education_{{ entry_index }}_institution" value="{{ line_1.institution_name_text | default('', true) }}">
+              </label>
+              <label class="field">Degree
+                <input type="text" name="education_{{ entry_index }}_degree" value="{{ line_2.degree_name_text | default('', true) }}">
+              </label>
+              <label class="field">Dates
+                <input type="text" name="education_{{ entry_index }}_dates" value="{{ line_2.degree_dates_text | default('', true) }}">
+              </label>
+            </div>
+            {% for bullet in entry.bullet_points | default([]) %}
+              {% set bullet_index = loop.index0 %}
+              <div class="bullet-row">
+                <input type="checkbox" name="education_{{ entry_index }}_bullet_{{ bullet_index }}_render" value="1" {{ 'checked' if bullet.render | default(true) else '' }}>
+                <textarea name="education_{{ entry_index }}_bullet_{{ bullet_index }}_text">{{ bullet.text | default('', true) }}</textarea>
+              </div>
+            {% endfor %}
+          </div>
+        {% endfor %}
+      </section>
+
+      <section class="section">
+        <div class="section-title">
+          <label><input type="checkbox" name="certifications_render" value="1" {{ 'checked' if certifications.render | default(true) else '' }}> Certifications</label>
+        </div>
+        <label class="field">Heading
+          <input type="text" name="certifications_header_text" value="{{ certifications.header_text | default('Certifications', true) }}">
+        </label>
+        {% for bullet in certifications.bullet_points | default([]) %}
+          {% set bullet_index = loop.index0 %}
+          <div class="bullet-row">
+            <input type="checkbox" name="certification_{{ bullet_index }}_render" value="1" {{ 'checked' if bullet.render | default(true) else '' }}>
+            <textarea name="certification_{{ bullet_index }}_text">{{ bullet.text | default('', true) }}</textarea>
+          </div>
+        {% endfor %}
+      </section>
+
+      <section class="section">
+        <div class="section-title">
+          <label><input type="checkbox" name="portfolio_render" value="1" {{ 'checked' if portfolio.render | default(true) else '' }}> Portfolio</label>
+        </div>
+        <label class="field">Heading
+          <input type="text" name="portfolio_header_text" value="{{ portfolio.header_text | default('Portfolio', true) }}">
+        </label>
+        {% for project in portfolio.projects | default([]) %}
+          {% set project_index = loop.index0 %}
+          <div class="nested-card">
+            <label class="render-toggle">
+              <input type="checkbox" name="portfolio_{{ project_index }}_render" value="1" {{ 'checked' if project.render | default(true) else '' }}>
+              Render project
+            </label>
+            <div class="grid">
+              <label class="field">Title
+                <input type="text" name="portfolio_{{ project_index }}_title" value="{{ project.title_text | default('', true) }}">
+              </label>
+              <label class="field">URL
+                <input type="text" name="portfolio_{{ project_index }}_url" value="{{ project.url | default('', true) }}">
+              </label>
+            </div>
+            <label class="field">Description
+              <textarea name="portfolio_{{ project_index }}_description">{{ project.description_text | default('', true) }}</textarea>
+            </label>
+          </div>
+        {% endfor %}
+      </section>
+    </form>
+
+    <form method="post" action="/resumes/{{ row.job_id }}/edit/revert">
+      <input type="hidden" name="return_to" value="{{ return_to }}">
+      <button class="danger" type="submit" {{ 'disabled' if not row.application_resume_backup_object else '' }}>
+        Revert To Backup
+      </button>
+    </form>
+  </main>
 </body>
 </html>
 """

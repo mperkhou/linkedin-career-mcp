@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
 
+from bs4 import BeautifulSoup
 from openpyxl import Workbook, load_workbook
 from reportlab.pdfgen import canvas
 
@@ -59,6 +60,8 @@ def test_connect_database_migrates_job_description_columns(tmp_path: Path):
     assert "prompt_job_description" in columns
     assert "application_resume_object" in columns
     assert "application_resume_updated_at" in columns
+    assert "application_resume_backup_object" in columns
+    assert "application_resume_backup_created_at" in columns
     assert "resume_html_filename" in columns
     assert "resume_html_content" in columns
     assert "resume_html_mime_type" in columns
@@ -548,6 +551,93 @@ def test_legacy_artifact_sync_preserves_first_draft_resume_when_aro_exists(
     assert row["ats_updated_at"] == first_draft_row["ats_updated_at"]
 
 
+def test_resume_editor_saves_rerenders_rescores_and_reverts(tmp_path: Path, monkeypatch):
+    database_path = tmp_path / "applications.sqlite3"
+    webapp.upsert_application_artifact(
+        database_path=database_path,
+        job_id="123",
+        company="Example Co",
+        job_title="Senior Engineer",
+        linkedin_url="https://www.linkedin.com/jobs/view/123",
+        resume_path=None,
+        job_description="Requires Python, AWS, APIs, and authentication.",
+        prompt_job_description="Requires Python, AWS, APIs, and authentication.",
+    )
+    original_aro = _sample_application_resume_yaml(
+        paragraph="Original summary for platform APIs.",
+        bullet="Original platform API bullet.",
+    )
+    webapp.store_application_resume_first_draft(
+        database_path=database_path,
+        job_id="123",
+        application_resume_object=original_aro,
+        resume_html="<html><body><h1>Original</h1></body></html>",
+        resume_pdf=_pdf_bytes("Original Python AWS APIs"),
+    )
+
+    monkeypatch.setattr(
+        webapp,
+        "render_resume_pdf_from_html",
+        lambda html: _pdf_bytes(f"Rendered {html}"),
+    )
+
+    app = create_app(database_path=database_path, output_dir=tmp_path / "output")
+    client = app.test_client()
+    index = client.get("/")
+    assert b"/resumes/123/edit" in index.data
+
+    edit_response = client.get("/resumes/123/edit?return_to=%2F%3Fsort%3Dresume")
+    assert edit_response.status_code == 200
+    form_data = _edit_form_data(edit_response.data.decode())
+    form_data["summary_paragraph"] = "Edited summary with authentication APIs."
+    form_data["job_0_bullet_0_text"] = "Edited authentication API bullet."
+
+    save_response = client.post("/resumes/123/edit", data=form_data)
+    assert save_response.status_code == 302
+    with webapp.connect_database(database_path) as connection:
+        edited_row = connection.execute(
+            """
+            SELECT application_resume_object, application_resume_backup_object,
+                   resume_html_content, resume_content, source_resume_path,
+                   ats_score
+            FROM applications
+            WHERE job_id = '123'
+            """
+        ).fetchone()
+    assert "Edited summary with authentication APIs." in edited_row[
+        "application_resume_object"
+    ]
+    assert "Edited authentication API bullet." in edited_row["application_resume_object"]
+    assert "Original platform API bullet." in edited_row[
+        "application_resume_backup_object"
+    ]
+    assert "Edited authentication API bullet." in edited_row["resume_html_content"]
+    assert edited_row["resume_content"] is not None
+    assert edited_row["source_resume_path"] == ""
+    assert edited_row["ats_score"] is not None
+
+    revert_response = client.post(
+        "/resumes/123/edit/revert",
+        data={"return_to": "/?sort=resume"},
+    )
+    assert revert_response.status_code == 302
+    with webapp.connect_database(database_path) as connection:
+        reverted_row = connection.execute(
+            """
+            SELECT application_resume_object, application_resume_backup_object,
+                   resume_html_content, ats_score
+            FROM applications
+            WHERE job_id = '123'
+            """
+        ).fetchone()
+    assert "Original platform API bullet." in reverted_row["application_resume_object"]
+    assert "Edited authentication API bullet." in reverted_row[
+        "application_resume_backup_object"
+    ]
+    assert "Original platform API bullet." in reverted_row["resume_html_content"]
+    assert reverted_row["ats_score"] is not None
+
+
 def test_actions_run_starts_background_regeneration(tmp_path: Path):
     with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
         webapp._ACTION_RUNS.clear()  # noqa: SLF001
@@ -602,6 +692,105 @@ def test_actions_run_starts_background_regeneration(tmp_path: Path):
     assert status["runs"][0]["return_code"] == 0
     assert status["runs"][0]["title"] == "sync output + regenerate all docs for 2 job(s)"
     assert any("processing job 123" in message for message in status["runs"][0]["messages"])
+
+
+def _edit_form_data(html: str) -> dict[str, str]:
+    soup = BeautifulSoup(html, "html.parser")
+    form = soup.find("form", {"action": "/resumes/123/edit"})
+    assert form is not None
+    data: dict[str, str] = {}
+    for field in form.find_all(["input", "textarea"]):
+        name = field.get("name")
+        if not name:
+            continue
+        if field.name == "textarea":
+            data[name] = field.text
+            continue
+        field_type = str(field.get("type") or "text").lower()
+        if field_type == "checkbox":
+            if field.has_attr("checked"):
+                data[name] = str(field.get("value") or "on")
+            continue
+        data[name] = str(field.get("value") or "")
+    return data
+
+
+def _sample_application_resume_yaml(*, paragraph: str, bullet: str) -> str:
+    return f"""schema_version: test
+header_top:
+  line_1_name_header_text: Max Perkhounkov
+  line_2_applicant_info_text: max@example.com
+  contact_items:
+  - max@example.com
+  links: []
+professional_summary:
+  render: true
+  header_text: Professional Summary
+  paragraph: {paragraph}
+  summary_note: ''
+core_technical_skills:
+  render: true
+  header_text: Core Technical Skills
+  bullet_points:
+  - order: 1
+    category: Platform Engineering
+    items:
+      primary:
+      - Python
+      - AWS
+      additional:
+      - authentication
+      - Java
+    jod_matched_items:
+    - authentication
+professional_experience:
+  render: true
+  header_text: Professional Experience
+  jobs:
+  - order: 1
+    render: true
+    line_1:
+      company_name_text: Example Co
+      position_name_text: Senior Engineer
+      position_dates_text: 2020 - Present
+    line_2:
+      position_intro_text: Platform engineering role.
+    bullet_points:
+    - order: 1
+      render: true
+      text: {bullet}
+education:
+  render: true
+  header_text: Education
+  entries:
+  - order: 1
+    render: true
+    line_1:
+      institution_name_text: University
+    line_2:
+      degree_name_text: BS Physics
+      degree_dates_text: 2009 - 2013
+    bullet_points:
+    - order: 1
+      render: true
+      text: Applied math coursework.
+certifications:
+  render: true
+  header_text: Certifications
+  bullet_points:
+  - order: 1
+    render: true
+    text: OCI Engineer
+portfolio:
+  render: true
+  header_text: Portfolio
+  projects:
+  - order: 1
+    render: true
+    title_text: LinkedIn Career MCP
+    url: https://github.com/mperkhou/linkedin-career-mcp
+    description_text: Resume automation workflow.
+"""
 
 
 def _pdf_bytes(text: str) -> bytes:
