@@ -219,9 +219,13 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     assert '"/applications/add"' in html
     assert 'id="action-sync"' in html
     assert "Sync from output" in html
-    assert 'id="action-regenerate"' in html
-    assert "Generate first-draft resumes" in html
-    assert 'name="regenerate_mode" value="first_draft_resumes"' in html
+    assert "Regenerate ARO Objects" in html
+    assert "Regenerate Draft Resume" in html
+    assert "Sync Draft to ARO" in html
+    assert 'name="regenerate_mode" value="aro_objects"' in html
+    assert 'name="regenerate_mode" value="draft_resumes"' in html
+    assert 'name="regenerate_mode" value="sync_draft_to_aro"' in html
+    assert "ARO/Resume Sync" in html
     assert "Cover letters" not in html
     assert "Regenerate docs" not in html
     assert 'id="action-status"' in html
@@ -239,6 +243,27 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     assert b"Accepted for interview" in index.data
     assert b"<th>Posted</th>" in index.data
     assert b"<th>Experience</th>" in index.data
+    assert b"<th>ARO/Resume Sync</th>" in index.data
+    soup = BeautifulSoup(html, "html.parser")
+    headers = [
+        header.get_text(" ", strip=True).replace(" ↑↓", "")
+        for header in soup.select("thead th")
+    ]
+    assert headers[7:12] == [
+        "Job Links",
+        "Resume",
+        "ARO/Resume Sync",
+        "Cover Letter",
+        "Application",
+    ]
+    first_row = soup.select_one("tbody tr")
+    assert first_row is not None
+    cells = first_row.find_all("td", recursive=False)
+    assert "Job URL" in cells[7].get_text(" ", strip=True)
+    assert "Compare descriptions" in cells[7].get_text(" ", strip=True)
+    assert "Resume" in cells[8].get_text(" ", strip=True)
+    assert cells[9].select_one(".sync-status") is not None
+    assert "Edit" in cells[10].get_text(" ", strip=True)
     assert b"Mid-Senior level" in index.data
     assert b'id="company-sort"' in index.data
     assert b'id="matched-sort"' in index.data
@@ -441,6 +466,27 @@ def test_regenerate_make_command_maps_modes_to_make_targets():
         "JOB_IDS=url-123 456",
         "FIRST_DRAFT_FORCE=1",
     ]
+    assert webapp._regenerate_make_command(  # noqa: SLF001
+        regenerate_mode="aro_objects",
+        job_ids=["url-123"],
+    ) == [
+        "make",
+        "regenerate-aro-objects",
+        "JOB_IDS=url-123",
+    ]
+    assert webapp._regenerate_make_command(  # noqa: SLF001
+        regenerate_mode="draft_resumes",
+        job_ids=["url-123"],
+    ) == [
+        "make",
+        "regenerate-draft-resumes",
+        "JOB_IDS=url-123",
+        "FIRST_DRAFT_FORCE=1",
+    ]
+    assert webapp._regenerate_make_command(  # noqa: SLF001
+        regenerate_mode="sync_draft_to_aro",
+        job_ids=["url-123"],
+    ) == ["make", "sync-draft-to-aro", "JOB_IDS=url-123"]
     with pytest.raises(ValueError, match="Unsupported regeneration mode"):
         webapp._regenerate_make_command(  # noqa: SLF001
             regenerate_mode="cover_letters",
@@ -695,6 +741,85 @@ def test_resume_editor_saves_rerenders_rescores_and_reverts(tmp_path: Path, monk
     assert reverted_row["ats_score"] is not None
 
 
+def test_aro_resume_sync_status_and_edit_warning(tmp_path: Path, monkeypatch):
+    database_path = tmp_path / "applications.sqlite3"
+    webapp.upsert_application_artifact(
+        database_path=database_path,
+        job_id="123",
+        company="Example Co",
+        job_title="Senior Engineer",
+        linkedin_url="https://www.linkedin.com/jobs/view/123",
+        resume_path=None,
+        job_description="Requires Python, AWS, APIs, and authentication.",
+        prompt_job_description="Requires Python, AWS, APIs, and authentication.",
+    )
+    original_aro = _sample_application_resume_yaml(
+        paragraph="Original summary for platform APIs.",
+        bullet="Original platform API bullet.",
+    )
+    webapp.store_application_resume_first_draft(
+        database_path=database_path,
+        job_id="123",
+        application_resume_object=original_aro,
+        resume_html="<html><body><p>Original summary for platform APIs.</p></body></html>",
+        resume_pdf=_pdf_bytes("Original Python AWS APIs"),
+    )
+    updated_aro = _sample_application_resume_yaml(
+        paragraph="Updated ARO summary for authentication APIs.",
+        bullet="Updated ARO authentication API bullet.",
+    )
+    webapp.store_application_resume_object(
+        database_path=database_path,
+        job_id="123",
+        application_resume_object=updated_aro,
+    )
+    with webapp.connect_database(database_path) as connection:
+        connection.execute(
+            """
+            UPDATE applications
+            SET application_resume_updated_at = '2000-01-01T00:00:02+00:00',
+                resume_updated_at = '2000-01-01T00:00:01+00:00',
+                resume_html_updated_at = '2000-01-01T00:00:01+00:00'
+            WHERE job_id = '123'
+            """
+        )
+        connection.commit()
+
+    monkeypatch.setattr(
+        webapp,
+        "render_resume_pdf_from_html",
+        lambda html: _pdf_bytes(f"Rendered {html}"),
+    )
+
+    app = create_app(database_path=database_path, output_dir=tmp_path / "output")
+    client = app.test_client()
+    index_html = client.get("/").data.decode()
+    assert "ARO/Resume Sync" in index_html
+    sync_badge = BeautifulSoup(index_html, "html.parser").find("span", class_="sync-status")
+    assert sync_badge is not None
+    assert sync_badge.text.strip() == "No"
+    assert "is-stale" in sync_badge.get("class", [])
+
+    edit_html = client.get("/resumes/123/edit").data.decode()
+    assert "ARO and draft resume are out of sync." in edit_html
+    assert 'action="/resumes/123/sync"' in edit_html
+
+    sync_response = client.post("/resumes/123/sync", data={"return_to": "/"})
+    assert sync_response.status_code == 302
+    with webapp.connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT application_resume_updated_at, resume_html_content, resume_content
+            FROM applications
+            WHERE job_id = '123'
+            """
+        ).fetchone()
+    assert row["application_resume_updated_at"] == "2000-01-01T00:00:02+00:00"
+    assert "Updated ARO summary for authentication APIs." in row["resume_html_content"]
+    assert row["resume_content"] is not None
+    assert webapp._fetch_application(database_path, "123")["aro_resume_sync_status"] == "Yes"  # noqa: SLF001
+
+
 def test_cover_letter_editor_saves_clo_and_pdf(tmp_path: Path, monkeypatch):
     database_path = tmp_path / "applications.sqlite3"
     webapp.upsert_application_artifact(
@@ -804,7 +929,6 @@ def test_actions_run_starts_background_regeneration(tmp_path: Path):
         "/actions/run",
         data={
             "action_sync": "1",
-            "action_regenerate": "1",
             "regenerate_mode": "resumes",
             "job_id": ["123", "123", "456"],
             "return_to": "/?q=Example",
@@ -858,6 +982,32 @@ def test_first_draft_background_action_skips_legacy_output_sync(
     assert calls == [("regenerate", "first_draft_resumes")]
     status = webapp.background_action_snapshots()[0]
     assert status["status"] == "completed"
+
+    calls.clear()
+    run = webapp._create_background_action_run(title="regenerate ARO object")  # noqa: SLF001
+    webapp._run_background_action(  # noqa: SLF001
+        run_id=run.run_id,
+        database_path=tmp_path / "applications.sqlite3",
+        output_dir=tmp_path / "output",
+        sync_requested=False,
+        regenerate_mode="aro_objects",
+        job_ids=["url-123"],
+    )
+
+    assert calls == [("regenerate", "aro_objects")]
+
+    calls.clear()
+    run = webapp._create_background_action_run(title="sync draft to ARO")  # noqa: SLF001
+    webapp._run_background_action(  # noqa: SLF001
+        run_id=run.run_id,
+        database_path=tmp_path / "applications.sqlite3",
+        output_dir=tmp_path / "output",
+        sync_requested=False,
+        regenerate_mode="sync_draft_to_aro",
+        job_ids=["url-123"],
+    )
+
+    assert calls == [("regenerate", "sync_draft_to_aro")]
 
 
 def test_add_application_loads_linkedin_job_and_starts_regeneration(
@@ -939,7 +1089,7 @@ def test_add_application_loads_linkedin_job_and_starts_regeneration(
     assert completed.wait(timeout=2)
     assert calls
     assert calls[0]["sync_requested"] is False
-    assert calls[0]["regenerate_mode"] == "first_draft_resumes"
+    assert calls[0]["regenerate_mode"] == "draft_resumes"
     assert calls[0]["job_ids"] == ["12345"]
 
     with webapp.connect_database(database_path) as connection:
@@ -1026,7 +1176,7 @@ def test_add_application_loads_other_job_url_and_starts_regeneration(
     assert completed.wait(timeout=2)
     assert calls
     assert calls[0]["sync_requested"] is False
-    assert calls[0]["regenerate_mode"] == "first_draft_resumes"
+    assert calls[0]["regenerate_mode"] == "draft_resumes"
     assert calls[0]["job_ids"] == ["url-abc123def456"]
 
     with webapp.connect_database(database_path) as connection:

@@ -104,6 +104,16 @@ APPLICATION_EXTRA_COLUMNS = {
 REGENERATE_ACTION_TARGETS = {
     "resumes": "regenerate-resumes",
     "first_draft_resumes": "first-draft-resumes",
+    "draft_resumes": "regenerate-draft-resumes",
+    "aro_objects": "regenerate-aro-objects",
+    "sync_draft_to_aro": "sync-draft-to-aro",
+}
+_DRAFT_REGENERATE_MODES = {"first_draft_resumes", "draft_resumes"}
+_NO_OUTPUT_SYNC_REGENERATE_MODES = {
+    "first_draft_resumes",
+    "draft_resumes",
+    "aro_objects",
+    "sync_draft_to_aro",
 }
 COVER_LETTER_OBJECT_SCHEMA_VERSION = "cover_letter_object.v0.1"
 EMERALD_ACCENT = HexColor("#57ba86")
@@ -729,6 +739,30 @@ def store_application_resume_first_draft(
         connection.commit()
 
 
+def store_application_resume_object(
+    *,
+    database_path: Path,
+    job_id: str,
+    application_resume_object: str,
+) -> None:
+    _parse_application_resume_yaml(application_resume_object)
+    now = datetime.now(UTC).isoformat(timespec="seconds")
+    with connect_database(database_path) as connection:
+        cursor = connection.execute(
+            """
+            UPDATE applications
+            SET application_resume_object = ?,
+                application_resume_updated_at = ?,
+                updated_at = ?
+            WHERE job_id = ?
+            """,
+            (application_resume_object, now, now, job_id),
+        )
+        if cursor.rowcount == 0:
+            raise ValueError(f"Application row was not found for job_id={job_id}.")
+        connection.commit()
+
+
 def save_application_resume_edit(
     *,
     database_path: Path,
@@ -793,6 +827,83 @@ def save_application_resume_edit(
                 now if backup_current else row["application_resume_backup_created_at"],
                 application_resume_object,
                 now,
+                _resume_html_filename(row),
+                resume_html,
+                now,
+                _resume_pdf_filename(row),
+                resume_pdf,
+                now,
+                ats_score.overall_score if ats_score is not None else None,
+                ats_score.parsing_score if ats_score is not None else None,
+                ats_score.keyword_match_score if ats_score is not None else None,
+                ats_score.semantic_match_score if ats_score is not None else None,
+                ats_score.formatting_risk if ats_score is not None else None,
+                _format_missing_terms(ats_score) if ats_score is not None else None,
+                now if ats_score is not None else None,
+                now,
+                job_id,
+            ),
+        )
+        connection.commit()
+    return ats_score
+
+
+def sync_application_resume_to_draft(
+    *,
+    database_path: Path,
+    job_id: str,
+    template_path: Path | None = None,
+) -> AtsProxyScore | None:
+    with connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT *
+            FROM applications
+            WHERE job_id = ?
+            """,
+            (job_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"Application row was not found for job_id={job_id}.")
+        application_resume_object = str(row["application_resume_object"] or "").strip()
+        if not application_resume_object:
+            raise ValueError("Application resume object was not found.")
+
+        resume = _parse_application_resume_yaml(application_resume_object)
+        resume_html = render_resume_html_from_mapping(
+            resume=resume,
+            template_path=_resume_template_path(template_path),
+        )
+        resume_pdf = render_resume_pdf_from_html(resume_html)
+        ats_score = _calculate_ats_score(
+            resume_content=resume_pdf,
+            job_description=row["prompt_job_description"] or row["job_description"],
+        )
+        now = datetime.now(UTC).isoformat(timespec="seconds")
+        connection.execute(
+            """
+            UPDATE applications
+            SET resume_html_filename = ?,
+                resume_html_content = ?,
+                resume_html_mime_type = 'text/html; charset=utf-8',
+                source_resume_html_path = '',
+                resume_html_updated_at = ?,
+                resume_filename = ?,
+                resume_content = ?,
+                resume_mime_type = 'application/pdf',
+                source_resume_path = '',
+                resume_updated_at = ?,
+                ats_score = ?,
+                ats_parsing_score = ?,
+                ats_keyword_score = ?,
+                ats_semantic_score = ?,
+                ats_formatting_risk = ?,
+                ats_missing_terms = ?,
+                ats_updated_at = ?,
+                updated_at = ?
+            WHERE job_id = ?
+            """,
+            (
                 _resume_html_filename(row),
                 resume_html,
                 now,
@@ -1270,7 +1381,7 @@ def _run_background_action(
             _run_sync_action(run_id=run_id, database_path=database_path, output_dir=output_dir)
         if regenerate_mode:
             _run_regenerate_action(run_id=run_id, regenerate_mode=regenerate_mode, job_ids=job_ids)
-            if regenerate_mode != "first_draft_resumes":
+            if regenerate_mode not in _NO_OUTPUT_SYNC_REGENERATE_MODES:
                 _run_sync_action(
                     run_id=run_id,
                     database_path=database_path,
@@ -1336,7 +1447,7 @@ def _regenerate_make_command(*, regenerate_mode: str, job_ids: list[str]) -> lis
     if not job_ids:
         raise ValueError("At least one job id is required for regeneration.")
     command = ["make", target, f"JOB_IDS={' '.join(job_ids)}"]
-    if regenerate_mode == "first_draft_resumes":
+    if regenerate_mode in _DRAFT_REGENERATE_MODES:
         command.append("FIRST_DRAFT_FORCE=1")
     return command
 
@@ -1373,6 +1484,9 @@ def _background_action_title(
         label = {
             "resumes": "regenerate resumes",
             "first_draft_resumes": "generate first-draft resumes",
+            "draft_resumes": "regenerate draft resume",
+            "aro_objects": "regenerate ARO object(s)",
+            "sync_draft_to_aro": "sync draft to ARO",
         }.get(regenerate_mode, "regenerate docs")
         parts.append(f"{label} for {len(job_ids)} job(s)")
     return " + ".join(parts) or "background action"
@@ -1489,7 +1603,7 @@ def create_app(
             database_path=database_path,
             output_dir=output_dir,
             sync_requested=False,
-            regenerate_mode="first_draft_resumes",
+            regenerate_mode="draft_resumes",
             job_ids=[job_id],
             runner=background_action_runner,
         )
@@ -1511,7 +1625,7 @@ def create_app(
             database_path=database_path,
             output_dir=output_dir,
             sync_requested=False,
-            regenerate_mode="first_draft_resumes",
+            regenerate_mode="draft_resumes",
             job_ids=[job_id],
             runner=background_action_runner,
         )
@@ -1521,8 +1635,8 @@ def create_app(
     @app.post("/actions/run")
     def run_actions():
         sync_requested = request.form.get("action_sync") == "1"
-        regenerate_requested = request.form.get("action_regenerate") == "1"
-        regenerate_mode = request.form.get("regenerate_mode", "resumes")
+        regenerate_mode = str(request.form.get("regenerate_mode") or "").strip()
+        regenerate_requested = bool(regenerate_mode)
         job_ids = _selected_job_ids(request.form.getlist("job_id"))
         if not sync_requested and not regenerate_requested:
             flash("Choose at least one action to run.")
@@ -1641,6 +1755,20 @@ def create_app(
         else:
             score_text = f" ATS: {score.overall_score}/100." if score is not None else ""
             flash(f"Reverted resume to the prior manual backup.{score_text}")
+        return redirect(_resume_edit_return_path(job_id, request.form.get("return_to")))
+
+    @app.post("/resumes/<job_id>/sync")
+    def resume_sync_to_aro(job_id: str):
+        try:
+            score = sync_application_resume_to_draft(
+                database_path=database_path,
+                job_id=job_id,
+            )
+        except (TypeError, ValueError, yaml.YAMLError) as exc:
+            flash(f"Draft sync failed: {exc}")
+        else:
+            score_text = f" ATS: {score.overall_score}/100." if score is not None else ""
+            flash(f"Synced draft resume to the current ARO.{score_text}")
         return redirect(_resume_edit_return_path(job_id, request.form.get("return_to")))
 
     @app.get("/resumes/<job_id>/download")
@@ -1826,8 +1954,8 @@ def _fetch_applications(database_path: Path) -> list[sqlite3.Row]:
     with connect_database(database_path) as connection:
         return list(
             connection.execute(
-                """
-                SELECT *
+                f"""
+                SELECT {_application_select_columns()}
                 FROM applications
                 ORDER BY
                     CASE applied_to
@@ -1848,9 +1976,35 @@ def _fetch_applications(database_path: Path) -> list[sqlite3.Row]:
 def _fetch_application(database_path: Path, job_id: str) -> sqlite3.Row | None:
     with connect_database(database_path) as connection:
         return connection.execute(
-            "SELECT * FROM applications WHERE job_id = ?",
+            f"SELECT {_application_select_columns()} FROM applications WHERE job_id = ?",
             (job_id,),
         ).fetchone()
+
+
+def _application_select_columns() -> str:
+    sync_status = """
+        CASE
+            WHEN COALESCE(NULLIF(applications.application_resume_object, ''), '') = ''
+            THEN 'No'
+            WHEN COALESCE(NULLIF(applications.application_resume_updated_at, ''), '') = ''
+            THEN 'No'
+            WHEN applications.resume_content IS NULL
+              OR applications.resume_html_content IS NULL
+            THEN 'No'
+            WHEN COALESCE(NULLIF(applications.resume_updated_at, ''), '') = ''
+              OR COALESCE(NULLIF(applications.resume_html_updated_at, ''), '') = ''
+            THEN 'No'
+            WHEN applications.resume_updated_at >= applications.application_resume_updated_at
+              AND applications.resume_html_updated_at >= applications.application_resume_updated_at
+            THEN 'Yes'
+            ELSE 'No'
+        END
+    """
+    return f"""
+        applications.*,
+        {sync_status} AS aro_resume_sync_status,
+        CASE WHEN {sync_status} = 'Yes' THEN 0 ELSE 1 END AS aro_resume_out_of_sync
+    """
 
 
 def _resolve_output_path(*, output_dir: Path, path_text: str) -> Path:
@@ -2927,6 +3081,27 @@ INDEX_TEMPLATE = """
       margin-top: 2px;
     }
     .score-row strong { font-weight: 700; }
+    .sync-col {
+      min-width: 112px;
+      text-align: center;
+    }
+    .sync-status {
+      border-radius: 999px;
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 800;
+      min-width: 42px;
+      padding: 3px 8px;
+      text-transform: uppercase;
+    }
+    .sync-status.is-synced {
+      background: #e6f5ef;
+      color: #047857;
+    }
+    .sync-status.is-stale {
+      background: #fff3d8;
+      color: #8a5a00;
+    }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; min-width: 170px; }
     .actions form { margin: 0; }
     .artifact-cell { min-width: 132px; }
@@ -3037,11 +3212,21 @@ INDEX_TEMPLATE = """
             <input id="action-sync" type="checkbox" name="action_sync" value="1">
             <span>Sync from output</span>
           </label>
-          <label class="action-choice">
-            <input id="action-regenerate" type="checkbox" name="action_regenerate" value="1">
-            <span>Generate first-draft resumes</span>
-          </label>
-          <input type="hidden" name="regenerate_mode" value="first_draft_resumes">
+          <fieldset class="regenerate-options" id="regenerate-options">
+            <legend>Resume actions</legend>
+            <label>
+              <input type="radio" name="regenerate_mode" value="aro_objects">
+              <span>Regenerate ARO Objects</span>
+            </label>
+            <label>
+              <input type="radio" name="regenerate_mode" value="draft_resumes">
+              <span>Regenerate Draft Resume</span>
+            </label>
+            <label>
+              <input type="radio" name="regenerate_mode" value="sync_draft_to_aro">
+              <span>Sync Draft to ARO</span>
+            </label>
+          </fieldset>
           <div class="actions-menu-footer">
             <span id="actions-selected-summary" class="actions-selected-summary">
               0 selected
@@ -3154,6 +3339,7 @@ INDEX_TEMPLATE = """
                 </span>
               </button>
             </th>
+            <th>ARO/Resume Sync</th>
             <th id="cover-letter-header" aria-sort="none">
               <button
                 id="cover-letter-sort"
@@ -3303,6 +3489,16 @@ INDEX_TEMPLATE = """
                   {% endif %}
                 </div>
               </td>
+              <td class="sync-col">
+                {% if row.aro_resume_sync_status == 'Yes' %}
+                  {% set sync_class = 'is-synced' %}
+                {% else %}
+                  {% set sync_class = 'is-stale' %}
+                {% endif %}
+                <span class="sync-status {{ sync_class }}">
+                  {{ row.aro_resume_sync_status }}
+                </span>
+              </td>
               <td>
                 <div class="artifact-cell">
                   <div class="actions">
@@ -3414,8 +3610,7 @@ INDEX_TEMPLATE = """
     const preserveStateLinks = [...document.querySelectorAll(".preserve-state-link")];
     const actionsForm = document.querySelector("#actions-form");
     const actionSync = document.querySelector("#action-sync");
-    const actionRegenerate = document.querySelector("#action-regenerate");
-    const regenerateOptions = document.querySelector("#regenerate-options");
+    const regenerateModeInputs = [...document.querySelectorAll("input[name='regenerate_mode']")];
     const runActionsButton = document.querySelector("#run-actions");
     const actionsSelectedSummary = document.querySelector("#actions-selected-summary");
     const actionStatus = document.querySelector("#action-status");
@@ -3742,17 +3937,19 @@ INDEX_TEMPLATE = """
         .filter((checkbox) => checkbox.checked)
         .map((checkbox) => checkbox.value);
     }
+    function selectedRegenerateMode() {
+      const selected = regenerateModeInputs.find((input) => input.checked);
+      return selected ? selected.value : "";
+    }
     function updateActionsState() {
       const selected = selectedJobIds();
-      if (regenerateOptions && actionRegenerate) {
-        regenerateOptions.disabled = !actionRegenerate.checked;
-      }
       if (actionsSelectedSummary) {
         actionsSelectedSummary.textContent = `${selected.length} selected`;
       }
-      if (runActionsButton && actionSync && actionRegenerate) {
-        const hasAction = actionSync.checked || actionRegenerate.checked;
-        const missingRegenerateSelection = actionRegenerate.checked && selected.length === 0;
+      if (runActionsButton && actionSync) {
+        const hasResumeAction = Boolean(selectedRegenerateMode());
+        const hasAction = actionSync.checked || hasResumeAction;
+        const missingRegenerateSelection = hasResumeAction && selected.length === 0;
         runActionsButton.disabled = !hasAction || missingRegenerateSelection;
       }
     }
@@ -3898,9 +4095,9 @@ INDEX_TEMPLATE = """
     if (actionSync) {
       actionSync.addEventListener("change", updateActionsState);
     }
-    if (actionRegenerate) {
-      actionRegenerate.addEventListener("change", updateActionsState);
-    }
+    regenerateModeInputs.forEach((input) => {
+      input.addEventListener("change", updateActionsState);
+    });
     if (actionsForm) {
       actionsForm.addEventListener("submit", syncActionsFormJobIds);
     }
@@ -4179,6 +4376,23 @@ COVER_LETTER_EDIT_TEMPLATE = """
       padding: 10px 12px;
       border: 1px solid #b9d8d5;
       background: #eef8f6;
+    }
+    .sync-warning {
+      align-items: center;
+      background: #fff8e7;
+      border: 1px solid #f2d28b;
+      color: #5c4100;
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+      margin: 0 0 14px;
+      padding: 12px;
+    }
+    .sync-warning p {
+      margin: 3px 0 0;
+    }
+    .sync-warning form {
+      margin: 0;
     }
     .save-bar {
       position: sticky;
@@ -4617,6 +4831,21 @@ RESUME_EDIT_TEMPLATE = """
         {% endfor %}
       {% endif %}
     {% endwith %}
+    {% if row.aro_resume_out_of_sync %}
+      <section class="sync-warning">
+        <div>
+          <strong>ARO and draft resume are out of sync.</strong>
+          <p>
+            The ARO changed after the rendered draft resume. Sync before editing if
+            you want the draft HTML/PDF/ATS to reflect the current ARO.
+          </p>
+        </div>
+        <form method="post" action="/resumes/{{ row.job_id }}/sync">
+          <input type="hidden" name="return_to" value="{{ return_to }}">
+          <button type="submit">Sync Draft to ARO</button>
+        </form>
+      </section>
+    {% endif %}
     <form id="resume-edit-form" method="post" action="/resumes/{{ row.job_id }}/edit">
       <input type="hidden" name="return_to" value="{{ return_to }}">
       <div class="save-bar">

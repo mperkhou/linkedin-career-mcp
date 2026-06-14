@@ -186,3 +186,40 @@ def test_resume_html_template_honors_section_render_flags(tmp_path: Path) -> Non
     assert "Visible Project" in html
     assert "Visible portfolio detail" in html
     assert "Hidden Project" not in html
+
+
+def test_resume_html_template_decodes_escaped_streamdown_header(tmp_path: Path) -> None:
+    yaml_path = tmp_path / "escaped-header.yaml"
+    yaml_path.write_text(
+        yaml.safe_dump(
+            {
+                "header_top": {
+                    "line_1_name_header_text": "Max Perkhounkov",
+                    "line_2_header_text": (
+                        '&lt;span class=&#34;font-semibold&#34; '
+                        'data-streamdown=&#34;strong&#34;&gt;'
+                        "Staff Site Reliability Engineer | AI Enablement "
+                        "&amp;amp; Platform Infrastructure&lt;/span&gt;"
+                    ),
+                    "contact_items": ["Iowa City, IA"],
+                },
+                "professional_summary": {"render": False},
+                "core_technical_skills": {"render": False},
+                "professional_experience": {"render": False},
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    html = render_resume_html(
+        yaml_path=yaml_path,
+        template_path=Path("templates/resume/master_resume.html.j2"),
+    )
+
+    assert (
+        '<p class="resume-headline"><b>Staff Site Reliability Engineer | '
+        "AI Enablement &amp; Platform Infrastructure</b></p>"
+    ) in html
+    assert "&amp;lt;span" not in html
+    assert "data-streamdown" not in html

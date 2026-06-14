@@ -1,5 +1,27 @@
 # linkedin-career-mcp CHANGELOG
 
+## Unreleased - ARO structured resume refactor branch
+
+* commit `36ab962`: First commit of resume restructure
+* commit `d833805`: Add master resume YAML skill
+* commit `71060cb`: Add JOD match count placeholders
+* commit `9669b45`: Add ARO pass-one resume scoring workflow
+* commit `48b6835`: Add ARO predraft bullet selection
+* commit `9bc7766`: Rename ARO selection to first draft
+* commit `4f4d37d`: Add ARO first-draft storage and ATS scoring improvements
+* commit `f30c617`: Preserve ARO first-draft resume artifacts
+* commit `7b8f0b4`: Add manual ARO resume editor
+* commit `f88454d`: Add manual cover letter editor
+* commit `6d415c1`: Add editable job description comparison
+* commit `cc376f5`: Add manual LinkedIn job entry
+* commit `8f7e7b7`: Add generic URL first-draft workflow
+* commit `be57528`: Add resume rich-text editing and header line
+* commit `8018ae1`: Update master resume source text
+* commit `9257e96`: Refresh master resume YAML mappings
+* Add no-API ARO regeneration, draft-to-ARO sync actions, ARO/resume sync
+  status badges, and tracker table alignment coverage.
+* Decode escaped Streamdown rich-text spans in rendered resume headers.
+
 ## 1.29.0 - PR #29: Remove standalone artifact stylizers
 
 * Remove the standalone resume and cover-letter PDF stylizer commands from this repo.

@@ -16,7 +16,7 @@ LIMIT_PER_QUERY ?= 10
 MAX_QUERIES ?= 6
 MAX_JOBS ?= 10
 
-.PHONY: install install-python install-browser install-ollama ollama-model venv skill-link match-jobs regenerate-resumes first-draft-resumes refresh-static-artifacts launch-website stop-website restart-website test lint clean
+.PHONY: install install-python install-browser install-ollama ollama-model venv skill-link match-jobs regenerate-resumes first-draft-resumes regenerate-draft-resumes regenerate-aro-objects sync-draft-to-aro refresh-static-artifacts launch-website stop-website restart-website test lint clean
 
 install: install-python install-ollama ollama-model skill-link
 
@@ -80,6 +80,26 @@ first-draft-resumes: venv
 		force_arg="--force"; \
 	fi; \
 	$(VENV_PYTHON) scripts/application_resume_backport_first_drafts.py $$job_args $$force_arg
+
+regenerate-draft-resumes: first-draft-resumes
+
+regenerate-aro-objects: venv
+	@job_args=""; \
+	if [ "$(JOB_IDS)" != "all" ]; then \
+		for job_id in $(JOB_IDS); do \
+			job_args="$$job_args --job-id $$job_id"; \
+		done; \
+	fi; \
+	$(VENV_PYTHON) scripts/application_resume_regenerate_aros.py $$job_args
+
+sync-draft-to-aro: venv
+	@job_args=""; \
+	if [ "$(JOB_IDS)" != "all" ]; then \
+		for job_id in $(JOB_IDS); do \
+			job_args="$$job_args --job-id $$job_id"; \
+		done; \
+	fi; \
+	$(VENV_PYTHON) scripts/application_resume_sync_drafts.py $$job_args
 
 refresh-static-artifacts: venv
 	$(VENV)/bin/linkedin-career-refresh-static-artifacts $(JOB_IDS)

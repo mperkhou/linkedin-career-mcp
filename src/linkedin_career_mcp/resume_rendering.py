@@ -16,7 +16,10 @@ from reportlab.lib.pagesizes import LETTER
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
-_RESUME_RICH_TAG_RE = re.compile(r"</?\s*(a|b|br|div|em|i|p|strong)\b", re.IGNORECASE)
+_RESUME_RICH_TAG_RE = re.compile(
+    r"</?\s*(a|b|br|div|em|i|p|span|strong)\b",
+    re.IGNORECASE,
+)
 
 
 def linkify(value: object) -> Markup:
@@ -44,6 +47,7 @@ def sanitize_resume_rich_text(value: object) -> str:
     text = "" if value is None else str(value).strip()
     if not text:
         return ""
+    text = html_lib.unescape(text)
     if not _RESUME_RICH_TAG_RE.search(text):
         return str(linkify(text))
 
@@ -68,6 +72,8 @@ def _resume_rich_node_markup(node: object) -> str:
     inner = "".join(_resume_rich_node_markup(child) for child in node.children)
     if name in {"b", "strong"}:
         return f"<b>{inner}</b>"
+    if name == "span" and _span_is_semantic_strong(node):
+        return f"<b>{inner}</b>"
     if name in {"i", "em"}:
         return f"<i>{inner}</i>"
     if name == "a":
@@ -77,6 +83,19 @@ def _resume_rich_node_markup(node: object) -> str:
             return f'<a href="{safe_href}">{inner}</a>'
         return inner
     return inner
+
+
+def _span_is_semantic_strong(node: object) -> bool:
+    from bs4 import Tag
+
+    if not isinstance(node, Tag):
+        return False
+    if str(node.get("data-streamdown") or "").lower() == "strong":
+        return True
+    classes = node.get("class") or []
+    if isinstance(classes, str):
+        classes = classes.split()
+    return "font-semibold" in classes or "font-bold" in classes
 
 
 def render_skill_items(value: object) -> str:
