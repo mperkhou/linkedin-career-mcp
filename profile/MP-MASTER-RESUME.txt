@@ -19,8 +19,8 @@ Core Technical Skills
 - Additional Security & Compliance: HIPAA compliance, risk assessment/change management, incident management, disaster recovery planning, business continuity planning, Palo Alto firewalls, WatchGuard firewalls, SonicWall firewalls, Carbon Black Defense, next-generation endpoint security, security policy deployment
 - Additional AI Tools: Claude, applied AI tooling
 Professional Experience
-Oracle | Remote / International Datacenters
-Senior Technical Lead - Cloud Automation Engineer | Feb 2022 - Present
+Oracle | Remote
+Senior Platform Software Engineer (PDAF Team) - Cloud Automation Engineer | Feb 2022 - Present
 Category: AI-Assisted Engineering, MCP, and Developer Productivity
 - Architected AI-native engineering workflows utilizing custom Model Context Protocol (MCP) servers and agentic frameworks to automate infrastructure forensics, repository management, and operational reporting.
 - Engineered production-grade MCP integrations featuring explicit environment routing, read/write isolation, and audit-centric validation to ensure secure infrastructure operations.

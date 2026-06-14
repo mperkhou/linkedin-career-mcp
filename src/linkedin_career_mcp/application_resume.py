@@ -163,6 +163,44 @@ def apply_core_skill_matches_and_score_experience(
     return calculate_experience_jod_match_counts(aro)
 
 
+def select_predraft_experience_bullets(
+    application_resume: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Set job and bullet render flags for the first structured resume pre-draft.
+
+    Bullet selection is deterministic and score-bucket based: positive-score bullets are
+    considered from highest score to lowest score, complete score ties are kept together,
+    and selection stops before a bucket that would exceed ``max_bullet_points``. Jobs with
+    explicit ``render: false`` stay disabled, but their candidate bullet flags are still
+    populated so later ATS experiments can enable the job without reselecting bullets.
+    """
+
+    aro = copy.deepcopy(dict(application_resume))
+    for job in _professional_experience_jobs(aro):
+        bullets = _job_bullets(job)
+        min_bullets = _nonnegative_int(job.get("min_bullet_points"))
+        max_bullets = _nonnegative_int(job.get("max_bullet_points"), default=len(bullets))
+        selected_indices = _select_positive_score_bullet_indices(
+            bullets=bullets,
+            max_bullets=max_bullets,
+        )
+        selected_index_set = set(selected_indices)
+
+        job["render"] = _render_enabled(job.get("render")) and min_bullets > 0
+        for index, bullet in enumerate(bullets):
+            bullet["render"] = index in selected_index_set
+        job["bullet_points"] = [
+            *(bullets[index] for index in selected_indices),
+            *(
+                bullet
+                for index, bullet in enumerate(bullets)
+                if index not in selected_index_set
+            ),
+        ]
+
+    return aro
+
+
 def _core_skill_prompt_payload(application_resume: Mapping[str, Any]) -> list[dict[str, Any]]:
     payload: list[dict[str, Any]] = []
     for bucket in _core_skill_buckets(application_resume):
@@ -260,22 +298,29 @@ def _core_skill_buckets(application_resume: Mapping[str, Any]) -> list[dict[str,
 def _professional_experience_bullets(
     application_resume: Mapping[str, Any],
 ) -> list[dict[str, Any]]:
+    bullets: list[dict[str, Any]] = []
+    for job in _professional_experience_jobs(application_resume):
+        bullets.extend(_job_bullets(job))
+    return bullets
+
+
+def _professional_experience_jobs(
+    application_resume: Mapping[str, Any],
+) -> list[dict[str, Any]]:
     experience = application_resume.get("professional_experience")
     if not isinstance(experience, Mapping):
         return []
     jobs = experience.get("jobs")
     if not isinstance(jobs, list):
         return []
+    return [job for job in jobs if isinstance(job, dict)]
 
-    bullets: list[dict[str, Any]] = []
-    for job in jobs:
-        if not isinstance(job, Mapping):
-            continue
-        raw_bullets = job.get("bullet_points")
-        if not isinstance(raw_bullets, list):
-            continue
-        bullets.extend(bullet for bullet in raw_bullets if isinstance(bullet, dict))
-    return bullets
+
+def _job_bullets(job: Mapping[str, Any]) -> list[dict[str, Any]]:
+    raw_bullets = job.get("bullet_points")
+    if not isinstance(raw_bullets, list):
+        return []
+    return [bullet for bullet in raw_bullets if isinstance(bullet, dict)]
 
 
 def _skill_entries(bullet: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -300,6 +345,53 @@ def _dedupe_preserve_order(items: list[str]) -> list[str]:
             result.append(item)
             seen.add(normalized)
     return result
+
+
+def _select_positive_score_bullet_indices(
+    *,
+    bullets: Sequence[Mapping[str, Any]],
+    max_bullets: int,
+) -> list[int]:
+    if max_bullets <= 0:
+        return []
+
+    score_buckets: dict[int, list[int]] = {}
+    for index, bullet in enumerate(bullets):
+        score = _nonnegative_int(bullet.get("bullet_point_total_match_count"))
+        if score <= 0:
+            continue
+        score_buckets.setdefault(score, []).append(index)
+
+    selected: list[int] = []
+    for score in sorted(score_buckets, reverse=True):
+        bucket = score_buckets[score]
+        if len(selected) + len(bucket) > max_bullets:
+            break
+        selected.extend(bucket)
+    return selected
+
+
+def _nonnegative_int(value: Any, *, default: int = 0) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return max(value, 0)
+    if isinstance(value, str):
+        try:
+            return max(int(value), 0)
+        except ValueError:
+            return default
+    return default
+
+
+def _render_enabled(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().casefold() not in {"false", "no", "0", "off"}
+    return bool(value)
 
 
 def _normalize(value: str) -> str:

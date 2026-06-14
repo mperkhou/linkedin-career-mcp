@@ -117,6 +117,8 @@ After a trimmed JOD exists for a specific job, use
 3. Apply the returned `jod_matched_items` to the ARO.
 4. Let local code calculate `skills[*].jod_match_count` and
    `bullet_point_total_match_count` across all professional-experience bullets.
+5. Pass the scored ARO through `scripts/application_resume_select_bullets.py` to set
+   pre-draft `render` flags by descending positive score buckets without splitting ties.
 
 Keep the master YAML neutral: empty `jod_matched_items`, zero count fields, and no
 job-specific pruning.

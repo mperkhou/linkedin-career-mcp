@@ -11,8 +11,10 @@ from linkedin_career_mcp.application_resume import (
     build_core_skills_jod_match_prompt,
     calculate_experience_jod_match_counts,
     initialize_application_resume_object,
+    select_predraft_experience_bullets,
 )
 from scripts.application_resume_pass_one import main as application_resume_pass_one_main
+from scripts.application_resume_select_bullets import main as application_resume_select_bullets_main
 
 
 def test_initialize_application_resume_object_resets_job_specific_fields(
@@ -190,6 +192,52 @@ def test_application_resume_pass_one_script_writes_prompt_and_scored_aro(
     assert bullet["bullet_point_total_match_count"] == 2
 
 
+def test_select_predraft_experience_bullets_uses_score_buckets_without_splitting_ties() -> None:
+    aro = _sample_selection_aro()
+
+    selected = select_predraft_experience_bullets(aro)
+    jobs = selected["professional_experience"]["jobs"]
+
+    assert jobs[0]["render"] is True
+    assert _selected_scores(jobs[0]) == [5, 4, 4, 4, 4, 3, 3, 3, 3]
+    assert jobs[1]["render"] is True
+    assert _selected_scores(jobs[1]) == [2, 1, 1, 1]
+    assert jobs[2]["render"] is True
+    assert _selected_scores(jobs[2]) == [4, 2, 1, 1]
+
+    assert jobs[3]["render"] is False
+    assert _selected_scores(jobs[3]) == [3, 1]
+    assert jobs[4]["render"] is False
+    assert _selected_scores(jobs[4]) == []
+
+    assert _selected_scores(aro["professional_experience"]["jobs"][0]) == []
+
+
+def test_application_resume_select_bullets_script_writes_predraft_aro(tmp_path: Path) -> None:
+    aro_path = tmp_path / "scored-aro.yml"
+    output_path = tmp_path / "predraft-aro.yml"
+    aro_path.write_text(
+        yaml.safe_dump(_sample_selection_aro(), sort_keys=False),
+        encoding="utf-8",
+    )
+
+    application_resume_select_bullets_main(
+        [
+            "--input",
+            str(aro_path),
+            "--output",
+            str(output_path),
+        ]
+    )
+
+    selected = yaml.safe_load(output_path.read_text(encoding="utf-8"))
+    jobs = selected["professional_experience"]["jobs"]
+    assert jobs[0]["render"] is True
+    assert _selected_scores(jobs[0]) == [5, 4, 4, 4, 4, 3, 3, 3, 3]
+    assert jobs[3]["render"] is False
+    assert _selected_scores(jobs[3]) == [3, 1]
+
+
 def _sample_aro(*, jod_items: list[str], count: int) -> dict[str, object]:
     return {
         "core_technical_skills": {
@@ -238,3 +286,127 @@ def _sample_aro(*, jod_items: list[str], count: int) -> dict[str, object]:
             ]
         },
     }
+
+
+def _sample_selection_aro() -> dict[str, object]:
+    return {
+        "professional_experience": {
+            "jobs": [
+                _selection_job(
+                    "Oracle | Remote / International Datacenters",
+                    scores=[
+                        4,
+                        2,
+                        0,
+                        4,
+                        4,
+                        2,
+                        1,
+                        0,
+                        1,
+                        1,
+                        5,
+                        4,
+                        1,
+                        1,
+                        0,
+                        0,
+                        1,
+                        0,
+                        0,
+                        0,
+                        0,
+                        3,
+                        0,
+                        1,
+                        3,
+                        1,
+                        1,
+                        0,
+                        1,
+                        2,
+                        0,
+                        0,
+                        1,
+                        1,
+                        1,
+                        2,
+                        0,
+                        0,
+                        1,
+                        3,
+                        3,
+                        1,
+                        0,
+                        1,
+                        2,
+                        2,
+                        1,
+                    ],
+                    render=True,
+                    min_bullets=6,
+                    max_bullets=10,
+                ),
+                _selection_job(
+                    "University of Iowa Hospitals and Clinics | Iowa City, IA",
+                    scores=[0, 2, 1, 0, 0, 1, 1],
+                    render=True,
+                    min_bullets=2,
+                    max_bullets=5,
+                ),
+                _selection_job(
+                    "Steindler Orthopedic Clinic | Iowa City, IA",
+                    scores=[1, 2, 4, 0, 0, 0, 1, 0, 0],
+                    render=True,
+                    min_bullets=2,
+                    max_bullets=5,
+                ),
+                _selection_job(
+                    "Stamats Communications | Cedar Rapids, IA",
+                    scores=[1, 0, 0, 0, 0, 3, 0],
+                    render=False,
+                    min_bullets=0,
+                    max_bullets=2,
+                ),
+                _selection_job(
+                    "VIDA Diagnostics | Coralville, IA",
+                    scores=[1, 0, 1, 0, 1, 0, 0, 0, 0, 0],
+                    render=False,
+                    min_bullets=0,
+                    max_bullets=2,
+                ),
+            ]
+        }
+    }
+
+
+def _selection_job(
+    company: str,
+    *,
+    scores: list[int],
+    render: bool,
+    min_bullets: int,
+    max_bullets: int,
+) -> dict[str, object]:
+    return {
+        "render": render,
+        "min_bullet_points": min_bullets,
+        "max_bullet_points": max_bullets,
+        "line_1": {"company_name_text": company},
+        "bullet_points": [
+            {
+                "text": f"Bullet {index} score {score}.",
+                "bullet_point_total_match_count": score,
+                "render": False,
+            }
+            for index, score in enumerate(scores, start=1)
+        ],
+    }
+
+
+def _selected_scores(job: dict[str, object]) -> list[int]:
+    return [
+        int(bullet["bullet_point_total_match_count"])
+        for bullet in job["bullet_points"]  # type: ignore[index]
+        if isinstance(bullet, dict) and bullet.get("render") is True
+    ]

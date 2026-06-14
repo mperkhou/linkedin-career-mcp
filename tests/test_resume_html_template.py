@@ -34,13 +34,31 @@ def test_resume_html_template_renders_trimmed_application_object(tmp_path: Path)
                 "professional_experience": {
                     "jobs": [
                         {
+                            "render": True,
                             "line_1": {"company_name_text": "Oracle | Remote"},
                             "bullet_points": [
                                 {
                                     "bold_label": "Agentic Workflow",
                                     "text": "Built a dynamic renderer prototype.",
+                                    "render": True,
+                                },
+                                {
+                                    "bold_label": "Hidden Workflow",
+                                    "text": "This bullet should not render.",
+                                    "render": False,
                                 },
                                 "Plain fallback experience bullet.",
+                            ],
+                        },
+                        {
+                            "render": False,
+                            "line_1": {"company_name_text": "Hidden Company"},
+                            "bullet_points": [
+                                {
+                                    "bold_label": "Hidden Job",
+                                    "text": "This job should not render.",
+                                    "render": True,
+                                }
                             ],
                         }
                     ]
@@ -64,3 +82,6 @@ def test_resume_html_template_renders_trimmed_application_object(tmp_path: Path)
     assert "<strong>Languages &amp; Frameworks:</strong> Python, Ruby, MATLAB" in html
     assert "Not in inventory" not in html
     assert "<strong>Agentic Workflow:</strong> Built a dynamic renderer prototype." in html
+    assert "This bullet should not render" not in html
+    assert "Hidden Company" not in html
+    assert "This job should not render" not in html

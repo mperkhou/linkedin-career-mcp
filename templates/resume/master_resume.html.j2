@@ -298,7 +298,7 @@
       <section class="resume-section with-rule">
         <div class="section-rule"></div>
         <h2 class="section-heading">{{ experience.header_text | default("Professional Experience", true) }}</h2>
-        {% for job in jobs %}
+        {% for job in jobs if job.render | default(true) %}
           {% set line_1 = job.line_1 | default({}) %}
           {% set line_2 = job.line_2 | default({}) %}
           {% set job_bullets = job.bullet_points | default([]) %}
@@ -319,7 +319,7 @@
             {% endif %}
             {% if job_bullets %}
               <ul class="bullet-list">
-                {% for bullet in job_bullets %}
+                {% for bullet in job_bullets if bullet is string or (bullet.render | default(true)) %}
                   <li>{{ bullet_text(bullet) }}</li>
                 {% endfor %}
               </ul>

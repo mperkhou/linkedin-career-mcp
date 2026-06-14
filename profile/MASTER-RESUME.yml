@@ -339,8 +339,8 @@ professional_experience:
     min_bullet_points: 6
     max_bullet_points: 10
     line_1:
-      company_name_text: Oracle | Remote / International Datacenters
-      position_name_text: Senior Technical Lead - Cloud Automation Engineer
+      company_name_text: Oracle | Remote
+      position_name_text: Senior Platform Software Engineer (PDAF Team) - Cloud Automation Engineer
       position_dates_text: Feb 2022 - Present
     line_2:
       position_intro_text: 
@@ -1996,7 +1996,7 @@ professional_experience:
       bullet_point_total_match_count: 0
       render: false
   - order: 4
-    render: true
+    render: false
     min_bullet_points: 0
     max_bullet_points: 2
     line_1:
@@ -2140,7 +2140,7 @@ professional_experience:
       bullet_point_total_match_count: 0
       render: false
   - order: 5
-    render: true
+    render: false
     min_bullet_points: 0
     max_bullet_points: 2
     line_1:
@@ -2335,7 +2335,7 @@ professional_experience:
       bullet_point_total_match_count: 0
       render: false
   - order: 6
-    render: true
+    render: false
     min_bullet_points: 0
     max_bullet_points: 2
     line_1:
@@ -2474,7 +2474,7 @@ professional_experience:
       bullet_point_total_match_count: 0
       render: false
   - order: 7
-    render: true
+    render: false
     min_bullet_points: 0
     max_bullet_points: 2
     line_1:
