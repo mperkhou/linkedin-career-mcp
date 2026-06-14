@@ -1,5 +1,13 @@
 # linkedin-career-mcp CHANGELOG
 
+## 2.0.1 - PR #31: Package structure foundation
+
+* Refactor job-search models and service orchestration into `models/` and
+  `services/` packages while preserving existing import paths.
+* Update the architecture documentation to describe the package-based layout.
+* Align CI test execution with the local `make test` command.
+* Bump the package version to `1.0.1`.
+
 ## 2.0.0 - ARO structured resume refactor
 
 * commit `36ab962`: First commit of resume restructure
