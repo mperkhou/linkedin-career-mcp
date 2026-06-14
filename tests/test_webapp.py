@@ -469,6 +469,85 @@ def test_store_application_resume_first_draft_updates_tracker_row(tmp_path: Path
     assert b'href="/resume-html/123"' in index.data
 
 
+def test_legacy_artifact_sync_preserves_first_draft_resume_when_aro_exists(
+    tmp_path: Path,
+):
+    database_path = tmp_path / "applications.sqlite3"
+    webapp.upsert_application_artifact(
+        database_path=database_path,
+        job_id="123",
+        company="Example Co",
+        job_title="Senior Engineer",
+        linkedin_url="https://www.linkedin.com/jobs/view/123",
+        resume_path=None,
+        job_description="Requires Python, AWS, APIs, and observability.",
+        prompt_job_description="Requires Python, AWS, APIs, and observability.",
+    )
+    first_draft_pdf = _pdf_bytes(
+        """
+        Max Perkhounkov
+        Core Technical Skills
+        Python AWS APIs observability
+        Professional Experience
+        Built Python APIs on AWS with observability.
+        """
+    )
+    first_draft_path = tmp_path / "first_draft.pdf"
+    first_draft_path.write_bytes(first_draft_pdf)
+    webapp.store_application_resume_first_draft(
+        database_path=database_path,
+        job_id="123",
+        application_resume_object="schema_version: test\n",
+        resume_html="<html><body><h1>First Draft Resume</h1></body></html>",
+        resume_pdf=first_draft_pdf,
+        resume_pdf_path=first_draft_path,
+    )
+    with webapp.connect_database(database_path) as connection:
+        first_draft_row = connection.execute(
+            """
+            SELECT resume_filename, resume_content, source_resume_path,
+                   resume_updated_at, ats_score, ats_updated_at
+            FROM applications
+            WHERE job_id = '123'
+            """
+        ).fetchone()
+
+    legacy_resume_path = tmp_path / "output/resumes/Example_Co/123/resume.pdf"
+    legacy_resume_path.parent.mkdir(parents=True)
+    legacy_resume_path.write_bytes(_pdf_bytes("Legacy Java resume"))
+    legacy_updated_at = datetime(2026, 6, 9, 15, 30, tzinfo=UTC)
+    os.utime(
+        legacy_resume_path,
+        (legacy_updated_at.timestamp(), legacy_updated_at.timestamp()),
+    )
+    webapp.upsert_application_artifact(
+        database_path=database_path,
+        job_id="123",
+        company="Example Co",
+        job_title="Senior Engineer",
+        linkedin_url="https://www.linkedin.com/jobs/view/123",
+        resume_path=legacy_resume_path,
+        job_description="Requires Java and legacy systems.",
+        prompt_job_description="Requires Java and legacy systems.",
+    )
+
+    with webapp.connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT resume_filename, resume_content, source_resume_path,
+                   resume_updated_at, ats_score, ats_updated_at
+            FROM applications
+            WHERE job_id = '123'
+            """
+        ).fetchone()
+    assert row["resume_filename"] == first_draft_row["resume_filename"]
+    assert row["resume_content"] == first_draft_row["resume_content"]
+    assert row["source_resume_path"] == str(first_draft_path)
+    assert row["resume_updated_at"] == first_draft_row["resume_updated_at"]
+    assert row["ats_score"] == first_draft_row["ats_score"]
+    assert row["ats_updated_at"] == first_draft_row["ats_updated_at"]
+
+
 def test_actions_run_starts_background_regeneration(tmp_path: Path):
     with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
         webapp._ACTION_RUNS.clear()  # noqa: SLF001

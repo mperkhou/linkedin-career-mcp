@@ -348,22 +348,36 @@ def upsert_application_artifact(
                     applications.prompt_job_description
                 ),
                 resume_filename = CASE
+                    WHEN COALESCE(NULLIF(applications.application_resume_object, ''), '') != ''
+                    THEN applications.resume_filename
                     WHEN excluded.resume_filename != '' THEN excluded.resume_filename
                     ELSE applications.resume_filename
                 END,
-                resume_content = COALESCE(excluded.resume_content, applications.resume_content),
+                resume_content = CASE
+                    WHEN COALESCE(NULLIF(applications.application_resume_object, ''), '') != ''
+                    THEN applications.resume_content
+                    ELSE COALESCE(excluded.resume_content, applications.resume_content)
+                END,
                 resume_mime_type = CASE
+                    WHEN COALESCE(NULLIF(applications.application_resume_object, ''), '') != ''
+                    THEN applications.resume_mime_type
                     WHEN excluded.resume_content IS NOT NULL THEN excluded.resume_mime_type
                     ELSE applications.resume_mime_type
                 END,
                 source_resume_path = CASE
+                    WHEN COALESCE(NULLIF(applications.application_resume_object, ''), '') != ''
+                    THEN applications.source_resume_path
                     WHEN excluded.source_resume_path != '' THEN excluded.source_resume_path
                     ELSE applications.source_resume_path
                 END,
-                resume_updated_at = COALESCE(
-                    excluded.resume_updated_at,
-                    applications.resume_updated_at
-                ),
+                resume_updated_at = CASE
+                    WHEN COALESCE(NULLIF(applications.application_resume_object, ''), '') != ''
+                    THEN applications.resume_updated_at
+                    ELSE COALESCE(
+                        excluded.resume_updated_at,
+                        applications.resume_updated_at
+                    )
+                END,
                 cover_letter_filename = CASE
                     WHEN excluded.cover_letter_filename != '' THEN excluded.cover_letter_filename
                     ELSE applications.cover_letter_filename
@@ -398,28 +412,56 @@ def upsert_application_artifact(
                     NULLIF(excluded.experience_level, ''),
                     applications.experience_level
                 ),
-                ats_score = COALESCE(excluded.ats_score, applications.ats_score),
-                ats_parsing_score = COALESCE(
-                    excluded.ats_parsing_score,
-                    applications.ats_parsing_score
-                ),
-                ats_keyword_score = COALESCE(
-                    excluded.ats_keyword_score,
-                    applications.ats_keyword_score
-                ),
-                ats_semantic_score = COALESCE(
-                    excluded.ats_semantic_score,
-                    applications.ats_semantic_score
-                ),
-                ats_formatting_risk = COALESCE(
-                    excluded.ats_formatting_risk,
-                    applications.ats_formatting_risk
-                ),
-                ats_missing_terms = COALESCE(
-                    excluded.ats_missing_terms,
-                    applications.ats_missing_terms
-                ),
-                ats_updated_at = COALESCE(excluded.ats_updated_at, applications.ats_updated_at),
+                ats_score = CASE
+                    WHEN COALESCE(NULLIF(applications.application_resume_object, ''), '') != ''
+                    THEN applications.ats_score
+                    ELSE COALESCE(excluded.ats_score, applications.ats_score)
+                END,
+                ats_parsing_score = CASE
+                    WHEN COALESCE(NULLIF(applications.application_resume_object, ''), '') != ''
+                    THEN applications.ats_parsing_score
+                    ELSE COALESCE(
+                        excluded.ats_parsing_score,
+                        applications.ats_parsing_score
+                    )
+                END,
+                ats_keyword_score = CASE
+                    WHEN COALESCE(NULLIF(applications.application_resume_object, ''), '') != ''
+                    THEN applications.ats_keyword_score
+                    ELSE COALESCE(
+                        excluded.ats_keyword_score,
+                        applications.ats_keyword_score
+                    )
+                END,
+                ats_semantic_score = CASE
+                    WHEN COALESCE(NULLIF(applications.application_resume_object, ''), '') != ''
+                    THEN applications.ats_semantic_score
+                    ELSE COALESCE(
+                        excluded.ats_semantic_score,
+                        applications.ats_semantic_score
+                    )
+                END,
+                ats_formatting_risk = CASE
+                    WHEN COALESCE(NULLIF(applications.application_resume_object, ''), '') != ''
+                    THEN applications.ats_formatting_risk
+                    ELSE COALESCE(
+                        excluded.ats_formatting_risk,
+                        applications.ats_formatting_risk
+                    )
+                END,
+                ats_missing_terms = CASE
+                    WHEN COALESCE(NULLIF(applications.application_resume_object, ''), '') != ''
+                    THEN applications.ats_missing_terms
+                    ELSE COALESCE(
+                        excluded.ats_missing_terms,
+                        applications.ats_missing_terms
+                    )
+                END,
+                ats_updated_at = CASE
+                    WHEN COALESCE(NULLIF(applications.application_resume_object, ''), '') != ''
+                    THEN applications.ats_updated_at
+                    ELSE COALESCE(excluded.ats_updated_at, applications.ats_updated_at)
+                END,
                 applied_to = CASE
                     WHEN applications.applied_to != 'No' THEN applications.applied_to
                     ELSE excluded.applied_to
