@@ -99,6 +99,13 @@ Rules:
 - Use broader skills only when the bullet clearly supports them.
 - Do not invent technologies or responsibilities to make matches look stronger.
 - If a useful skill is missing from Core Technical Skills, add it to the appropriate `items.additional` bucket first, then match bullets to it.
+- Preserve slash-delimited compound phrases from the source text when they are
+  meaningful resume skills or workflow labels. Do not split terms such as
+  `Jenkins/CloudLab CI/CD release paths`, `dynamic Ansible/AWX inventory
+  management`, or `Prometheus/Grafana` during matching; add the exact compound
+  phrase to `items.additional` when it carries distinct signal, and also link
+  the bullet to supported component skills such as `Jenkins`, `CloudLab CI/CD
+  Pipelines`, `Ansible`, or `AWX`.
 - Keep bullet text stable unless the user explicitly asks for wording changes.
 
 ### 5. Iterate In Passes
