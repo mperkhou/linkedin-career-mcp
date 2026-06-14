@@ -22,6 +22,8 @@ from linkedin_career_mcp.application_resume import (
     select_first_draft_experience_bullets,
 )
 from linkedin_career_mcp.config import load_settings
+from linkedin_career_mcp.jod import usable_job_description
+from linkedin_career_mcp.llm import build_llm_client
 from linkedin_career_mcp.resume_rendering import (
     render_resume_html_from_mapping,
     render_resume_pdf_from_html,
@@ -32,8 +34,6 @@ from linkedin_career_mcp.webapp import (
     connect_database,
     store_application_resume_first_draft,
 )
-from linkedin_career_mcp.workflows import matching
-from linkedin_career_mcp.workflows.matching import _build_llm_client
 
 DEFAULT_TEMPLATE = Path("templates/resume/master_resume.html.j2")
 
@@ -48,7 +48,7 @@ class Candidate:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Backport stored JODs into first-draft ARO/HTML/PDF tracker artifacts."
+        description="Generate first-draft ARO resume artifacts from stored trimmed JODs."
     )
     parser.add_argument(
         "--database",
@@ -75,7 +75,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--api-model",
-        help="Override LINKEDIN_CAREER_MCP_LLM_API_MODEL for this backport run.",
+        help="Override LINKEDIN_CAREER_MCP_LLM_API_MODEL for this draft-generation run.",
     )
     parser.add_argument(
         "--artifact-dir",
@@ -122,7 +122,7 @@ async def main_async(argv: Sequence[str] | None = None) -> int:
         return 0
 
     settings = load_settings()
-    llm = _build_llm_client(settings, api_model=args.api_model)
+    llm = build_llm_client(settings, api_model=args.api_model)
     model = getattr(llm, "model", args.api_model or settings.llm_api_model)
     print(f"LLM: {settings.llm_provider}:{model}", file=sys.stderr, flush=True)
 
@@ -201,8 +201,8 @@ def load_candidates(
         if not force and _has_text(row["application_resume_object"]):
             continue
         trimmed_jod = (
-            matching._usable_job_description(row["prompt_job_description"])  # noqa: SLF001
-            or matching._usable_job_description(row["job_description"])  # noqa: SLF001
+            usable_job_description(row["prompt_job_description"])
+            or usable_job_description(row["job_description"])
         )
         if not trimmed_jod:
             continue

@@ -19,7 +19,6 @@ from urllib.parse import parse_qsl, urlencode, urlsplit
 
 import yaml
 from bs4 import BeautifulSoup, Comment, NavigableString, Tag
-from openpyxl import load_workbook
 from reportlab.lib.colors import HexColor
 from reportlab.lib.pagesizes import LETTER
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -29,6 +28,7 @@ from linkedin_career_mcp.ats import AtsProxyScore, calculate_ats_proxy_score
 from linkedin_career_mcp.config import load_settings
 from linkedin_career_mcp.errors import LinkedInCareerMcpError
 from linkedin_career_mcp.generic_job_scraper import fetch_generic_job_details
+from linkedin_career_mcp.jod import clean_job_description_for_prompt
 from linkedin_career_mcp.models import JobDetails
 from linkedin_career_mcp.providers.linkedin_public import (
     LinkedInPublicJobsProvider,
@@ -42,34 +42,13 @@ from linkedin_career_mcp.resume_rendering import (
 )
 
 DEFAULT_OUTPUT_DIR = Path("output")
-TRACKING_WORKBOOK = Path("tracking/read_applications/linkedin_applications.xlsx")
 DEFAULT_DATABASE = Path("tracking/applications.sqlite3")
 DEFAULT_RESUME_TEMPLATE = Path("templates/resume/master_resume.html.j2")
-
-TRACKING_COLUMNS = (
-    "job_id",
-    "company",
-    "job_title",
-    "linkedin_url",
-    "customized_resume",
-    "cover_letter",
-    "applied_to",
-    "date_applied",
-)
 APPLICATION_STATUSES = {"No", "Yes", "N/A", "Rejected", "Accepted for interview"}
 APPLICATION_STATUS_FILTERS = {"all", *APPLICATION_STATUSES}
 VIEW_STATE_SORTS = {"company", "matched", "ats", "resume", "cover_letter"}
 VIEW_STATE_DIRECTIONS = {"asc", "desc"}
 VIEW_STATE_QUERY_KEYS = {"q", "status", "sort", "direction"}
-REQUIRED_TRACKING_COLUMNS = (
-    "job_id",
-    "company",
-    "job_title",
-    "linkedin_url",
-    "customized_resume",
-    "applied_to",
-    "date_applied",
-)
 APPLICATION_EXTRA_COLUMNS = {
     "job_description": "TEXT",
     "prompt_job_description": "TEXT",
@@ -102,32 +81,16 @@ APPLICATION_EXTRA_COLUMNS = {
     "ats_updated_at": "TEXT",
 }
 REGENERATE_ACTION_TARGETS = {
-    "resumes": "regenerate-resumes",
-    "first_draft_resumes": "first-draft-resumes",
     "draft_resumes": "regenerate-draft-resumes",
     "aro_objects": "regenerate-aro-objects",
     "sync_draft_to_aro": "sync-draft-to-aro",
 }
-_DRAFT_REGENERATE_MODES = {"first_draft_resumes", "draft_resumes"}
-_NO_OUTPUT_SYNC_REGENERATE_MODES = {
-    "first_draft_resumes",
-    "draft_resumes",
-    "aro_objects",
-    "sync_draft_to_aro",
-}
+_DRAFT_REGENERATE_MODES = {"draft_resumes"}
 COVER_LETTER_OBJECT_SCHEMA_VERSION = "cover_letter_object.v0.1"
 EMERALD_ACCENT = HexColor("#57ba86")
 RESUME_BODY_COLOR = HexColor("#111827")
 MAX_ACTION_RUNS = 8
 MAX_ACTION_MESSAGES = 160
-
-
-@dataclass(frozen=True)
-class ImportResult:
-    rows_seen: int
-    rows_imported: int
-    missing_resumes: int
-    missing_cover_letters: int = 0
 
 
 @dataclass(frozen=True)
@@ -653,9 +616,7 @@ async def _fetch_generic_job_details(job_url: str) -> JobDetails:
 
 
 def _clean_prompt_job_description(description: str) -> str:
-    from linkedin_career_mcp.workflows import matching
-
-    return matching._clean_job_description_for_prompt(description)  # noqa: SLF001
+    return clean_job_description_for_prompt(description)
 
 
 def store_application_resume_first_draft(
@@ -1114,7 +1075,6 @@ def delete_applications(
     *,
     database_path: Path,
     job_ids: list[str],
-    tracking_path: Path | None = None,
 ) -> int:
     normalized_job_ids = sorted({job_id.strip() for job_id in job_ids if job_id.strip()})
     if not normalized_job_ids:
@@ -1129,86 +1089,7 @@ def delete_applications(
         deleted_count = cursor.rowcount
         connection.commit()
 
-    if tracking_path is not None:
-        _delete_tracking_rows(tracking_path=tracking_path, job_ids=set(normalized_job_ids))
     return deleted_count
-
-
-def import_output_artifacts(*, output_dir: Path, database_path: Path) -> ImportResult:
-    tracking_path = output_dir / TRACKING_WORKBOOK
-    if not tracking_path.exists():
-        raise FileNotFoundError(f"Tracking workbook was not found: {tracking_path}")
-
-    connection = connect_database(database_path)
-    connection.close()
-    workbook = load_workbook(tracking_path, data_only=True)
-    sheet = workbook.active
-    headers = [str(cell.value or "").strip() for cell in sheet[1]]
-    column_indexes = {header: index for index, header in enumerate(headers)}
-    missing_columns = [
-        column for column in REQUIRED_TRACKING_COLUMNS if column not in column_indexes
-    ]
-    if missing_columns:
-        raise ValueError(f"Tracking workbook is missing columns: {', '.join(missing_columns)}")
-
-    rows_seen = 0
-    rows_imported = 0
-    missing_resumes = 0
-    missing_cover_letters = 0
-
-    for row in sheet.iter_rows(min_row=2, values_only=True):
-        values = {
-            column: row[column_indexes[column]]
-            for column in REQUIRED_TRACKING_COLUMNS
-        }
-        job_id = str(values["job_id"] or "").strip()
-        if not job_id:
-            continue
-        rows_seen += 1
-
-        resume_path_text = str(values["customized_resume"] or "").strip()
-        resume_path = (
-            _resolve_output_path(output_dir=output_dir, path_text=resume_path_text)
-            if resume_path_text
-            else None
-        )
-        if resume_path_text and (resume_path is None or not resume_path.exists()):
-            missing_resumes += 1
-
-        upsert_application_artifact(
-            database_path=database_path,
-            job_id=job_id,
-            company=str(values["company"] or ""),
-            job_title=str(values["job_title"] or ""),
-            linkedin_url=str(values["linkedin_url"] or ""),
-            resume_path=resume_path,
-            cover_letter_path=None,
-            applied_to=str(values["applied_to"] or "No"),
-            date_applied=_date_value(values["date_applied"]),
-            date_matched=_optional_row_value(
-                row=row,
-                column_indexes=column_indexes,
-                column="date_matched",
-            ),
-            date_posted=_optional_row_value(
-                row=row,
-                column_indexes=column_indexes,
-                column="date_posted",
-            ),
-            experience_level=_optional_row_value(
-                row=row,
-                column_indexes=column_indexes,
-                column="experience_level",
-            ),
-        )
-        rows_imported += 1
-
-    return ImportResult(
-        rows_seen=rows_seen,
-        rows_imported=rows_imported,
-        missing_resumes=missing_resumes,
-        missing_cover_letters=missing_cover_letters,
-    )
 
 
 def refresh_missing_ats_scores(database_path: Path) -> int:
@@ -1264,16 +1145,12 @@ def refresh_missing_ats_scores(database_path: Path) -> int:
 
 def start_background_action(
     *,
-    database_path: Path,
-    output_dir: Path,
-    sync_requested: bool,
     regenerate_mode: str,
     job_ids: list[str],
     runner: BackgroundActionRunner | None = None,
 ) -> BackgroundActionRun:
     run = _create_background_action_run(
         title=_background_action_title(
-            sync_requested=sync_requested,
             regenerate_mode=regenerate_mode,
             job_ids=job_ids,
         )
@@ -1283,9 +1160,6 @@ def start_background_action(
         target=target,
         kwargs={
             "run_id": run.run_id,
-            "database_path": database_path,
-            "output_dir": output_dir,
-            "sync_requested": sync_requested,
             "regenerate_mode": regenerate_mode,
             "job_ids": job_ids,
         },
@@ -1370,48 +1244,17 @@ def _finish_background_action_run(
 def _run_background_action(
     *,
     run_id: str,
-    database_path: Path,
-    output_dir: Path,
-    sync_requested: bool,
     regenerate_mode: str,
     job_ids: list[str],
 ) -> None:
     try:
-        if sync_requested:
-            _run_sync_action(run_id=run_id, database_path=database_path, output_dir=output_dir)
         if regenerate_mode:
             _run_regenerate_action(run_id=run_id, regenerate_mode=regenerate_mode, job_ids=job_ids)
-            if regenerate_mode not in _NO_OUTPUT_SYNC_REGENERATE_MODES:
-                _run_sync_action(
-                    run_id=run_id,
-                    database_path=database_path,
-                    output_dir=output_dir,
-                    label="Refreshing tracker after regeneration",
-                )
         _append_background_action_message(run_id, "Background action completed.")
         _finish_background_action_run(run_id, status="completed", return_code=0)
     except Exception as exc:
         _append_background_action_message(run_id, f"Background action failed: {exc}")
         _finish_background_action_run(run_id, status="failed", return_code=1)
-
-
-def _run_sync_action(
-    *,
-    run_id: str,
-    database_path: Path,
-    output_dir: Path,
-    label: str = "Syncing from output",
-) -> None:
-    _append_background_action_message(run_id, f"{label}.")
-    result = import_output_artifacts(output_dir=output_dir, database_path=database_path)
-    _append_background_action_message(
-        run_id,
-        (
-            f"Sync complete: imported {result.rows_imported}/{result.rows_seen} workbook rows "
-            f"({result.missing_resumes} missing resumes, "
-            f"{result.missing_cover_letters} missing cover letters)."
-        ),
-    )
 
 
 def _run_regenerate_action(
@@ -1473,17 +1316,12 @@ def _selected_job_ids(values: list[str]) -> list[str]:
 
 def _background_action_title(
     *,
-    sync_requested: bool,
     regenerate_mode: str,
     job_ids: list[str],
 ) -> str:
     parts: list[str] = []
-    if sync_requested:
-        parts.append("sync output")
     if regenerate_mode:
         label = {
-            "resumes": "regenerate resumes",
-            "first_draft_resumes": "generate first-draft resumes",
             "draft_resumes": "regenerate draft resume",
             "aro_objects": "regenerate ARO object(s)",
             "sync_draft_to_aro": "sync draft to ARO",
@@ -1571,16 +1409,6 @@ def create_app(
             flash("Application updated.")
         return redirect_to_index_state()
 
-    @app.post("/sync")
-    def sync_from_output():
-        result = import_output_artifacts(output_dir=output_dir, database_path=database_path)
-        flash(
-            f"Imported {result.rows_imported} workbook rows "
-            f"({result.missing_resumes} missing resume files, "
-            f"{result.missing_cover_letters} missing cover letter files)."
-        )
-        return redirect_to_index_state()
-
     @app.get("/applications/add")
     def add_application():
         return render_template_string(
@@ -1600,9 +1428,6 @@ def create_app(
             return redirect(_add_application_return_path(request.form.get("return_to")))
 
         run = start_background_action(
-            database_path=database_path,
-            output_dir=output_dir,
-            sync_requested=False,
             regenerate_mode="draft_resumes",
             job_ids=[job_id],
             runner=background_action_runner,
@@ -1622,9 +1447,6 @@ def create_app(
             return redirect(_add_application_return_path(request.form.get("return_to")))
 
         run = start_background_action(
-            database_path=database_path,
-            output_dir=output_dir,
-            sync_requested=False,
             regenerate_mode="draft_resumes",
             job_ids=[job_id],
             runner=background_action_runner,
@@ -1634,11 +1456,10 @@ def create_app(
 
     @app.post("/actions/run")
     def run_actions():
-        sync_requested = request.form.get("action_sync") == "1"
         regenerate_mode = str(request.form.get("regenerate_mode") or "").strip()
         regenerate_requested = bool(regenerate_mode)
         job_ids = _selected_job_ids(request.form.getlist("job_id"))
-        if not sync_requested and not regenerate_requested:
+        if not regenerate_requested:
             flash("Choose at least one action to run.")
             return redirect_to_index_state()
         if regenerate_requested and not job_ids:
@@ -1649,9 +1470,6 @@ def create_app(
             return redirect_to_index_state()
 
         run = start_background_action(
-            database_path=database_path,
-            output_dir=output_dir,
-            sync_requested=sync_requested,
             regenerate_mode=regenerate_mode if regenerate_requested else "",
             job_ids=job_ids,
             runner=background_action_runner,
@@ -1669,7 +1487,6 @@ def create_app(
         deleted_count = delete_applications(
             database_path=database_path,
             job_ids=job_ids,
-            tracking_path=output_dir / TRACKING_WORKBOOK,
         )
         flash(f"Deleted {deleted_count} application rows.")
         return redirect_to_index_state()
@@ -1792,7 +1609,6 @@ def create_app(
             destination = copy_application_artifact_to_downloads(
                 row=row,
                 artifact_kind="resume",
-                output_dir=output_dir,
             )
         except (OSError, subprocess.SubprocessError) as exc:
             flash(f"Resume copy failed: {exc}")
@@ -1868,7 +1684,6 @@ def create_app(
             destination = copy_application_artifact_to_downloads(
                 row=row,
                 artifact_kind="cover_letter",
-                output_dir=output_dir,
             )
         except (OSError, subprocess.SubprocessError) as exc:
             flash(f"Cover letter copy failed: {exc}")
@@ -1916,16 +1731,6 @@ def create_app(
             _description_edit_return_path(job_id, request.form.get("return_to"))
         )
 
-    @app.get("/output/<path:relative_path>")
-    def output_file(relative_path: str):
-        target = (output_dir / relative_path).resolve()
-        output_root = output_dir.resolve()
-        if target != output_root and output_root not in target.parents:
-            abort(404)
-        if not target.is_file():
-            abort(404)
-        return send_file(target, as_attachment=False)
-
     return app
 
 
@@ -1936,14 +1741,11 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--debug", action="store_true")
-    parser.add_argument("--no-import", action="store_true")
     parser.add_argument("--open-browser", action="store_true")
     args = parser.parse_args(argv)
 
     output_dir = Path(args.output_dir)
     database_path = Path(args.database) if args.database else output_dir / DEFAULT_DATABASE
-    if not args.no_import:
-        import_output_artifacts(output_dir=output_dir, database_path=database_path)
     app = create_app(database_path=database_path, output_dir=output_dir)
     if args.open_browser:
         _schedule_browser_open(host=args.host, port=args.port)
@@ -2005,27 +1807,6 @@ def _application_select_columns() -> str:
         {sync_status} AS aro_resume_sync_status,
         CASE WHEN {sync_status} = 'Yes' THEN 0 ELSE 1 END AS aro_resume_out_of_sync
     """
-
-
-def _resolve_output_path(*, output_dir: Path, path_text: str) -> Path:
-    artifact_path = Path(path_text)
-    if artifact_path.is_absolute():
-        return artifact_path
-    if artifact_path.parts and artifact_path.parts[0] == output_dir.name:
-        return output_dir.parent / artifact_path
-    return output_dir / artifact_path
-
-
-def _optional_row_value(
-    *,
-    row: tuple[Any, ...],
-    column_indexes: dict[str, int],
-    column: str,
-) -> Any:
-    index = column_indexes.get(column)
-    if index is None:
-        return None
-    return row[index]
 
 
 def _calculate_ats_score(
@@ -2570,16 +2351,13 @@ def copy_application_artifact_to_downloads(
     *,
     row: sqlite3.Row,
     artifact_kind: str,
-    output_dir: Path,
     download_dir: Path | None = None,
 ) -> Path:
     if artifact_kind == "resume":
-        source_column = "source_resume_path"
         filename_column = "resume_filename"
         content_column = "resume_content"
         default_prefix = "mp_resume"
     elif artifact_kind == "cover_letter":
-        source_column = "source_cover_letter_path"
         filename_column = "cover_letter_filename"
         content_column = "cover_letter_content"
         default_prefix = "mp_cover_letter"
@@ -2593,18 +2371,6 @@ def copy_application_artifact_to_downloads(
     if not filename:
         filename = f"{default_prefix}_{row['job_id']}.pdf"
     destination = target_dir / filename
-
-    source_path_text = str(row[source_column] or "").strip()
-    if source_path_text:
-        source_path = _resolve_output_path(output_dir=output_dir, path_text=source_path_text)
-        if source_path.is_file():
-            subprocess.run(
-                ["cp", str(source_path), str(destination)],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            return destination
 
     content = row[content_column]
     if content is None:
@@ -2638,24 +2404,6 @@ def _display_timestamp(value: Any) -> str:
     except ValueError:
         return text
     return parsed.strftime("%Y-%m-%d %H:%M")
-
-
-def _delete_tracking_rows(*, tracking_path: Path, job_ids: set[str]) -> None:
-    if not tracking_path.exists():
-        return
-
-    workbook = load_workbook(tracking_path)
-    sheet = workbook.active
-    headers = [str(cell.value or "").strip() for cell in sheet[1]]
-    if "job_id" not in headers:
-        return
-
-    job_id_column = headers.index("job_id") + 1
-    for row_index in range(sheet.max_row, 1, -1):
-        job_id = str(sheet.cell(row=row_index, column=job_id_column).value or "").strip()
-        if job_id in job_ids:
-            sheet.delete_rows(row_index, 1)
-    workbook.save(tracking_path)
 
 
 def _schedule_browser_open(*, host: str, port: int) -> None:
@@ -3244,10 +2992,6 @@ INDEX_TEMPLATE = """
             name="return_to"
             value="{{ current_path }}"
           >
-          <label class="action-choice">
-            <input id="action-sync" type="checkbox" name="action_sync" value="1">
-            <span>Sync from output</span>
-          </label>
           <fieldset class="regenerate-options" id="regenerate-options">
             <legend>Resume actions</legend>
             <label>
@@ -3645,7 +3389,6 @@ INDEX_TEMPLATE = """
     const returnToFields = [...document.querySelectorAll(".return-to-state")];
     const preserveStateLinks = [...document.querySelectorAll(".preserve-state-link")];
     const actionsForm = document.querySelector("#actions-form");
-    const actionSync = document.querySelector("#action-sync");
     const regenerateModeInputs = [...document.querySelectorAll("input[name='regenerate_mode']")];
     const runActionsButton = document.querySelector("#run-actions");
     const actionsSelectedSummary = document.querySelector("#actions-selected-summary");
@@ -3982,11 +3725,9 @@ INDEX_TEMPLATE = """
       if (actionsSelectedSummary) {
         actionsSelectedSummary.textContent = `${selected.length} selected`;
       }
-      if (runActionsButton && actionSync) {
+      if (runActionsButton) {
         const hasResumeAction = Boolean(selectedRegenerateMode());
-        const hasAction = actionSync.checked || hasResumeAction;
-        const missingRegenerateSelection = hasResumeAction && selected.length === 0;
-        runActionsButton.disabled = !hasAction || missingRegenerateSelection;
+        runActionsButton.disabled = !hasResumeAction || selected.length === 0;
       }
     }
     function syncActionsFormJobIds() {
@@ -4128,9 +3869,6 @@ INDEX_TEMPLATE = """
     document.querySelectorAll("form").forEach((form) => {
       form.addEventListener("submit", syncReturnState);
     });
-    if (actionSync) {
-      actionSync.addEventListener("change", updateActionsState);
-    }
     regenerateModeInputs.forEach((input) => {
       input.addEventListener("change", updateActionsState);
     });

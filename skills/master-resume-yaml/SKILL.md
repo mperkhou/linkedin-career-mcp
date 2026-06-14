@@ -7,7 +7,7 @@ metadata:
 
 # Master Resume YAML
 
-Use this skill to prepare the factual master resume object that later search, resume, cover-letter, and ATS workflows will consume. This skill is an initialization/refinement workflow only; do not run LinkedIn search planning, JOD tailoring, ATS repair, or cover-letter generation from this skill.
+Use this skill to prepare the factual Master Resume Object (MRO) that later search, resume, cover-letter, and ATS workflows will consume. This skill is an initialization/refinement workflow only; do not run LinkedIn search planning, JOD tailoring, ATS repair, or cover-letter generation from this skill.
 
 ## Default Inputs
 
@@ -126,7 +126,7 @@ After a trimmed JOD exists for a specific job, use
 `scripts/application_resume_pass_one.py` or the Application Resume Object helpers in
 `src/linkedin_career_mcp/application_resume.py` instead of editing the master YAML directly:
 
-1. Initialize an ARO as a reset hard copy of `profile/MASTER-RESUME.yml`.
+1. Initialize an ARO as a reset deep copy of the MRO in `profile/MASTER-RESUME.yml`.
 2. Build a compact Core Technical Skills prompt from the ARO plus the trimmed JOD.
 3. Apply the returned `jod_matched_items` to the ARO.
 4. Let local code calculate `skills[*].jod_match_count` and

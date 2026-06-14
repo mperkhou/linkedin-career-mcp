@@ -1,6 +1,6 @@
 # linkedin-career-mcp CHANGELOG
 
-## Unreleased - ARO structured resume refactor branch
+## 2.0.0 - ARO structured resume refactor
 
 * commit `36ab962`: First commit of resume restructure
 * commit `d833805`: Add master resume YAML skill
@@ -18,8 +18,13 @@
 * commit `be57528`: Add resume rich-text editing and header line
 * commit `8018ae1`: Update master resume source text
 * commit `9257e96`: Refresh master resume YAML mappings
-* Add no-API ARO regeneration, draft-to-ARO sync actions, ARO/resume sync
-  status badges, and tracker table alignment coverage.
+* commit `1b7a17b`: Add ARO sync actions
+* commit `27dd305`: Fix JOD trimming diff display
+* commit `ca55e50`: Fix resume editor skill preservation
+* Remove the retired output/workbook artifact workflow and keep only the
+  database-backed ARO resume workflow.
+* Standardize the refactor terminology around MRO and ARO, removing the accidental
+  alternate object naming from commands, UI labels, docs, skills, and workflow prompts.
 * Decode escaped Streamdown rich-text spans in rendered resume headers.
 * Fix the job-description comparison view so wrapping differences do not make
   kept prompt text appear as removed-by-trimming content.

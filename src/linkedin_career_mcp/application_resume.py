@@ -57,7 +57,7 @@ def build_core_skills_jod_match_prompt(
 
     The prompt intentionally includes only the Core Technical Skills inventory and the
     trimmed JOD. It does not send professional-experience bullets, cover-letter context,
-    CJD files, or the whole resume object.
+    extra profile files, or the whole resume object.
     """
 
     core_skills = _core_skill_prompt_payload(application_resume)

@@ -12,8 +12,8 @@ from statistics import mean, median
 from typing import Any
 
 from linkedin_career_mcp.ats import calculate_ats_proxy_score
+from linkedin_career_mcp.jod import job_description_context, usable_job_description
 from linkedin_career_mcp.models import JobDetails
-from linkedin_career_mcp.workflows import matching
 
 DEFAULT_DATABASE_PATH = Path("output/tracking/applications.sqlite3")
 BOILERPLATE_PATTERNS = {
@@ -75,11 +75,11 @@ def audit_tracker_database(
     resume_content_by_job_id: dict[str, bytes | None] = {}
 
     for row in rows:
-        raw_description = matching._usable_job_description(row["job_description"])  # noqa: SLF001
+        raw_description = usable_job_description(row["job_description"])
         if not raw_description:
             continue
         cleaned = _clean_prompt_job_description(row, raw_description)
-        stored = matching._usable_job_description(row["prompt_job_description"]) or ""
+        stored = usable_job_description(row["prompt_job_description"]) or ""
         audit = JobDescriptionAudit(
             job_id=str(row["job_id"]),
             company=str(row["company"] or ""),
@@ -173,7 +173,7 @@ def _clean_prompt_job_description(row: sqlite3.Row, raw_description: str) -> str
         company=str(row["company"] or "") or None,
         description=raw_description,
     )
-    return matching._job_description_context(job)  # noqa: SLF001
+    return job_description_context(job)
 
 
 def _apply_backfill(

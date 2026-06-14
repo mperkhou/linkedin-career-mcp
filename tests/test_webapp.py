@@ -8,12 +8,11 @@ from pathlib import Path
 import pytest
 import yaml
 from bs4 import BeautifulSoup
-from openpyxl import Workbook, load_workbook
 from reportlab.pdfgen import canvas
 
 from linkedin_career_mcp import webapp
 from linkedin_career_mcp.models import JobDetails
-from linkedin_career_mcp.webapp import create_app, import_output_artifacts
+from linkedin_career_mcp.webapp import create_app
 
 
 def test_connect_database_migrates_job_description_columns(tmp_path: Path):
@@ -47,7 +46,7 @@ def test_connect_database_migrates_job_description_columns(tmp_path: Path):
             VALUES (
                 '123', 'Example Co', 'Senior Engineer',
                 'https://www.linkedin.com/jobs/view/123', 'resume.pdf',
-                'output/resumes/resume.pdf', 'No',
+                '', 'No',
                 '2026-06-08T10:00:00+00:00',
                 '2026-06-08T10:00:00+00:00'
             )
@@ -98,88 +97,40 @@ def test_connect_database_migrates_job_description_columns(tmp_path: Path):
     assert row["date_posted"] is None
 
 
-def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
-    tmp_path: Path,
-    monkeypatch,
-):
+def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypatch):
     output_dir = tmp_path / "output"
-    resume_path = (
-        output_dir
-        / "resumes"
-        / "Example_Co"
-        / "123_senior_engineer"
-        / "mp_resume_senior_engineer.pdf"
-    )
-    resume_path.parent.mkdir(parents=True)
-    resume_path.write_bytes(b"%PDF-1.4 fake pdf")
-    resume_updated_at = datetime(2026, 6, 9, 15, 30, tzinfo=UTC)
-    os.utime(resume_path, (resume_updated_at.timestamp(), resume_updated_at.timestamp()))
-    cover_letter_path = (
-        output_dir
-        / "cover_letters"
-        / "Example_Co"
-        / "123_senior_engineer"
-        / "mp_cover_letter_senior_engineer.pdf"
-    )
-    cover_letter_path.parent.mkdir(parents=True)
-    cover_letter_path.write_bytes(b"%PDF-1.4 fake cover")
-    cover_letter_updated_at = datetime(2026, 6, 10, 16, 45, tzinfo=UTC)
-    os.utime(
-        cover_letter_path,
-        (cover_letter_updated_at.timestamp(), cover_letter_updated_at.timestamp()),
-    )
-
-    tracking_path = output_dir / "tracking/read_applications/linkedin_applications.xlsx"
-    tracking_path.parent.mkdir(parents=True)
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = "Applications"
-    sheet.append(
-        [
-            "job_id",
-            "company",
-            "job_title",
-            "linkedin_url",
-            "customized_resume",
-            "cover_letter",
-            "applied_to",
-            "date_applied",
-        ]
-    )
-    sheet.append(
-        [
-            "123",
-            "Example Co",
-            "Senior Engineer",
-            "https://www.linkedin.com/jobs/view/123",
-            str(resume_path.relative_to(tmp_path)),
-            str(cover_letter_path.relative_to(tmp_path)),
-            "No",
-            "",
-        ]
-    )
-    workbook.save(tracking_path)
-
     database_path = output_dir / "tracking/applications.sqlite3"
-    result = import_output_artifacts(output_dir=output_dir, database_path=database_path)
-
-    assert result.rows_seen == 1
-    assert result.rows_imported == 1
-    assert result.missing_resumes == 0
-    assert result.missing_cover_letters == 0
-    assert database_path.exists()
+    resume_pdf = _pdf_bytes(
+        """
+        Max Perkhounkov
+        Professional Summary
+        Core Technical Skills
+        Python AWS APIs observability
+        Professional Experience
+        Built Python APIs on AWS with observability.
+        Education
+        Certifications
+        """
+    )
     webapp.upsert_application_artifact(
         database_path=database_path,
         job_id="123",
         company="Example Co",
         job_title="Senior Engineer",
         linkedin_url="https://www.linkedin.com/jobs/view/123",
-        resume_path=resume_path,
+        resume_path=None,
         cover_letter_path=None,
         job_description="Full parsed JOD with mission boilerplate and role requirements.",
         prompt_job_description="Clean prompt JOD with role requirements.",
         date_posted="2026-06-07T12:00:00Z",
         experience_level="Mid-Senior level",
+    )
+    webapp.store_application_resume_first_draft(
+        database_path=database_path,
+        job_id="123",
+        application_resume_object="schema_version: test\n",
+        resume_html="<html><body><h1>First Draft Resume</h1></body></html>",
+        resume_pdf=resume_pdf,
     )
     with webapp.connect_database(database_path) as connection:
         score_row = connection.execute(
@@ -195,7 +146,7 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     assert score_row["ats_formatting_risk"] in {"Low", "Medium", "High"}
     assert score_row["ats_missing_terms"] is not None
     assert score_row["experience_level"] == "Mid-Senior level"
-    assert score_row["resume_updated_at"] == "2026-06-09T15:30:00+00:00"
+    assert score_row["resume_updated_at"] is not None
     assert score_row["cover_letter_updated_at"] is None
 
     app = create_app(database_path=database_path, output_dir=output_dir)
@@ -218,8 +169,10 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     assert html.index('id="add-application"') < html.index('class="actions-menu"')
     assert 'window.open(' in html
     assert '"/applications/add"' in html
-    assert 'id="action-sync"' in html
-    assert "Sync from output" in html
+    assert 'id="action-sync"' not in html
+    assert "#action-sync" not in html
+    assert "actionSync" not in html
+    assert "Sync from output" not in html
     assert "Regenerate ARO Objects" in html
     assert "Regenerate Draft Resume" in html
     assert "Sync Draft to ARO" in html
@@ -274,9 +227,9 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     assert b'data-company-sort="Example Co"' in index.data
     assert b'data-matched-sort=' in index.data
     assert b"data-ats-sort=" in index.data
-    assert b'data-resume-sort="2026-06-09T15:30:00+00:00"' in index.data
+    assert b"data-resume-sort=" in index.data
     assert b'data-cover-letter-sort=""' in index.data
-    assert b"2026-06-09 15:30" in index.data
+    assert b"First Draft Resume" not in index.data
     assert b"ATS proxy score:" in index.data
     assert b"Keyword match:" in index.data
     assert b"Formatting risk:" in index.data
@@ -352,11 +305,11 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
 
     db_resume = client.get("/resumes/123")
     assert db_resume.status_code == 200
-    assert db_resume.data == b"%PDF-1.4 fake pdf"
+    assert db_resume.data == resume_pdf
 
     resume_download = client.get("/resumes/123/download")
     assert resume_download.status_code == 200
-    assert resume_download.data == b"%PDF-1.4 fake pdf"
+    assert resume_download.data == resume_pdf
     assert "attachment" in resume_download.headers["Content-Disposition"]
 
     assert client.get("/cover-letters/123").status_code == 404
@@ -370,7 +323,7 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
 
     resume_copy = client.post("/resumes/123/copy-to-downloads")
     assert resume_copy.status_code == 302
-    assert downloaded_resume.read_bytes() == b"%PDF-1.4 fake pdf"
+    assert downloaded_resume.read_bytes() == resume_pdf
 
     copy_index = client.get("/")
     assert b"Copied resume to ~/Downloads/mp_resume_senior_engineer.pdf." in copy_index.data
@@ -419,17 +372,9 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     assert b"Rejected: 1" in rejected_index.data
     assert b'data-status="Rejected"' in rejected_index.data
 
-    output_resume = client.get(
+    assert client.get(
         "/output/resumes/Example_Co/123_senior_engineer/mp_resume_senior_engineer.pdf"
-    )
-    assert output_resume.status_code == 200
-    assert output_resume.data == b"%PDF-1.4 fake pdf"
-
-    output_cover_letter = client.get(
-        "/output/cover_letters/Example_Co/123_senior_engineer/mp_cover_letter_senior_engineer.pdf"
-    )
-    assert output_cover_letter.status_code == 200
-    assert output_cover_letter.data == b"%PDF-1.4 fake cover"
+    ).status_code == 404
 
     opened_urls: list[str] = []
     monkeypatch.setattr(webapp, "_open_url_in_chromium", opened_urls.append)
@@ -447,10 +392,6 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     assert response.status_code == 302
     assert client.get("/resumes/123").status_code == 404
     assert client.get("/cover-letters/123").status_code == 404
-
-    workbook = load_workbook(tracking_path)
-    sheet = workbook.active
-    assert sheet.max_row == 1
 
 
 def test_description_diff_reports_removed_text_without_wrapping_noise():
@@ -480,19 +421,6 @@ def test_description_diff_reports_removed_text_without_wrapping_noise():
 
 def test_regenerate_make_command_maps_modes_to_make_targets():
     assert webapp._regenerate_make_command(  # noqa: SLF001
-        regenerate_mode="resumes",
-        job_ids=["123"],
-    ) == ["make", "regenerate-resumes", "JOB_IDS=123"]
-    assert webapp._regenerate_make_command(  # noqa: SLF001
-        regenerate_mode="first_draft_resumes",
-        job_ids=["url-123", "456"],
-    ) == [
-        "make",
-        "first-draft-resumes",
-        "JOB_IDS=url-123 456",
-        "FIRST_DRAFT_FORCE=1",
-    ]
-    assert webapp._regenerate_make_command(  # noqa: SLF001
         regenerate_mode="aro_objects",
         job_ids=["url-123"],
     ) == [
@@ -515,7 +443,12 @@ def test_regenerate_make_command_maps_modes_to_make_targets():
     ) == ["make", "sync-draft-to-aro", "JOB_IDS=url-123"]
     with pytest.raises(ValueError, match="Unsupported regeneration mode"):
         webapp._regenerate_make_command(  # noqa: SLF001
-            regenerate_mode="cover_letters",
+            regenerate_mode="resumes",
+            job_ids=["123"],
+        )
+    with pytest.raises(ValueError, match="Unsupported regeneration mode"):
+        webapp._regenerate_make_command(  # noqa: SLF001
+            regenerate_mode="first_draft_resumes",
             job_ids=["123"],
         )
 
@@ -583,7 +516,7 @@ def test_store_application_resume_first_draft_updates_tracker_row(tmp_path: Path
     assert b'href="/resume-html/123"' in index.data
 
 
-def test_legacy_artifact_sync_preserves_first_draft_resume_when_aro_exists(
+def test_application_seed_update_preserves_first_draft_resume_when_aro_exists(
     tmp_path: Path,
 ):
     database_path = tmp_path / "applications.sqlite3"
@@ -626,8 +559,7 @@ def test_legacy_artifact_sync_preserves_first_draft_resume_when_aro_exists(
             """
         ).fetchone()
 
-    legacy_resume_path = tmp_path / "output/resumes/Example_Co/123/resume.pdf"
-    legacy_resume_path.parent.mkdir(parents=True)
+    legacy_resume_path = tmp_path / "external_resume.pdf"
     legacy_resume_path.write_bytes(_pdf_bytes("Legacy Java resume"))
     legacy_updated_at = datetime(2026, 6, 9, 15, 30, tzinfo=UTC)
     os.utime(
@@ -995,8 +927,7 @@ def test_actions_run_starts_background_regeneration(tmp_path: Path):
     response = client.post(
         "/actions/run",
         data={
-            "action_sync": "1",
-            "regenerate_mode": "resumes",
+            "regenerate_mode": "draft_resumes",
             "job_id": ["123", "123", "456"],
             "return_to": "/?q=Example",
         },
@@ -1006,19 +937,19 @@ def test_actions_run_starts_background_regeneration(tmp_path: Path):
     assert response.headers["Location"] == "/?q=Example"
     assert completed.wait(timeout=2)
     assert calls
-    assert calls[0]["sync_requested"] is True
-    assert calls[0]["regenerate_mode"] == "resumes"
+    assert "sync_requested" not in calls[0]
+    assert calls[0]["regenerate_mode"] == "draft_resumes"
     assert calls[0]["job_ids"] == ["123", "456"]
 
     status = client.get("/actions/status").get_json()
     assert status is not None
     assert status["runs"][0]["status"] == "completed"
     assert status["runs"][0]["return_code"] == 0
-    assert status["runs"][0]["title"] == "sync output + regenerate resumes for 2 job(s)"
+    assert status["runs"][0]["title"] == "regenerate draft resume for 2 job(s)"
     assert any("processing job 123" in message for message in status["runs"][0]["messages"])
 
 
-def test_first_draft_background_action_skips_legacy_output_sync(
+def test_background_action_runs_only_requested_new_workflow(
     tmp_path: Path,
     monkeypatch,
 ):
@@ -1030,23 +961,16 @@ def test_first_draft_background_action_skips_legacy_output_sync(
     def fake_regenerate_action(**kwargs):
         calls.append(("regenerate", kwargs["regenerate_mode"]))
 
-    def fake_sync_action(**kwargs):
-        calls.append(("sync", kwargs.get("label", "Syncing from output")))
-
     monkeypatch.setattr(webapp, "_run_regenerate_action", fake_regenerate_action)
-    monkeypatch.setattr(webapp, "_run_sync_action", fake_sync_action)
 
     run = webapp._create_background_action_run(title="generate first draft")  # noqa: SLF001
     webapp._run_background_action(  # noqa: SLF001
         run_id=run.run_id,
-        database_path=tmp_path / "applications.sqlite3",
-        output_dir=tmp_path / "output",
-        sync_requested=False,
-        regenerate_mode="first_draft_resumes",
+        regenerate_mode="draft_resumes",
         job_ids=["url-123"],
     )
 
-    assert calls == [("regenerate", "first_draft_resumes")]
+    assert calls == [("regenerate", "draft_resumes")]
     status = webapp.background_action_snapshots()[0]
     assert status["status"] == "completed"
 
@@ -1054,9 +978,6 @@ def test_first_draft_background_action_skips_legacy_output_sync(
     run = webapp._create_background_action_run(title="regenerate ARO object")  # noqa: SLF001
     webapp._run_background_action(  # noqa: SLF001
         run_id=run.run_id,
-        database_path=tmp_path / "applications.sqlite3",
-        output_dir=tmp_path / "output",
-        sync_requested=False,
         regenerate_mode="aro_objects",
         job_ids=["url-123"],
     )
@@ -1067,9 +988,6 @@ def test_first_draft_background_action_skips_legacy_output_sync(
     run = webapp._create_background_action_run(title="sync draft to ARO")  # noqa: SLF001
     webapp._run_background_action(  # noqa: SLF001
         run_id=run.run_id,
-        database_path=tmp_path / "applications.sqlite3",
-        output_dir=tmp_path / "output",
-        sync_requested=False,
         regenerate_mode="sync_draft_to_aro",
         job_ids=["url-123"],
     )
@@ -1155,7 +1073,7 @@ def test_add_application_loads_linkedin_job_and_starts_regeneration(
     )
     assert completed.wait(timeout=2)
     assert calls
-    assert calls[0]["sync_requested"] is False
+    assert "sync_requested" not in calls[0]
     assert calls[0]["regenerate_mode"] == "draft_resumes"
     assert calls[0]["job_ids"] == ["12345"]
 
@@ -1242,7 +1160,7 @@ def test_add_application_loads_other_job_url_and_starts_regeneration(
     assert response.headers["Location"] == "/applications/add?return_to=%2F%3Fstatus%3DNo"
     assert completed.wait(timeout=2)
     assert calls
-    assert calls[0]["sync_requested"] is False
+    assert "sync_requested" not in calls[0]
     assert calls[0]["regenerate_mode"] == "draft_resumes"
     assert calls[0]["job_ids"] == ["url-abc123def456"]
 

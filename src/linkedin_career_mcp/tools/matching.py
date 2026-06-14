@@ -10,11 +10,9 @@ from linkedin_career_mcp.errors import LinkedInCareerMcpError
 from linkedin_career_mcp.models import DatePosted
 from linkedin_career_mcp.workflows.matching import (
     DEFAULT_BLACKLIST_PATH,
-    DEFAULT_CURRENT_JOB_DESCRIPTION,
+    DEFAULT_MASTER_RESUME_NAME,
     DEFAULT_OUTPUT_DIR,
     DEFAULT_PROFILE_DIR,
-    DEFAULT_SOURCE_RESUME,
-    ArtifactMode,
     MatchingJobsWorkflow,
 )
 
@@ -32,16 +30,12 @@ def register_matching_tools(mcp: FastMCP, workflow: MatchingJobsWorkflow) -> Non
         ] = str(DEFAULT_BLACKLIST_PATH),
         output_dir: Annotated[
             str,
-            Field(description="Directory where tailored resumes and tracking files are written."),
+            Field(description="Directory containing the local SQLite tracking database."),
         ] = str(DEFAULT_OUTPUT_DIR),
-        source_resume_name: Annotated[
+        master_resume_name: Annotated[
             str,
-            Field(description="Profile resume file to use as the primary tailoring source."),
-        ] = DEFAULT_SOURCE_RESUME,
-        current_job_description_name: Annotated[
-            str,
-            Field(description="Current job description file used as context for SCJDiR tailoring."),
-        ] = DEFAULT_CURRENT_JOB_DESCRIPTION,
+            Field(description="Master resume YAML file used for search planning."),
+        ] = DEFAULT_MASTER_RESUME_NAME,
         location: Annotated[
             str,
             Field(
@@ -59,32 +53,22 @@ def register_matching_tools(mcp: FastMCP, workflow: MatchingJobsWorkflow) -> Non
         ] = 6,
         max_jobs: Annotated[
             int,
-            Field(ge=1, le=50, description="Maximum jobs to prepare artifacts for."),
+            Field(ge=1, le=50, description="Maximum jobs to seed into the database."),
         ] = 10,
-        artifact_mode: Annotated[
-            ArtifactMode,
-            Field(
-                description=(
-                    "Artifact generation mode. Use resumes-only while cover letters are manual."
-                ),
-            ),
-        ] = "resumes-only",
     ) -> dict[str, object]:
-        """Find remote or hybrid matching LinkedIn jobs and prepare application PDFs."""
+        """Find remote or hybrid matching LinkedIn jobs and seed application/JOD rows."""
 
         try:
             result = await workflow.run(
                 profile_dir=Path(profile_dir),
                 blacklist_path=Path(blacklist_path),
                 output_dir=Path(output_dir),
-                source_resume_name=source_resume_name,
-                current_job_description_name=current_job_description_name,
+                master_resume_name=master_resume_name,
                 location=location,
                 date_posted=date_posted,
                 limit_per_query=limit_per_query,
                 max_queries=max_queries,
                 max_jobs=max_jobs,
-                artifact_mode=artifact_mode,
             )
         except LinkedInCareerMcpError as exc:
             return {"error": str(exc)}
