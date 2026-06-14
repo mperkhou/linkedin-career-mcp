@@ -220,10 +220,14 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     assert 'id="action-sync"' in html
     assert "Sync from output" in html
     assert 'id="action-regenerate"' in html
-    assert "Regenerate resumes" in html
+    assert "Generate first-draft resumes" in html
+    assert 'name="regenerate_mode" value="first_draft_resumes"' in html
     assert "Cover letters" not in html
     assert "Regenerate docs" not in html
     assert 'id="action-status"' in html
+    assert 'id="action-status-progress-fill"' in html
+    assert 'id="action-status-toggle"' in html
+    assert 'id="action-status-close"' in html
     assert 'fetch("/actions/status"' in html
     assert 'class="same-page-download"' not in html
     assert "downloadInCurrentPage" not in html
@@ -428,6 +432,15 @@ def test_regenerate_make_command_maps_modes_to_make_targets():
         regenerate_mode="resumes",
         job_ids=["123"],
     ) == ["make", "regenerate-resumes", "JOB_IDS=123"]
+    assert webapp._regenerate_make_command(  # noqa: SLF001
+        regenerate_mode="first_draft_resumes",
+        job_ids=["url-123", "456"],
+    ) == [
+        "make",
+        "first-draft-resumes",
+        "JOB_IDS=url-123 456",
+        "FIRST_DRAFT_FORCE=1",
+    ]
     with pytest.raises(ValueError, match="Unsupported regeneration mode"):
         webapp._regenerate_make_command(  # noqa: SLF001
             regenerate_mode="cover_letters",
@@ -796,6 +809,39 @@ def test_actions_run_starts_background_regeneration(tmp_path: Path):
     assert any("processing job 123" in message for message in status["runs"][0]["messages"])
 
 
+def test_first_draft_background_action_skips_legacy_output_sync(
+    tmp_path: Path,
+    monkeypatch,
+):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    calls: list[tuple[str, str]] = []
+
+    def fake_regenerate_action(**kwargs):
+        calls.append(("regenerate", kwargs["regenerate_mode"]))
+
+    def fake_sync_action(**kwargs):
+        calls.append(("sync", kwargs.get("label", "Syncing from output")))
+
+    monkeypatch.setattr(webapp, "_run_regenerate_action", fake_regenerate_action)
+    monkeypatch.setattr(webapp, "_run_sync_action", fake_sync_action)
+
+    run = webapp._create_background_action_run(title="generate first draft")  # noqa: SLF001
+    webapp._run_background_action(  # noqa: SLF001
+        run_id=run.run_id,
+        database_path=tmp_path / "applications.sqlite3",
+        output_dir=tmp_path / "output",
+        sync_requested=False,
+        regenerate_mode="first_draft_resumes",
+        job_ids=["url-123"],
+    )
+
+    assert calls == [("regenerate", "first_draft_resumes")]
+    status = webapp.background_action_snapshots()[0]
+    assert status["status"] == "completed"
+
+
 def test_add_application_loads_linkedin_job_and_starts_regeneration(
     tmp_path: Path,
     monkeypatch,
@@ -857,6 +903,7 @@ def test_add_application_loads_linkedin_job_and_starts_regeneration(
     assert "LinkedIn URL" in add_html
     assert "Other" in add_html
     assert 'action="/applications/add/linkedin"' in add_html
+    assert 'action="/applications/add/other"' in add_html
     assert 'name="other_url"' in add_html
 
     response = client.post(
@@ -874,7 +921,7 @@ def test_add_application_loads_linkedin_job_and_starts_regeneration(
     assert completed.wait(timeout=2)
     assert calls
     assert calls[0]["sync_requested"] is False
-    assert calls[0]["regenerate_mode"] == "resumes"
+    assert calls[0]["regenerate_mode"] == "first_draft_resumes"
     assert calls[0]["job_ids"] == ["12345"]
 
     with webapp.connect_database(database_path) as connection:
@@ -894,6 +941,93 @@ def test_add_application_loads_linkedin_job_and_starts_regeneration(
     assert row["prompt_job_description"] == "Clean prompt JOD with practical Python work."
     assert row["date_posted"] == "2026-06-05"
     assert row["experience_level"] == "Mid-Senior level"
+
+
+def test_add_application_loads_other_job_url_and_starts_regeneration(
+    tmp_path: Path,
+    monkeypatch,
+):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    async def fake_fetch_generic_job_details(job_url: str) -> JobDetails:
+        assert job_url == "https://jobs.example.com/staff-engineer"
+        return JobDetails(
+            job_id="url-abc123def456",
+            title="Staff Platform Engineer",
+            company="Example Jobs",
+            listed_at="2026-06-14",
+            job_url="https://jobs.example.com/staff-engineer",
+            description="Raw generic JOD with platform reliability and secure API work.",
+            seniority_level="Senior",
+            source="generic_url",
+        )
+
+    monkeypatch.setattr(
+        webapp,
+        "_fetch_generic_job_details",
+        fake_fetch_generic_job_details,
+    )
+    monkeypatch.setattr(
+        webapp,
+        "_clean_prompt_job_description",
+        lambda description: "Clean generic JOD with platform reliability.",
+    )
+
+    calls = []
+    completed = threading.Event()
+
+    def runner(**kwargs):
+        calls.append(kwargs)
+        webapp._finish_background_action_run(  # noqa: SLF001
+            kwargs["run_id"],
+            status="completed",
+            return_code=0,
+        )
+        completed.set()
+
+    output_dir = tmp_path / "output"
+    database_path = output_dir / "tracking/applications.sqlite3"
+    app = create_app(
+        database_path=database_path,
+        output_dir=output_dir,
+        background_action_runner=runner,
+    )
+    client = app.test_client()
+
+    response = client.post(
+        "/applications/add/other",
+        data={
+            "other_url": "https://jobs.example.com/staff-engineer",
+            "return_to": "/?status=No",
+        },
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/applications/add?return_to=%2F%3Fstatus%3DNo"
+    assert completed.wait(timeout=2)
+    assert calls
+    assert calls[0]["sync_requested"] is False
+    assert calls[0]["regenerate_mode"] == "first_draft_resumes"
+    assert calls[0]["job_ids"] == ["url-abc123def456"]
+
+    with webapp.connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT company, job_title, linkedin_url, job_description,
+                   prompt_job_description, date_posted, experience_level
+            FROM applications
+            WHERE job_id = 'url-abc123def456'
+            """
+        ).fetchone()
+
+    assert row["company"] == "Example Jobs"
+    assert row["job_title"] == "Staff Platform Engineer"
+    assert row["linkedin_url"] == "https://jobs.example.com/staff-engineer"
+    assert row["job_description"] == "Raw generic JOD with platform reliability and secure API work."
+    assert row["prompt_job_description"] == "Clean generic JOD with platform reliability."
+    assert row["date_posted"] == "2026-06-14"
+    assert row["experience_level"] == "Senior"
 
 
 def _edit_form_data(html: str) -> dict[str, str]:

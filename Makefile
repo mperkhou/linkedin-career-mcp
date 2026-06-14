@@ -16,7 +16,7 @@ LIMIT_PER_QUERY ?= 10
 MAX_QUERIES ?= 6
 MAX_JOBS ?= 10
 
-.PHONY: install install-python install-browser install-ollama ollama-model venv skill-link match-jobs regenerate-resumes refresh-static-artifacts launch-website stop-website restart-website test lint clean
+.PHONY: install install-python install-browser install-ollama ollama-model venv skill-link match-jobs regenerate-resumes first-draft-resumes refresh-static-artifacts launch-website stop-website restart-website test lint clean
 
 install: install-python install-ollama ollama-model skill-link
 
@@ -67,6 +67,19 @@ match-jobs: venv
 
 regenerate-resumes: venv
 	$(VENV)/bin/linkedin-career-regenerate-resumes $(JOB_IDS) --linkedin-delay-seconds "$(LINKEDIN_DELAY_SECONDS)"
+
+first-draft-resumes: venv
+	@job_args=""; \
+	if [ "$(JOB_IDS)" != "all" ]; then \
+		for job_id in $(JOB_IDS); do \
+			job_args="$$job_args --job-id $$job_id"; \
+		done; \
+	fi; \
+	force_arg=""; \
+	if [ "$(FIRST_DRAFT_FORCE)" = "1" ] || [ "$(FIRST_DRAFT_FORCE)" = "true" ]; then \
+		force_arg="--force"; \
+	fi; \
+	$(VENV_PYTHON) scripts/application_resume_backport_first_drafts.py $$job_args $$force_arg
 
 refresh-static-artifacts: venv
 	$(VENV)/bin/linkedin-career-refresh-static-artifacts $(JOB_IDS)

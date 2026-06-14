@@ -28,6 +28,7 @@ from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer
 from linkedin_career_mcp.ats import AtsProxyScore, calculate_ats_proxy_score
 from linkedin_career_mcp.config import load_settings
 from linkedin_career_mcp.errors import LinkedInCareerMcpError
+from linkedin_career_mcp.generic_job_scraper import fetch_generic_job_details
 from linkedin_career_mcp.models import JobDetails
 from linkedin_career_mcp.providers.linkedin_public import (
     LinkedInPublicJobsProvider,
@@ -98,7 +99,10 @@ APPLICATION_EXTRA_COLUMNS = {
     "ats_missing_terms": "TEXT",
     "ats_updated_at": "TEXT",
 }
-REGENERATE_ACTION_TARGETS = {"resumes": "regenerate-resumes"}
+REGENERATE_ACTION_TARGETS = {
+    "resumes": "regenerate-resumes",
+    "first_draft_resumes": "first-draft-resumes",
+}
 COVER_LETTER_OBJECT_SCHEMA_VERSION = "cover_letter_object.v0.1"
 EMERALD_ACCENT = HexColor("#57ba86")
 RESUME_BODY_COLOR = HexColor("#111827")
@@ -588,6 +592,33 @@ def add_linkedin_application_from_url(
     return stored_job_id
 
 
+def add_generic_application_from_url(
+    *,
+    database_path: Path,
+    job_url: str,
+) -> str:
+    url = str(job_url or "").strip()
+    details = asyncio.run(_fetch_generic_job_details(url))
+    raw_description = str(details.description or "").strip() or None
+    if raw_description is None:
+        raise ValueError("No usable job description was found at that URL.")
+    prompt_description = _clean_prompt_job_description(raw_description)
+    upsert_application_artifact(
+        database_path=database_path,
+        job_id=details.job_id,
+        company=details.company or "",
+        job_title=details.title or "Job Posting",
+        linkedin_url=str(details.job_url or url),
+        resume_path=None,
+        cover_letter_path=None,
+        job_description=raw_description,
+        prompt_job_description=prompt_description,
+        date_posted=details.listed_at,
+        experience_level=details.seniority_level,
+    )
+    return details.job_id
+
+
 async def _fetch_linkedin_job_details(linkedin_url: str) -> JobDetails:
     settings = load_settings()
     provider = LinkedInPublicJobsProvider(
@@ -598,6 +629,15 @@ async def _fetch_linkedin_job_details(linkedin_url: str) -> JobDetails:
         return await provider.get_job_details(linkedin_url)
     finally:
         await provider.aclose()
+
+
+async def _fetch_generic_job_details(job_url: str) -> JobDetails:
+    settings = load_settings()
+    return await fetch_generic_job_details(
+        url=job_url,
+        user_agent=settings.user_agent,
+        timeout_seconds=settings.timeout_seconds,
+    )
 
 
 def _clean_prompt_job_description(description: str) -> str:
@@ -1228,12 +1268,13 @@ def _run_background_action(
             _run_sync_action(run_id=run_id, database_path=database_path, output_dir=output_dir)
         if regenerate_mode:
             _run_regenerate_action(run_id=run_id, regenerate_mode=regenerate_mode, job_ids=job_ids)
-            _run_sync_action(
-                run_id=run_id,
-                database_path=database_path,
-                output_dir=output_dir,
-                label="Refreshing tracker after regeneration",
-            )
+            if regenerate_mode != "first_draft_resumes":
+                _run_sync_action(
+                    run_id=run_id,
+                    database_path=database_path,
+                    output_dir=output_dir,
+                    label="Refreshing tracker after regeneration",
+                )
         _append_background_action_message(run_id, "Background action completed.")
         _finish_background_action_run(run_id, status="completed", return_code=0)
     except Exception as exc:
@@ -1292,7 +1333,10 @@ def _regenerate_make_command(*, regenerate_mode: str, job_ids: list[str]) -> lis
         raise ValueError(f"Unsupported regeneration mode: {regenerate_mode}")
     if not job_ids:
         raise ValueError("At least one job id is required for regeneration.")
-    return ["make", target, f"JOB_IDS={' '.join(job_ids)}"]
+    command = ["make", target, f"JOB_IDS={' '.join(job_ids)}"]
+    if regenerate_mode == "first_draft_resumes":
+        command.append("FIRST_DRAFT_FORCE=1")
+    return command
 
 
 def _project_root() -> Path:
@@ -1326,6 +1370,7 @@ def _background_action_title(
     if regenerate_mode:
         label = {
             "resumes": "regenerate resumes",
+            "first_draft_resumes": "generate first-draft resumes",
         }.get(regenerate_mode, "regenerate docs")
         parts.append(f"{label} for {len(job_ids)} job(s)")
     return " + ".join(parts) or "background action"
@@ -1441,11 +1486,33 @@ def create_app(
             database_path=database_path,
             output_dir=output_dir,
             sync_requested=False,
-            regenerate_mode="resumes",
+            regenerate_mode="first_draft_resumes",
             job_ids=[job_id],
             runner=background_action_runner,
         )
         flash(f"Added LinkedIn job {job_id}. Started background action: {run.title}.")
+        return redirect(_add_application_return_path(request.form.get("return_to")))
+
+    @app.post("/applications/add/other")
+    def add_other_application():
+        try:
+            job_id = add_generic_application_from_url(
+                database_path=database_path,
+                job_url=request.form.get("other_url", ""),
+            )
+        except (ValueError, LinkedInCareerMcpError) as exc:
+            flash(f"Other URL add failed: {exc}")
+            return redirect(_add_application_return_path(request.form.get("return_to")))
+
+        run = start_background_action(
+            database_path=database_path,
+            output_dir=output_dir,
+            sync_requested=False,
+            regenerate_mode="first_draft_resumes",
+            job_ids=[job_id],
+            runner=background_action_runner,
+        )
+        flash(f"Added job URL {job_id}. Started background action: {run.title}.")
         return redirect(_add_application_return_path(request.form.get("return_to")))
 
     @app.post("/actions/run")
@@ -1496,7 +1563,7 @@ def create_app(
         if row is None or not row["linkedin_url"]:
             abort(404)
         _open_url_in_chromium(str(row["linkedin_url"]))
-        flash("Opened LinkedIn job in Chromium.")
+        flash("Opened job URL in Chromium.")
         return redirect_to_index_state()
 
     @app.get("/resumes/<job_id>")
@@ -2636,23 +2703,65 @@ INDEX_TEMPLATE = """
       font-size: 12px;
     }
     .action-status {
-      background: #fff8e6;
-      border-bottom: 1px solid #f1d48a;
+      background: var(--surface);
+      border: 1px solid #f1d48a;
+      border-radius: 8px;
+      bottom: 14px;
+      box-shadow: 0 16px 44px rgba(20, 33, 45, .22);
       color: #5c4100;
-      padding: 10px 24px;
+      left: 24px;
+      margin: 0 auto;
+      max-width: 920px;
+      overflow: hidden;
+      padding: 0;
+      position: fixed;
+      right: 24px;
+      z-index: 20;
     }
+    .action-status[hidden] { display: none; }
     .action-status.is-running {
-      background: #eef8f6;
-      border-bottom-color: #c8dfdc;
+      border-color: #c8dfdc;
       color: var(--accent-strong);
+    }
+    .action-status.is-failed {
+      border-color: #e3b6b6;
+      color: #7b2424;
+    }
+    .action-status.is-collapsed .action-status-body {
+      display: none;
     }
     .action-status-header {
       align-items: center;
       display: flex;
       gap: 10px;
       justify-content: space-between;
+      min-height: 48px;
+      padding: 9px 12px;
     }
-    .action-status-title { font-weight: 750; }
+    .action-status-summary {
+      display: grid;
+      gap: 2px;
+      min-width: 0;
+    }
+    .action-status-title {
+      font-weight: 750;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .action-status-latest {
+      color: var(--muted);
+      font-size: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .action-status-controls {
+      align-items: center;
+      display: flex;
+      flex: 0 0 auto;
+      gap: 6px;
+    }
     .action-status-state {
       border: 1px solid currentColor;
       border-radius: 999px;
@@ -2661,14 +2770,62 @@ INDEX_TEMPLATE = """
       padding: 2px 8px;
       text-transform: uppercase;
     }
-    .action-status-messages {
-      margin: 8px 0 0;
-      max-height: 112px;
+    .action-status-icon-button {
+      align-items: center;
+      background: transparent;
+      border: 1px solid currentColor;
+      border-radius: 999px;
+      color: inherit;
+      display: inline-flex;
+      height: 26px;
+      justify-content: center;
+      padding: 0;
+      width: 26px;
+    }
+    .action-status-icon-button:hover {
+      background: rgba(11, 110, 105, .08);
+    }
+    .action-status-body {
+      background: #fffdf6;
+      border-bottom: 1px solid #f1d48a;
+      max-height: 150px;
       overflow: auto;
+      padding: 10px 14px;
+    }
+    .action-status.is-running .action-status-body {
+      background: #f5fbfa;
+      border-bottom-color: #c8dfdc;
+    }
+    .action-status-progress {
+      background: #e5eceb;
+      height: 4px;
+      overflow: hidden;
+    }
+    .action-status-progress-fill {
+      background: var(--accent);
+      display: block;
+      height: 100%;
+      transition: width .2s ease;
+      width: 100%;
+    }
+    .action-status.is-running .action-status-progress-fill {
+      animation: action-status-progress 1.35s linear infinite;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      width: 42%;
+    }
+    .action-status.is-failed .action-status-progress-fill {
+      background: #9d2f2f;
+    }
+    .action-status-messages {
+      margin: 0;
       padding-left: 18px;
     }
     .action-status-messages li {
       margin: 2px 0;
+    }
+    @keyframes action-status-progress {
+      from { transform: translateX(-120%); }
+      to { transform: translateX(260%); }
     }
     main { padding: 20px 24px 32px; }
     .flash {
@@ -2796,6 +2953,11 @@ INDEX_TEMPLATE = """
       .stats { flex-wrap: wrap; }
       main { padding: 12px; overflow-x: auto; }
       th { top: 104px; }
+      .action-status {
+        bottom: 8px;
+        left: 8px;
+        right: 8px;
+      }
     }
   </style>
 </head>
@@ -2864,9 +3026,9 @@ INDEX_TEMPLATE = """
           </label>
           <label class="action-choice">
             <input id="action-regenerate" type="checkbox" name="action_regenerate" value="1">
-            <span>Regenerate resumes</span>
+            <span>Generate first-draft resumes</span>
           </label>
-          <input type="hidden" name="regenerate_mode" value="resumes">
+          <input type="hidden" name="regenerate_mode" value="first_draft_resumes">
           <div class="actions-menu-footer">
             <span id="actions-selected-summary" class="actions-selected-summary">
               0 selected
@@ -2879,11 +3041,34 @@ INDEX_TEMPLATE = """
     <span id="selected-count" class="selected-count">0 selected</span>
   </div>
   <section id="action-status" class="action-status" hidden aria-live="polite">
-    <div class="action-status-header">
-      <span id="action-status-title" class="action-status-title">Background action</span>
-      <span id="action-status-state" class="action-status-state">Running</span>
+    <div id="action-status-body" class="action-status-body">
+      <ol id="action-status-messages" class="action-status-messages"></ol>
     </div>
-    <ol id="action-status-messages" class="action-status-messages"></ol>
+    <div class="action-status-progress" aria-hidden="true">
+      <span id="action-status-progress-fill" class="action-status-progress-fill"></span>
+    </div>
+    <div class="action-status-header">
+      <div class="action-status-summary">
+        <span id="action-status-title" class="action-status-title">Background action</span>
+        <span id="action-status-latest" class="action-status-latest"></span>
+      </div>
+      <div class="action-status-controls">
+        <span id="action-status-state" class="action-status-state">Running</span>
+        <button
+          id="action-status-toggle"
+          class="action-status-icon-button"
+          type="button"
+          aria-expanded="true"
+          aria-label="Collapse background status"
+        >v</button>
+        <button
+          id="action-status-close"
+          class="action-status-icon-button"
+          type="button"
+          aria-label="Close background status"
+        >x</button>
+      </div>
+    </div>
   </section>
   <main>
     {% with messages = get_flashed_messages() %}
@@ -3052,7 +3237,7 @@ INDEX_TEMPLATE = """
               </td>
               <td>
                 <div class="actions">
-                  <a class="preserve-state-link" href="/linkedin/{{ row.job_id }}">LinkedIn</a>
+                  <a class="preserve-state-link" href="/linkedin/{{ row.job_id }}">Job URL</a>
                   <a
                     class="preserve-state-link"
                     href="/descriptions/{{ row.job_id }}"
@@ -3222,8 +3407,12 @@ INDEX_TEMPLATE = """
     const actionsSelectedSummary = document.querySelector("#actions-selected-summary");
     const actionStatus = document.querySelector("#action-status");
     const actionStatusTitle = document.querySelector("#action-status-title");
+    const actionStatusLatest = document.querySelector("#action-status-latest");
     const actionStatusState = document.querySelector("#action-status-state");
     const actionStatusMessages = document.querySelector("#action-status-messages");
+    const actionStatusProgressFill = document.querySelector("#action-status-progress-fill");
+    const actionStatusToggle = document.querySelector("#action-status-toggle");
+    const actionStatusClose = document.querySelector("#action-status-close");
     const initialSort = {{ view_state.sort|tojson }};
     const initialDirection = {{ view_state.direction|tojson }};
     let companySortDirection = null;
@@ -3231,6 +3420,14 @@ INDEX_TEMPLATE = """
     let atsSortDirection = null;
     let resumeSortDirection = null;
     let coverLetterSortDirection = null;
+    let dismissedActionRunId =
+      window.sessionStorage.getItem("actionStatusDismissedRunId") || "";
+    let actionStatusCollapsed =
+      window.sessionStorage.getItem("actionStatusCollapsed") === "1";
+    let observedRunningRunId = null;
+    const reloadedActionRunIds = new Set(
+      JSON.parse(window.sessionStorage.getItem("actionStatusReloadedRunIds") || "[]"),
+    );
     function activeSortState() {
       if (companySortDirection) {
         return { sort: "company", direction: companySortDirection };
@@ -3560,24 +3757,83 @@ INDEX_TEMPLATE = """
         actionsForm.appendChild(input);
       });
     }
-    function renderActionStatus(run) {
-      if (!actionStatus || !actionStatusTitle || !actionStatusState || !actionStatusMessages) {
+    function persistReloadedActionRunIds() {
+      window.sessionStorage.setItem(
+        "actionStatusReloadedRunIds",
+        JSON.stringify([...reloadedActionRunIds].slice(-12)),
+      );
+    }
+    function applyActionStatusCollapsedState() {
+      if (!actionStatus || !actionStatusToggle) {
         return;
       }
-      if (!run) {
+      actionStatus.classList.toggle("is-collapsed", actionStatusCollapsed);
+      actionStatusToggle.textContent = actionStatusCollapsed ? "^" : "v";
+      actionStatusToggle.setAttribute(
+        "aria-expanded",
+        actionStatusCollapsed ? "false" : "true",
+      );
+      actionStatusToggle.setAttribute(
+        "aria-label",
+        actionStatusCollapsed
+          ? "Expand background status"
+          : "Collapse background status",
+      );
+    }
+    function latestActionMessage(run) {
+      const messages = run.messages || [];
+      return messages.length ? messages[messages.length - 1] : "";
+    }
+    function maybeReloadAfterCompletedAction(run) {
+      if (!run || !run.id) {
+        return;
+      }
+      if (run.status === "running") {
+        observedRunningRunId = run.id;
+        return;
+      }
+      if (
+        run.status === "completed"
+        && observedRunningRunId === run.id
+        && dismissedActionRunId !== run.id
+        && !reloadedActionRunIds.has(run.id)
+      ) {
+        reloadedActionRunIds.add(run.id);
+        persistReloadedActionRunIds();
+        window.setTimeout(() => window.location.reload(), 1200);
+      }
+    }
+    function renderActionStatus(run) {
+      if (
+        !actionStatus
+        || !actionStatusTitle
+        || !actionStatusLatest
+        || !actionStatusState
+        || !actionStatusMessages
+        || !actionStatusProgressFill
+      ) {
+        return;
+      }
+      if (!run || (run.id && dismissedActionRunId === run.id)) {
         actionStatus.hidden = true;
         return;
       }
       actionStatus.hidden = false;
+      actionStatus.dataset.runId = run.id || "";
       actionStatus.classList.toggle("is-running", run.status === "running");
+      actionStatus.classList.toggle("is-failed", run.status === "failed");
       actionStatusTitle.textContent = run.title || "Background action";
       actionStatusState.textContent = run.status || "running";
+      actionStatusLatest.textContent = latestActionMessage(run);
+      actionStatusProgressFill.style.width = run.status === "running" ? "" : "100%";
       actionStatusMessages.replaceChildren();
       (run.messages || []).slice(-8).forEach((message) => {
         const item = document.createElement("li");
         item.textContent = message;
         actionStatusMessages.appendChild(item);
       });
+      applyActionStatusCollapsedState();
+      maybeReloadAfterCompletedAction(run);
     }
     async function refreshActionStatus() {
       try {
@@ -3634,6 +3890,28 @@ INDEX_TEMPLATE = """
     }
     if (actionsForm) {
       actionsForm.addEventListener("submit", syncActionsFormJobIds);
+    }
+    if (actionStatusToggle) {
+      actionStatusToggle.addEventListener("click", () => {
+        actionStatusCollapsed = !actionStatusCollapsed;
+        window.sessionStorage.setItem(
+          "actionStatusCollapsed",
+          actionStatusCollapsed ? "1" : "0",
+        );
+        applyActionStatusCollapsedState();
+      });
+    }
+    if (actionStatusClose && actionStatus) {
+      actionStatusClose.addEventListener("click", () => {
+        dismissedActionRunId = actionStatus.dataset.runId || "";
+        if (dismissedActionRunId) {
+          window.sessionStorage.setItem(
+            "actionStatusDismissedRunId",
+            dismissedActionRunId,
+          );
+        }
+        actionStatus.hidden = true;
+      });
     }
     if (addApplicationButton) {
       addApplicationButton.addEventListener("click", () => {
@@ -3800,7 +4078,7 @@ ADD_APPLICATION_TEMPLATE = """
       <a href="{{ return_to }}">Back to tracker</a>
     </div>
     <h1>Add Application</h1>
-    <div class="muted">Load a public LinkedIn job into the tracker.</div>
+    <div class="muted">Load a public job posting into the tracker.</div>
   </header>
   <main>
     {% with messages = get_flashed_messages() %}
@@ -3825,17 +4103,19 @@ ADD_APPLICATION_TEMPLATE = """
       <button type="submit">Load</button>
     </form>
 
-    <div class="field-group">
+    <form method="post" action="/applications/add/other">
+      <input type="hidden" name="return_to" value="{{ return_to }}">
       <label>
         Other
         <input
           type="url"
           name="other_url"
           placeholder="https://company.example/jobs/software-engineer"
+          required
         >
       </label>
-      <button type="button" disabled>Load</button>
-    </div>
+      <button type="submit">Load</button>
+    </form>
   </main>
 </body>
 </html>
@@ -4681,7 +4961,7 @@ DESCRIPTION_COMPARE_TEMPLATE = """
       <div class="top-links">
         <a href="{{ return_to }}">Back to tracker</a>
         {% if row.linkedin_url %}
-          <a href="{{ row.linkedin_url }}" target="_blank" rel="noreferrer">LinkedIn</a>
+          <a href="{{ row.linkedin_url }}" target="_blank" rel="noreferrer">Job URL</a>
         {% endif %}
       </div>
       <h1>Edit Job Descriptions</h1>
