@@ -452,6 +452,31 @@ def test_import_output_artifacts_stores_workbook_rows_and_artifact_blobs(
     assert sheet.max_row == 1
 
 
+def test_description_diff_reports_removed_text_without_wrapping_noise():
+    parsed_description = (
+        "Intro text we keep. This boilerplate should be removed. "
+        "Role requires Python automation."
+    )
+    prompt_description = "Intro text we keep.\nRole requires Python automation."
+
+    removed_text = webapp._description_removed_text(  # noqa: SLF001
+        parsed_description,
+        prompt_description,
+    )
+    diff_rows = webapp._description_diff_rows(  # noqa: SLF001
+        parsed_description,
+        prompt_description,
+    )
+
+    assert removed_text == "This boilerplate should be removed."
+    assert len(diff_rows) == 1
+    assert diff_rows[0].status == "delete"
+    assert diff_rows[0].left_text == "This boilerplate should be removed."
+    assert diff_rows[0].right_text == ""
+    assert "Intro text we keep." not in removed_text
+    assert "Role requires Python automation." not in removed_text
+
+
 def test_regenerate_make_command_maps_modes_to_make_targets():
     assert webapp._regenerate_make_command(  # noqa: SLF001
         regenerate_mode="resumes",

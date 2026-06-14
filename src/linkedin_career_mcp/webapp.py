@@ -2162,40 +2162,40 @@ def _cover_letter_node_markup(node: Any) -> str:
     return inner
 
 
-def _description_lines(value: Any) -> list[str]:
-    return [line.rstrip() for line in str(value or "").splitlines()]
+def _description_tokens(value: Any) -> list[str]:
+    return str(value or "").split()
+
+
+def _join_description_tokens(tokens: list[str]) -> str:
+    return " ".join(tokens).strip()
 
 
 def _description_diff_rows(
     job_description: Any,
     prompt_job_description: Any,
 ) -> list[DescriptionDiffRow]:
-    left_lines = _description_lines(job_description)
-    right_lines = _description_lines(prompt_job_description)
+    left_tokens = _description_tokens(job_description)
+    right_tokens = _description_tokens(prompt_job_description)
     matcher = difflib.SequenceMatcher(
-        a=left_lines,
-        b=right_lines,
+        a=left_tokens,
+        b=right_tokens,
         autojunk=False,
     )
     rows: list[DescriptionDiffRow] = []
     for tag, left_start, left_end, right_start, right_end in matcher.get_opcodes():
         if tag == "equal":
             continue
-        left_chunk = left_lines[left_start:left_end]
-        right_chunk = right_lines[right_start:right_end]
-        span = max(len(left_chunk), len(right_chunk))
-        for index in range(span):
-            left_text = left_chunk[index] if index < len(left_chunk) else ""
-            right_text = right_chunk[index] if index < len(right_chunk) else ""
-            rows.append(
-                DescriptionDiffRow(
-                    status=tag,
-                    left_line_no=left_start + index + 1 if left_text else None,
-                    right_line_no=right_start + index + 1 if right_text else None,
-                    left_text=left_text,
-                    right_text=right_text,
-                )
+        left_text = _join_description_tokens(left_tokens[left_start:left_end])
+        right_text = _join_description_tokens(right_tokens[right_start:right_end])
+        rows.append(
+            DescriptionDiffRow(
+                status=tag,
+                left_line_no=left_start + 1 if left_text else None,
+                right_line_no=right_start + 1 if right_text else None,
+                left_text=left_text,
+                right_text=right_text,
             )
+        )
     return rows
 
 
@@ -5540,9 +5540,9 @@ DESCRIPTION_COMPARE_TEMPLATE = """
           <thead>
             <tr>
               <th class="status">Type</th>
-              <th>Parsed Line</th>
+              <th>Parsed Token</th>
               <th>Parsed Text</th>
-              <th>Prompt Line</th>
+              <th>Prompt Token</th>
               <th>Prompt Text</th>
             </tr>
           </thead>

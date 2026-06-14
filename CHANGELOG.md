@@ -21,6 +21,8 @@
 * Add no-API ARO regeneration, draft-to-ARO sync actions, ARO/resume sync
   status badges, and tracker table alignment coverage.
 * Decode escaped Streamdown rich-text spans in rendered resume headers.
+* Fix the job-description comparison view so wrapping differences do not make
+  kept prompt text appear as removed-by-trimming content.
 
 ## 1.29.0 - PR #29: Remove standalone artifact stylizers
 
