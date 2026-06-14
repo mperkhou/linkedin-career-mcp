@@ -103,7 +103,9 @@ rows without leaving the local workflow.
 ## Current Workflow
 
 ```text
-profile/* + .blacklist
+profile/MP-MASTER-RESUME.txt
+  -> master-resume-yaml Codex skill
+  -> profile/MASTER-RESUME.yml + .blacklist
   -> LLM search planner
   -> contextual query optimizer + SQLite outcome history
   -> MCP/service search layer
@@ -235,8 +237,11 @@ make install
 ```
 
 `make install` creates `.venv`, installs the package with development requirements,
-installs Ollama if needed, pulls the configured Ollama model, and links the Codex skill at
-`~/.codex/skills/linkedin-career-mcp`.
+installs Ollama if needed, pulls the configured Ollama model, and links the repository
+Codex skills under `~/.codex/skills/`:
+
+- `linkedin-career-mcp`
+- `master-resume-yaml`
 
 If you only want the Python environment:
 
@@ -493,10 +498,14 @@ src/linkedin_career_mcp/
 
 ## Inputs
 
-Place private profile material in `profile/`. The directory is intentionally ignored by Git.
-The source resume is the factual inventory for ATS-informed repair, so keep
-`profile/MP-RESUME-AGENTIC.pdf` expanded with skills, experience, education, certifications,
-and project details you are comfortable using as tailoring evidence.
+The tracked master profile inputs live in `profile/`. The current initialization path starts
+from `profile/MP-MASTER-RESUME.txt` and uses the `master-resume-yaml` Codex skill to create
+or refine `profile/MASTER-RESUME.yml` before any LinkedIn search planning or tailored
+resume/cover-letter generation.
+
+`profile/MASTER-RESUME.yml` is the factual inventory for later tailoring and ATS-informed
+repair, so keep it expanded with skills, experience, education, certifications, and project
+details you are comfortable using as tailoring evidence.
 
 Supported profile file types:
 

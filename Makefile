@@ -2,9 +2,8 @@ PYTHON ?= python3
 VENV := .venv
 VENV_PYTHON := $(VENV)/bin/python
 CODEX_SKILLS_DIR ?= $(HOME)/.codex/skills
-SKILL_NAME ?= linkedin-career-mcp
-SKILL_SRC := $(CURDIR)/skills/$(SKILL_NAME)
-SKILL_LINK := $(CODEX_SKILLS_DIR)/$(SKILL_NAME)
+SKILL_NAME ?=
+SKILL_NAMES ?= $(if $(SKILL_NAME),$(SKILL_NAME),linkedin-career-mcp master-resume-yaml)
 OLLAMA_MODEL ?= qwen3:4b
 OLLAMA_INSTALL_URL ?= https://ollama.com/install.sh
 WEBSITE_HOST ?= 127.0.0.1
@@ -35,19 +34,23 @@ $(VENV)/.installed: pyproject.toml
 	touch $(VENV)/.installed
 
 skill-link:
-	@test -f "$(SKILL_SRC)/SKILL.md" || (echo "Missing $(SKILL_SRC)/SKILL.md" && exit 1)
 	mkdir -p "$(CODEX_SKILLS_DIR)"
-	@if [ -L "$(SKILL_LINK)" ]; then \
-		current_target=$$(readlink "$(SKILL_LINK)"); \
-		if [ "$$current_target" != "$(SKILL_SRC)" ]; then \
-			ln -sfn "$(SKILL_SRC)" "$(SKILL_LINK)"; \
+	@for skill_name in $(SKILL_NAMES); do \
+		skill_src="$(CURDIR)/skills/$$skill_name"; \
+		skill_link="$(CODEX_SKILLS_DIR)/$$skill_name"; \
+		test -f "$$skill_src/SKILL.md" || (echo "Missing $$skill_src/SKILL.md" && exit 1); \
+		if [ -L "$$skill_link" ]; then \
+			current_target=$$(readlink "$$skill_link"); \
+			if [ "$$current_target" != "$$skill_src" ]; then \
+				ln -sfn "$$skill_src" "$$skill_link"; \
+			fi; \
+		elif [ -e "$$skill_link" ]; then \
+			echo "$$skill_link exists and is not a symlink"; \
+			exit 1; \
+		else \
+			ln -s "$$skill_src" "$$skill_link"; \
 		fi; \
-	elif [ -e "$(SKILL_LINK)" ]; then \
-		echo "$(SKILL_LINK) exists and is not a symlink"; \
-		exit 1; \
-	else \
-		ln -s "$(SKILL_SRC)" "$(SKILL_LINK)"; \
-	fi
+	done
 
 install-ollama:
 	@if command -v ollama >/dev/null 2>&1; then \
