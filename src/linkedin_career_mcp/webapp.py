@@ -3771,6 +3771,10 @@ INDEX_TEMPLATE = """
       const messages = run.messages || [];
       return messages.length ? messages[messages.length - 1] : "";
     }
+    function visibleActionRun(runs) {
+      const visibleRuns = (runs || []).filter((run) => run.id !== dismissedActionRunId);
+      return visibleRuns.find((run) => run.status === "running") || visibleRuns[0] || null;
+    }
     function maybeReloadAfterCompletedAction(run) {
       if (!run || !run.id) {
         return;
@@ -3831,7 +3835,7 @@ INDEX_TEMPLATE = """
           return;
         }
         const payload = await response.json();
-        renderActionStatus((payload.runs || [])[0] || null);
+        renderActionStatus(visibleActionRun(payload.runs));
       } catch {
         // Background status is a convenience layer; table controls should keep working.
       }
