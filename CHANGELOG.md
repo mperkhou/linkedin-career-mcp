@@ -1,5 +1,16 @@
 # linkedin-career-mcp CHANGELOG
 
+## 2.0.2 - PR #32: Refresh MRO data and active status handling
+
+* Refresh the master resume source text and YAML with expanded Oracle platform
+  automation, OCI, observability, network automation, and AI-assisted workflow
+  evidence.
+* Add a profile algorithm notes placeholder for future resume-selection
+  experiments.
+* Make the Flask tracker status panel prefer currently running background
+  actions over newer completed actions.
+* Bump the package version to `1.0.2`.
+
 ## 2.0.1 - PR #31: Package structure foundation
 
 * Refactor job-search models and service orchestration into `models/` and
