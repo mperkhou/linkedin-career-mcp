@@ -33,6 +33,22 @@ Use the absolute path to the repository checkout:
 
 The current tools search public LinkedIn job listings and fetch public job details. The server does not authenticate to LinkedIn, access private member data, or submit applications.
 
+## Release Versioning
+
+- When starting work that is likely to be committed, create or maintain the
+  top `CHANGELOG.md` entry as a major-change candidate by default. Assume the
+  work may be breaking until the final diff proves otherwise.
+- Before staging or committing, inspect the actual diff and choose the release
+  level deliberately:
+  - Breaking architecture, default workflow, schema, database, command, or user
+    behavior changes bump `MAJOR`, for example `2.0.3` to `3.0.0`.
+  - Non-breaking feature or substantial workflow improvements bump `MINOR` and
+    reset patch, for example `2.0.3` to `2.1.0`.
+  - Bug fixes and narrow repairs bump `PATCH`, for example `2.0.3` to `2.0.4`.
+- Keep the package version in `pyproject.toml` and the top `CHANGELOG.md`
+  heading aligned. Do not carry patch digits forward when promoting a change to
+  a minor or major release.
+
 ## ARO Workflow
 
 - Before LinkedIn search planning or resume drafting, use the `master-resume-yaml` skill to create or refine `profile/MASTER-RESUME.yml` from `profile/MP-MASTER-RESUME.txt`.

@@ -1,6 +1,6 @@
 # linkedin-career-mcp CHANGELOG
 
-## 2.1.3 - Finalize JOD-target ARO resume generation
+## 3.0.0 - Finalize JOD-target ARO resume generation
 
 * Promote the Oracle paragraph-evidence resume source into the canonical master
   resume text and YAML so ARO generation no longer depends on
@@ -13,7 +13,10 @@
   Core Technical Skills JOD matching for the rendered skills section.
 * Keep `MASTER_RESUME=<path>` workflow flexibility and replace the experimental
   JOD rewrite Makefile toggle with the final `JOD_MODEL=<model-id>` override.
-* Bump the package version to `2.1.3`.
+* Document SemVer release guardrails and add a metadata test that keeps the
+  package version aligned with the top changelog entry.
+* Bump the package version to `3.0.0` because the default resume-generation
+  architecture changed in a breaking way.
 
 ## 2.0.3 - Local checkpoint: Experimental JOD rewrite and senior resume layout
 
