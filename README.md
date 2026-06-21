@@ -45,6 +45,92 @@ Once the master resume exists, the job workflow is:
 
 User edits update the ARO as the workflow basis. The rendered draft resume is derived from the ARO, and the tracker shows when the stored ARO and rendered resume are out of sync.
 
+### JOD Target Rewrite Example
+
+The draft generator reads the tracker row, preferring `prompt_job_description` and
+falling back to `job_description`, then writes the generated ARO and rendered artifacts
+back to the same row. In code, the candidate read is effectively:
+
+```sql
+SELECT job_id, company, job_title, prompt_job_description, job_description,
+       application_resume_object
+FROM applications
+ORDER BY rowid;
+```
+
+The stored first draft updates fields such as `application_resume_object`,
+`resume_html_content`, `resume_content`, `resume_filename`, `source_resume_path`,
+`ats_score`, `ats_keyword_score`, and `ats_semantic_score`. The `source_*_path`
+fields are populated for explicit artifact-cache runs; normal Flask/Make runs can
+store the rendered HTML/PDF blobs in SQLite with blank source paths.
+
+A cached smoke run for `url-9823c4455364` used this row:
+
+```text
+company: Coinbase
+job_title: Staff Site Reliability Engineer, Core AI Infrastructure
+prompt_job_description: 3342 chars
+cache: tmp/final_jod_workflow_smoke_20260621T043327Z/artifacts
+ATS after generation: 90 overall, 90 keyword, 77 semantic
+```
+
+The first GLM 5.2 call turns the trimmed JOD into compact targets. The complete
+cached response is in
+`url-9823c4455364_jod_targets_response.json`; an excerpt looks like:
+
+```json
+{
+  "job_opening_description": {
+    "requirements_targets": [
+      "8+ years of experience automating and supporting AWS cloud infrastructure and network environments.",
+      "Hands-on experience with infrastructure-as-code tools such as Terraform, Ansible, Chef, Puppet, or Salt.",
+      "Proficiency in scripting or programming with Python, Bash, Ruby, or Go, including developing full-stack internal applications.",
+      "Experience building automation and tooling to streamline IT workflows, eliminate manual tasks, and improve deployment velocity."
+    ]
+  }
+}
+```
+
+The ARO stores that as `job_opening_description.schema_version:
+job_opening_description.v1` with ordered `requirements_targets`. The next GLM 5.2
+calls rewrite each rendered job from only that job's ARO source evidence. For a
+non-Oracle example, job order `2` used the cached prompt
+`url-9823c4455364_job_2_rewrite_prompt.txt`, which included:
+
+```text
+Target Job Requirements:
+- 8+ years of experience automating and supporting AWS cloud infrastructure and network environments.
+- Hands-on experience with infrastructure-as-code tools such as Terraform, Ansible, Chef, Puppet, or Salt.
+- Proficiency in scripting or programming with Python, Bash, Ruby, or Go, including developing full-stack internal applications.
+- Experience building automation and tooling to streamline IT workflows, eliminate manual tasks, and improve deployment velocity.
+
+Raw Experience (University of Iowa Hospitals and Clinics | Iowa City, IA | Engineering Support Specialist | Jan 2020 - May 2021):
+- Adhered to strict software development lifecycles to build custom Python and AutoIT automation scripts, streamlining system upgrades across hundreds of mission-critical platform nodes as full-cycle software engineering work.
+- Collaborated on the structural design and implementation of a DICOM anonymization server utilizing a modern React.js frontend interface as web application development.
+- Conducted performance troubleshooting, defect handling, and remote patch deployments on highly regulated medical platform surfaces through deep debugging and patching.
+
+CRITICAL RULES:
+1. Strictly use the exact numerical metrics and outcomes provided in the Raw Experience.
+2. Do NOT hallucinate new tools, soft skills, software competencies, or outcomes.
+3. Rephrase verbs and phrase structures to align with the Target Job Requirements.
+4. If a target cannot be supported by the Raw Experience, ignore that target.
+5. Format the final output as between 2 and 5 punchy bullet points utilizing the Google XYZ framework.
+```
+
+The cached response replaced that job's inherited source evidence with generated
+rendered bullets whose non-render metadata is intentionally empty:
+
+```text
+Accomplished streamlined system upgrades and eliminated manual IT workflows, as measured by mass patch rollouts across hundreds of mission-critical platform nodes, by writing custom Python and AutoIT automation scripts for remote software and update deployment.
+Accomplished the development of full-stack internal applications for highly regulated clinical teams, as measured by the successful implementation of a DICOM anonymization server over IPv4, by collaborating on the structural design and implementation utilizing a modern React.js frontend interface.
+Accomplished sustained operational stability in mission-critical hospital environments, as measured by effective performance troubleshooting and defect handling across HCIS radiology servers and computer systems, by administering IT and HIS systems and conducting remote patch deployments on regulated medical platform surfaces.
+```
+
+In the resulting ARO, job `2` rendered with three bullets, each set to
+`render: true`, `skills: []`, and `categories: {assigned: [], matched: []}`.
+Oracle follows the same Method 2 rewrite pattern, but its source evidence comes
+from the paragraph-level Oracle evidence stored directly in `profile/MASTER-RESUME.yml`.
+
 ## Flask Tracker
 
 The tracker is the daily operating surface. The main page shows job status, ATS score, JOD links, resume links, ARO/resume sync state, and manual cover-letter actions.

@@ -61,15 +61,15 @@
   <text class="small" x="310" y="360">LLM sees compact</text>
   <text class="small" x="310" y="377">skills + trimmed JOD</text>
   <path class="arrow" d="M 502 352 L 552 352" />
-  <rect class="local" x="566" y="315" width="210" height="74" />
-  <text class="text" x="586" y="340">Score bullets locally</text>
-  <text class="small" x="586" y="360">matched skills -> counts</text>
-  <text class="small" x="586" y="377">per job and bullet</text>
+  <rect class="ai" x="566" y="315" width="210" height="74" />
+  <text class="text" x="586" y="340">Build JOD targets</text>
+  <text class="small" x="586" y="360">compact requirements</text>
+  <text class="small" x="586" y="377">cached prompt/response</text>
   <path class="arrow" d="M 778 352 L 828 352" />
-  <rect class="local" x="842" y="315" width="190" height="74" />
-  <text class="text" x="862" y="340">Select render flags</text>
-  <text class="small" x="862" y="360">min/max bullet limits</text>
-  <text class="small" x="862" y="377">tie buckets preserved</text>
+  <rect class="ai" x="842" y="315" width="190" height="74" />
+  <text class="text" x="862" y="340">Rewrite jobs</text>
+  <text class="small" x="862" y="360">ARO source evidence</text>
+  <text class="small" x="862" y="377">min/max bullet limits</text>
   <path class="arrow" d="M 1035 352 L 1085 352" />
   <rect class="db" x="1100" y="315" width="120" height="74" />
   <text class="text" x="1118" y="340">Store ARO</text>

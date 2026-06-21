@@ -15,6 +15,8 @@
   JOD rewrite Makefile toggle with the final `JOD_MODEL=<model-id>` override.
 * Document SemVer release guardrails and add a metadata test that keeps the
   package version aligned with the top changelog entry.
+* Refresh README workflow diagrams and add a cached end-to-end JOD target rewrite
+  example showing database fields, GLM prompts, and generated non-Oracle bullets.
 * Bump the package version to `3.0.0` because the default resume-generation
   architecture changed in a breaking way.
 

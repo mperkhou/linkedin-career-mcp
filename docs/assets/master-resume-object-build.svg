@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1180" height="360" viewBox="0 0 1180 360" role="img" aria-labelledby="title desc">
   <title id="title">Master resume object build workflow</title>
-  <desc id="desc">Master resume text flows through Codex skills and guidelines into MASTER-RESUME.yml with links between experience bullets and Core Technical Skills categories.</desc>
+  <desc id="desc">Master resume text flows through Codex skills and guidelines into MASTER-RESUME.yml with source evidence linked to Core Technical Skills categories.</desc>
   <defs>
     <style>
       .bg { fill: #f7fbfa; }
@@ -39,7 +39,7 @@
   <text class="title" x="724" y="123">MASTER-RESUME.yml</text>
   <text class="text" x="724" y="153">Header and sections</text>
   <text class="text" x="724" y="176">Core skill categories</text>
-  <text class="text" x="724" y="199">Experience bullets</text>
+  <text class="text" x="724" y="199">Experience evidence</text>
   <text class="text" x="724" y="222">Render flags and limits</text>
   <text class="small" x="724" y="247">Canonical resume object</text>
 
@@ -51,5 +51,5 @@
   <text class="text" x="1060" y="220">Category</text>
 
   <path class="arrow" d="M 824 270 C 824 320 470 320 470 252" />
-  <text class="label" x="515" y="316">Iterate category/skill linkages until bullets and skill buckets agree</text>
+  <text class="label" x="515" y="316">Iterate category/skill linkages until evidence and skill buckets agree</text>
 </svg>
