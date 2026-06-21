@@ -25,6 +25,8 @@
   the removed-text and line-level diff panels.
 * Tweak README progress-panel callout placement so labels and status controls
   remain unobstructed.
+* Add v3.0.0 release notes, an experiment log, and an ADR documenting why the
+  architecture moved from bullet/paragraph selection to JOD-targeted generation.
 * Fix generic Greenhouse URL imports so company names can be inferred from page
   titles instead of falling back to the job-board hostname.
 * Bump the package version to `3.0.0` because the default resume-generation
