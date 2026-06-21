@@ -220,16 +220,20 @@ The default LLM provider is the API/OpenRouter path:
 
 - `LINKEDIN_CAREER_MCP_LLM_PROVIDER`: `api` or `ollama`
 - `LINKEDIN_CAREER_MCP_LLM_API_KEY`: API key for OpenRouter-compatible calls
-- `LINKEDIN_CAREER_MCP_LLM_API_MODEL`: model for ARO draft skill matching
+- `LINKEDIN_CAREER_MCP_LLM_API_MODEL`: default API model for non-draft-generation API calls
 - `LINKEDIN_CAREER_MCP_LLM_PLANNER_API_MODEL`: cheaper planner model for search-query generation
 - `LINKEDIN_CAREER_MCP_OLLAMA_MODEL`: local fallback model when provider is `ollama`
 
-Draft generation uses the JOD-target rewrite framework by default. The JOD target and
-experience-bullet rewrite calls default to OpenRouter model `z-ai/glm-5.2`; override with:
+Draft generation uses the JOD-target rewrite framework by default. Core Technical
+Skills matching, JOD target generation, and experience-bullet rewrite calls default
+to OpenRouter model `z-ai/glm-5.2`; override with:
 
 ```bash
 JOD_MODEL=<model-id> make regenerate-draft-resumes JOB_IDS="4424184336"
 ```
+
+Use `CORE_SKILL_MODEL=<model-id>` only when Core Technical Skills matching should
+use a different model from the JOD target and bullet rewrite calls.
 
 Use `MASTER_RESUME=<path>` to run the same ARO workflow against
 an alternate master resume object without replacing the canonical MRO.

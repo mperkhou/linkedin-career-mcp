@@ -178,15 +178,17 @@ def _is_job_posting(item: dict[str, object]) -> bool:
 
 def _fallback_job_fields(*, html: str, url: str) -> dict[str, str]:
     soup = BeautifulSoup(html, "html.parser")
+    page_title = _text(soup.select_one("title"))
     title = _clean_text(
         _meta_content(soup, "og:title")
         or _meta_content(soup, "twitter:title")
         or _text(soup.select_one("h1"))
-        or _text(soup.select_one("title"))
+        or page_title
     )
     company = _clean_text(
         _meta_content(soup, "og:site_name")
         or _meta_content(soup, "application-name")
+        or _company_from_page_title(page_title)
         or urlsplit(url).netloc.removeprefix("www.")
     )
     description = trafilatura.extract(
@@ -202,6 +204,14 @@ def _fallback_job_fields(*, html: str, url: str) -> dict[str, str]:
         "company": company,
         "description": _clean_description(description),
     }
+
+
+def _company_from_page_title(title: str) -> str:
+    match = re.search(r"\bat\s+(.+?)\s*$", title.strip(), flags=re.IGNORECASE)
+    if not match:
+        return ""
+    company = match.group(1).strip(" -|")
+    return _clean_text(company)
 
 
 def _meta_content(soup: BeautifulSoup, name: str) -> str:

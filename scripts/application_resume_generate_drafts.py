@@ -82,7 +82,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--api-model",
-        help="Override LINKEDIN_CAREER_MCP_LLM_API_MODEL for this draft-generation run.",
+        help=(
+            "OpenRouter model used for Core Technical Skills matching. "
+            "Defaults to --jod-model."
+        ),
     )
     parser.add_argument(
         "--artifact-dir",
@@ -136,9 +139,10 @@ async def main_async(argv: Sequence[str] | None = None) -> int:
     settings = load_settings()
     if settings.llm_provider.casefold().strip() != "api":
         raise RuntimeError("JOD-target resume generation requires the API/OpenRouter LLM provider.")
-    llm = build_llm_client(settings, api_model=args.api_model)
+    core_skill_model = args.api_model or args.jod_model
+    llm = build_llm_client(settings, api_model=core_skill_model)
     jod_llm = build_llm_client(settings, api_model=args.jod_model)
-    model = getattr(llm, "model", args.api_model or settings.llm_api_model)
+    model = getattr(llm, "model", core_skill_model)
     print(f"LLM: {settings.llm_provider}:{model}", file=sys.stderr, flush=True)
     jod_model = getattr(jod_llm, "model", args.jod_model)
     print(

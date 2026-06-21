@@ -31,6 +31,7 @@ def test_regenerate_draft_resumes_make_target_uses_final_jod_workflow() -> None:
 
     assert "scripts/application_resume_generate_drafts.py" in output
     assert '--master-resume "profile/MASTER-RESUME.yml"' in output
+    assert '--api-model "z-ai/glm-5.2"' in output
     assert '--jod-model "z-ai/glm-5.2"' in output
     assert "for job_id in url-123" in output
     assert 'job_args="$job_args --job-id $job_id"' in output
@@ -44,10 +45,12 @@ def test_regenerate_draft_resumes_make_target_honors_resume_and_model_overrides(
         "regenerate-draft-resumes",
         "JOB_IDS=url-123",
         "MASTER_RESUME=profile/custom.yml",
+        "CORE_SKILL_MODEL=core/example",
         "JOD_MODEL=example/model",
     )
 
     assert '--master-resume "profile/custom.yml"' in output
+    assert '--api-model "core/example"' in output
     assert '--jod-model "example/model"' in output
     assert "for job_id in url-123" in output
     assert "$job_args $force_arg" in output

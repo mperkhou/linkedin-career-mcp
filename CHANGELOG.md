@@ -13,10 +13,14 @@
   Core Technical Skills JOD matching for the rendered skills section.
 * Keep `MASTER_RESUME=<path>` workflow flexibility and replace the experimental
   JOD rewrite Makefile toggle with the final `JOD_MODEL=<model-id>` override.
+* Route Core Technical Skills matching through the same GLM 5.2 draft-generation
+  default as JOD target creation and experience bullet rewrites.
 * Document SemVer release guardrails and add a metadata test that keeps the
   package version aligned with the top changelog entry.
 * Refresh README workflow diagrams and add a cached end-to-end JOD target rewrite
   example showing database fields, GLM prompts, and generated non-Oracle bullets.
+* Fix generic Greenhouse URL imports so company names can be inferred from page
+  titles instead of falling back to the job-board hostname.
 * Bump the package version to `3.0.0` because the default resume-generation
   architecture changed in a breaking way.
 
