@@ -126,6 +126,7 @@ def annotate_screenshot(
     title: str,
     subtitle: str,
     callouts: list[Callout],
+    start_index: int = 1,
 ) -> None:
     base = Image.open(ASSET_DIR / source).convert("RGBA")
     base_w, base_h = base.size
@@ -150,7 +151,8 @@ def annotate_screenshot(
 
     overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
     overlay_draw = ImageDraw.Draw(overlay)
-    for index, callout in enumerate(callouts, start=1):
+    for offset, callout in enumerate(callouts):
+        index = start_index + offset
         x1, y1, x2, y2 = callout.box
         adjusted = (pad + x1, pad + y1, pad + x2, pad + y2)
         draw_rounded(overlay_draw, adjusted, fill_for(index), color_for(index), width=4, radius=12)
@@ -176,7 +178,8 @@ def annotate_screenshot(
         y += 21
     y += 16
 
-    for index, callout in enumerate(callouts, start=1):
+    for offset, callout in enumerate(callouts):
+        index = start_index + offset
         draw_badge(draw, (legend_x + 43, y + 15), index)
         lines = wrap(callout.label, width=34)
         for line in lines:
@@ -306,6 +309,19 @@ def main() -> None:
             Callout("Prompt JOD used for matching and targets", (796, 258, 1568, 864)),
             Callout("ATS summary for the current resume/JOD pair", (1276, 18, 1564, 166)),
         ],
+    )
+    annotate_screenshot(
+        "job-description-diff.png",
+        "job-description-diff-annotated.png",
+        "JOD Diff View",
+        "Same JOD editor after scrolling below the raw text panes to inspect trimming "
+        "and line-level comparison.",
+        [
+            Callout("Raw comparison panes continue directly above", (18, 96, 1568, 206)),
+            Callout("Text removed while creating the prompt JOD", (18, 194, 1568, 524)),
+            Callout("Line-level parsed-versus-prompt diff", (18, 536, 1568, 898)),
+        ],
+        start_index=5,
     )
     annotate_screenshot(
         "resume-editor.png",

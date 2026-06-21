@@ -21,6 +21,8 @@
   example showing database fields, GLM prompts, and generated prior-role bullets.
 * Replace cluttered README screenshot overlays with external legends and a shared
   numbered color palette across screenshots and workflow diagrams.
+* Add a companion README JOD editor screenshot showing the same page scrolled to
+  the removed-text and line-level diff panels.
 * Fix generic Greenhouse URL imports so company names can be inferred from page
   titles instead of falling back to the job-board hostname.
 * Bump the package version to `3.0.0` because the default resume-generation

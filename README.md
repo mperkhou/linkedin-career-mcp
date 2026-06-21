@@ -156,9 +156,14 @@ The tracker is the daily operating surface. The main page shows job status, ATS 
 
 ![Annotated main tracker](docs/assets/tracker-main-annotated.png)
 
-The JOD editor keeps the source text and prompt text visible side by side. Saving this view updates the JOD fields and recalculates ATS values from the current resume.
+The JOD editor keeps the source text and prompt text visible side by side. Saving
+this view updates the JOD fields and recalculates ATS values from the current
+resume. The second image is the same page scrolled below the raw text panes,
+where the tracker shows removed text and a line-level diff.
 
 ![Annotated JOD editor](docs/assets/job-description-editor-annotated.png)
+
+![Annotated JOD diff view](docs/assets/job-description-diff-annotated.png)
 
 The resume editor exposes ARO-backed fields and rich-text controls. Saving re-renders HTML/PDF and refreshes ATS scoring.
 
