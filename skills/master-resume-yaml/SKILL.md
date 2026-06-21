@@ -55,7 +55,7 @@ Keep the object renderer-friendly:
 - `core_technical_skills.bullet_points[*].items.additional` contains factual optional skills that may be selected later.
 - Every core skill bucket in the master YAML has `jod_matched_items: []`.
 - Job-specific ARO copies may fill `jod_matched_items` with matching `primary` and
-  `additional` skills so local code can score professional-experience bullets.
+  `additional` skills so the renderer can tailor the visible Core Technical Skills rows.
 - Do not add static `rendered_text` for core skills; the renderer computes visible rows from
   `items.primary` plus valid matched `items.additional` entries, avoiding duplicate primary
   skills.
@@ -129,12 +129,11 @@ After a trimmed JOD exists for a specific job, use
 1. Initialize an ARO as a reset deep copy of the MRO in `profile/MASTER-RESUME.yml`.
 2. Build a compact Core Technical Skills prompt from the ARO plus the trimmed JOD.
 3. Apply the returned `jod_matched_items` to the ARO.
-4. Let local code calculate `skills[*].jod_match_count` and
-   `bullet_point_total_match_count` across all professional-experience bullets.
-5. Pass the scored ARO through `scripts/application_resume_select_bullets.py` to set
-   first-draft `render` flags by descending positive score buckets without splitting ties.
+4. Generate the compact JOD object from the trimmed JOD.
+5. Rewrite rendered experience jobs from their ARO source evidence, including Oracle
+   paragraph evidence stored in the MRO.
 6. Store the first-draft ARO, rendered HTML, generated PDF, and ATS score for the job row
-   with `scripts/application_resume_store_first_draft.py`.
+   through the draft-generation workflow.
 
 Keep the master YAML neutral: empty `jod_matched_items`, zero count fields, and no
 job-specific pruning.

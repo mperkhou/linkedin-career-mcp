@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="560" viewBox="0 0 1280 560" role="img" aria-labelledby="title desc">
   <title id="title">ARO application workflow</title>
-  <desc id="desc">Search planning, LinkedIn retrieval, JOD trimming, ARO creation, skill matching, bullet selection, database storage, rendering, and editing workflow.</desc>
+  <desc id="desc">Search planning, LinkedIn retrieval, JOD trimming, ARO creation, skill matching, JOD-target bullet rewriting, database storage, rendering, and editing workflow.</desc>
   <defs>
     <style>
       .bg { fill: #f8fafc; }

@@ -38,7 +38,7 @@ The current tools search public LinkedIn job listings and fetch public job detai
 - Before LinkedIn search planning or resume drafting, use the `master-resume-yaml` skill to create or refine `profile/MASTER-RESUME.yml` from `profile/MP-MASTER-RESUME.txt`.
 - The master resume YAML is the Master Resume Object (MRO). It stores header fields, section render flags, core technical skill categories, and professional-experience bullets with category/skill linkages.
 - Use `make seed-jobs MAX_JOBS=<n>` for capped LinkedIn discovery runs. This plans search terms from the master resume, searches public LinkedIn jobs, fetches public job details, trims JOD text, and seeds rows into `output/tracking/applications.sqlite3`.
-- Use `make regenerate-draft-resumes JOB_IDS=<job_id>` to create first-draft ARO resume artifacts for stored rows. This deep-copies the MRO, asks the configured LLM to match Core Technical Skills to the trimmed JOD, locally scores experience bullets, selects enabled bullets, stores the ARO YAML, renders HTML/PDF, and recalculates ATS fields.
+- Use `make regenerate-draft-resumes JOB_IDS=<job_id>` to create first-draft ARO resume artifacts for stored rows. This deep-copies the MRO, asks the configured LLM to match Core Technical Skills to the trimmed JOD, generates compact JOD targets, rewrites rendered experience bullets from ARO source evidence, stores the ARO YAML, renders HTML/PDF, and recalculates ATS fields.
 - Use `make regenerate-aro-objects JOB_IDS=<job_id>` when `profile/MASTER-RESUME.yml` changed and stored ARO objects should be recreated from the latest MRO without API calls from existing Core Technical Skills match lists.
 - Use `make sync-draft-to-aro JOB_IDS=<job_id>` to render the stored ARO object into the database-backed draft HTML/PDF and refresh ATS scoring without re-querying the LLM.
 - Cover letters are manual Cover Letter Objects (CLOs) edited in the Flask tracker and rendered to stored PDF blobs on save.
@@ -50,6 +50,6 @@ The current tools search public LinkedIn job listings and fetch public job detai
 - `profile/MASTER-RESUME.yml` is the canonical Master Resume Object (MRO).
 - `output/tracking/applications.sqlite3` is the local application-state database.
 - JOD means Job Opening Description: the public text from a posting after parsing and trimming.
-- ARO means Application Resume Object: a per-job deep copy of the MRO plus JOD match lists, bullet scores, render flags, and edited content.
+- ARO means Application Resume Object: a per-job deep copy of the MRO plus JOD match lists, generated experience bullets, render flags, and edited content.
 - CLO means Cover Letter Object: manually edited rich text stored and rendered through the tracker.
 - Application tracking columns `applied_to` and `date_applied` are user-managed and are not automatically filled beyond the default `No`.

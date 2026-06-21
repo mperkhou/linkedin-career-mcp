@@ -11,7 +11,7 @@ import yaml
 from linkedin_career_mcp.application_resume import (
     CORE_SKILLS_PROMPT_JOD_MAX_CHARS,
     DEFAULT_MASTER_RESUME_PATH,
-    apply_core_skill_matches_and_score_experience,
+    apply_core_skill_jod_matches,
     build_core_skills_jod_match_prompt,
     initialize_application_resume_object,
 )
@@ -19,7 +19,7 @@ from linkedin_career_mcp.application_resume import (
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run ARO pass one: Core Skills JOD matching and experience scoring."
+        description="Run ARO pass one: Core Skills JOD matching."
     )
     parser.add_argument("--master-resume", type=Path, default=DEFAULT_MASTER_RESUME_PATH)
     parser.add_argument("--trimmed-jod", type=Path, required=True)
@@ -36,7 +36,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output",
         type=Path,
-        help="Write the scored ARO YAML to this path. Defaults to stdout when response is set.",
+        help="Write the matched ARO YAML to this path. Defaults to stdout when response is set.",
     )
     parser.add_argument("--max-jod-chars", type=int, default=CORE_SKILLS_PROMPT_JOD_MAX_CHARS)
     return parser
@@ -62,11 +62,11 @@ def main(argv: Sequence[str] | None = None) -> None:
         return
 
     response = args.core_skill_response.read_text(encoding="utf-8")
-    scored_aro = apply_core_skill_matches_and_score_experience(
+    matched_aro = apply_core_skill_jod_matches(
         application_resume=aro,
         core_skill_response=response,
     )
-    output_text = yaml.safe_dump(scored_aro, sort_keys=False, allow_unicode=False)
+    output_text = yaml.safe_dump(matched_aro, sort_keys=False, allow_unicode=False)
 
     if args.output is None:
         sys.stdout.write(output_text)

@@ -15,11 +15,11 @@ DEFAULT_MASTER_RESUME_PATH = Path("profile/MASTER-RESUME.yml")
 CORE_SKILLS_PROMPT_JOD_MAX_CHARS = 12_000
 JOD_TARGET_PROMPT_JOD_MAX_CHARS = 12_000
 DEFAULT_JOD_LLM_API_MODEL = "z-ai/glm-5.2"
-JOB_OPENING_DESCRIPTION_SCHEMA_VERSION = "job_opening_description.v0.1-experimental"
+JOB_OPENING_DESCRIPTION_SCHEMA_VERSION = "job_opening_description.v1"
 
 
 class ApplicationResumeError(WorkflowError):
-    """Raised when an application resume object cannot be initialized or scored."""
+    """Raised when an application resume object cannot be initialized or generated."""
 
 
 def initialize_application_resume_object(
@@ -75,7 +75,7 @@ Context:
 - ARO means Application Resume Object.
 - The local workflow has already created a hard copy of profile/MASTER-RESUME.yml.
 - You only update Core Technical Skills by selecting jod_matched_items.
-- The local workflow will apply your response to the ARO and score experience bullets.
+- The local workflow will apply your response to the ARO before generating experience bullets.
 
 Rules:
 - Preserve the category names exactly.
@@ -128,89 +128,12 @@ def apply_core_skill_jod_matches(
     return aro
 
 
-def calculate_experience_jod_match_counts(
-    application_resume: Mapping[str, Any],
-) -> dict[str, Any]:
-    """Fill per-skill and per-bullet JOD match counts from Core Technical Skills matches."""
-
-    aro = copy.deepcopy(dict(application_resume))
-    jod_matches_by_category = _jod_matched_items_by_category(aro)
-
-    for bullet in _professional_experience_bullets(aro):
-        bullet_total = 0
-        for skill_entry in _skill_entries(bullet):
-            category = str(skill_entry.get("category") or "").strip()
-            category_matches = jod_matches_by_category.get(_normalize(category), set())
-            count = sum(
-                1
-                for skill in _string_list(skill_entry.get("matched"))
-                if _normalize(skill) in category_matches
-            )
-            skill_entry["jod_match_count"] = count
-            bullet_total += count
-        bullet["bullet_point_total_match_count"] = bullet_total
-
-    return aro
-
-
-def apply_core_skill_matches_and_score_experience(
-    *,
-    application_resume: Mapping[str, Any],
-    core_skill_response: Any,
-) -> dict[str, Any]:
-    """Apply Core Technical Skills JOD matches, then score experience bullets locally."""
-
-    aro = apply_core_skill_jod_matches(
-        application_resume=application_resume,
-        core_skill_response=core_skill_response,
-    )
-    return calculate_experience_jod_match_counts(aro)
-
-
-def select_first_draft_experience_bullets(
-    application_resume: Mapping[str, Any],
-) -> dict[str, Any]:
-    """Set job and bullet render flags for the first-draft structured resume.
-
-    Bullet selection is deterministic and score-bucket based: positive-score bullets are
-    considered from highest score to lowest score, complete score ties are kept together,
-    and selection stops before a bucket that would exceed ``max_bullet_points``. Jobs with
-    explicit ``render: false`` stay disabled, but their candidate bullet flags are still
-    populated so later ATS experiments can enable the job without reselecting bullets.
-    """
-
-    aro = copy.deepcopy(dict(application_resume))
-    for job in _professional_experience_jobs(aro):
-        bullets = _job_bullets(job)
-        min_bullets = _nonnegative_int(job.get("min_bullet_points"))
-        max_bullets = _nonnegative_int(job.get("max_bullet_points"), default=len(bullets))
-        selected_indices = _select_positive_score_bullet_indices(
-            bullets=bullets,
-            max_bullets=max_bullets,
-        )
-        selected_index_set = set(selected_indices)
-
-        job["render"] = _render_enabled(job.get("render")) and min_bullets > 0
-        for index, bullet in enumerate(bullets):
-            bullet["render"] = index in selected_index_set
-        job["bullet_points"] = [
-            *(bullets[index] for index in selected_indices),
-            *(
-                bullet
-                for index, bullet in enumerate(bullets)
-                if index not in selected_index_set
-            ),
-        ]
-
-    return aro
-
-
 def build_jod_requirements_target_prompt(
     *,
     trimmed_job_description: str,
     max_jod_chars: int = JOD_TARGET_PROMPT_JOD_MAX_CHARS,
 ) -> str:
-    """Build the experimental prompt that distills a JOD into requirement targets."""
+    """Build the prompt that distills a JOD into requirement targets."""
 
     jod = _limit_text(trimmed_job_description, max_chars=max_jod_chars)
     return f"""
@@ -246,7 +169,7 @@ def create_job_opening_description_object(
     requirements_response: Any,
     model: str = "",
 ) -> dict[str, Any]:
-    """Create the compact experimental JOD object from an LLM requirements response."""
+    """Create the compact JOD object from an LLM requirements response."""
 
     targets = _extract_jod_target_texts(requirements_response)
     if not targets:
@@ -292,7 +215,7 @@ def job_opening_description_target_texts(
 def experience_jobs_for_jod_bullet_rewrite(
     application_resume: Mapping[str, Any],
 ) -> list[dict[str, Any]]:
-    """Return rendered, non-oracle jobs for the experimental JOD bullet rewrite."""
+    """Return rendered, non-oracle jobs for the JOD bullet rewrite."""
 
     jobs: list[dict[str, Any]] = []
     for job in _professional_experience_jobs(application_resume):
@@ -302,6 +225,20 @@ def experience_jobs_for_jod_bullet_rewrite(
             continue
         jobs.append(copy.deepcopy(job))
     return jobs
+
+
+def oracle_job_for_jod_bullet_rewrite(
+    application_resume: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return the rendered Oracle/source-evidence job for the JOD bullet rewrite."""
+
+    for job in _professional_experience_jobs(application_resume):
+        if _normalize_order(job.get("order")) != "1":
+            continue
+        if not _render_enabled(job.get("render")):
+            raise ApplicationResumeError("Oracle job is not enabled for rendering.")
+        return copy.deepcopy(job)
+    raise ApplicationResumeError("Oracle job order 1 was not found.")
 
 
 def build_experience_job_bullet_rewrite_prompt(
@@ -357,7 +294,7 @@ def replace_experience_job_bullets_from_text_response(
     job_order: Any,
     bullet_response: Any,
 ) -> dict[str, Any]:
-    """Replace one rendered non-oracle job's inherited bullets with generated bullets."""
+    """Replace one rendered job's inherited evidence bullets with generated bullets."""
 
     aro = copy.deepcopy(dict(application_resume))
     expected_order = _normalize_order(job_order)
@@ -368,8 +305,6 @@ def replace_experience_job_bullets_from_text_response(
     for job in jobs:
         if _normalize_order(job.get("order")) != expected_order:
             continue
-        if _normalize_order(job.get("order")) == "1":
-            raise ApplicationResumeError("Oracle job bullets are not replaced by this workflow.")
         if not _render_enabled(job.get("render")):
             raise ApplicationResumeError("Only rendered experience jobs can be rewritten.")
 
@@ -595,27 +530,6 @@ def _job_label(job: Mapping[str, Any]) -> str:
     return " | ".join(part for part in parts if part)
 
 
-def _jod_matched_items_by_category(
-    application_resume: Mapping[str, Any],
-) -> dict[str, set[str]]:
-    inventory_by_category = _core_skill_inventory_by_category(application_resume)
-    by_category: dict[str, set[str]] = {}
-    for bucket in _core_skill_buckets(application_resume):
-        category = str(bucket.get("category") or "").strip()
-        normalized_category = _normalize(category)
-        valid_items = {
-            _normalize(skill) for skill in inventory_by_category.get(normalized_category, [])
-        }
-        by_category[normalized_category] = {
-            normalized_skill
-            for normalized_skill in (
-                _normalize(skill) for skill in _string_list(bucket.get("jod_matched_items"))
-            )
-            if normalized_skill in valid_items
-        }
-    return by_category
-
-
 def _core_skill_buckets(application_resume: Mapping[str, Any]) -> list[dict[str, Any]]:
     core_skills = application_resume.get("core_technical_skills")
     if not isinstance(core_skills, Mapping):
@@ -676,30 +590,6 @@ def _dedupe_preserve_order(items: list[str]) -> list[str]:
             result.append(item)
             seen.add(normalized)
     return result
-
-
-def _select_positive_score_bullet_indices(
-    *,
-    bullets: Sequence[Mapping[str, Any]],
-    max_bullets: int,
-) -> list[int]:
-    if max_bullets <= 0:
-        return []
-
-    score_buckets: dict[int, list[int]] = {}
-    for index, bullet in enumerate(bullets):
-        score = _nonnegative_int(bullet.get("bullet_point_total_match_count"))
-        if score <= 0:
-            continue
-        score_buckets.setdefault(score, []).append(index)
-
-    selected: list[int] = []
-    for score in sorted(score_buckets, reverse=True):
-        bucket = score_buckets[score]
-        if len(selected) + len(bucket) > max_bullets:
-            break
-        selected.extend(bucket)
-    return selected
 
 
 def _nonnegative_int(value: Any, *, default: int = 0) -> int:

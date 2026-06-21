@@ -1,9 +1,10 @@
 schema_version: resume_application.v0.1-draft
 source:
-  pdf_path: profile/MP-MASTER-RESUME.pdf
+  pdf_path: null
   text_path: profile/MP-MASTER-RESUME.txt
   page_count: 6
-  extraction_method: manual text-source parsing for Jinja-ready resume YAML
+  extraction_method: manual text-source parsing with Oracle paragraph evidence preserved
+    as bullet points
 section_order:
 - header_top
 - professional_summary
@@ -16,7 +17,8 @@ header_top:
   render: true
   line_1_name_header_text: Max Perkhounkov
   line_2_header_text: ''
-  line_3_applicant_info_text: Iowa City, IA | 641-781-0477 | mperkhounkov1@gmail.com | linkedin.com/in/maxim-perkhounkov
+  line_3_applicant_info_text: Iowa City, IA | 641-781-0477 | mperkhounkov1@gmail.com
+    | linkedin.com/in/maxim-perkhounkov
   contact_items:
   - Iowa City, IA
   - 641-781-0477
@@ -28,15 +30,16 @@ header_top:
 professional_summary:
   render: true
   header_text: Professional Summary
-  paragraph: Analytical and metrics-driven Senior Platform Software Engineer with over 10
-    years of multi-disciplinary experience architecting scalable distributed systems, developer
-    tooling, and cloud automation frameworks. Proven track record leading enterprise-level
-    integrations, optimizing platform resilience, and implementing secure API and observability
-    pipelines across 40,000+ devices. Combines a strong background in advanced mathematics
-    and algorithmic problem-solving with hands-on expertise in CI/CD, Infrastructure as Code
-    (IaC), and modern multi-tenant cloud architectures.
-  summary_note: 'Note: This resume is custom tailored for every job position using my automated
-    agentic workflow found at: mperkhou/linkedin-career-mcp'
+  paragraph: Analytical and metrics-driven Senior Platform Software Engineer with
+    over 10 years of multi-disciplinary experience architecting scalable distributed
+    systems, developer tooling, and cloud automation frameworks. Proven track record
+    leading enterprise-level integrations, optimizing platform resilience, and implementing
+    secure API and observability pipelines across 40,000+ devices. Combines a strong
+    background in advanced mathematics and algorithmic problem-solving with hands-on
+    expertise in CI/CD, Infrastructure as Code (IaC), and modern multi-tenant cloud
+    architectures.
+  summary_note: 'Note: This resume is custom tailored for every job position using
+    my automated agentic workflow found at: mperkhou/linkedin-career-mcp'
 core_technical_skills:
   render: true
   header_text: Core Technical Skills
@@ -190,6 +193,10 @@ core_technical_skills:
       - success criteria definition
       - stakeholder alignment
       - product feedback loops
+      - AssetHub
+      - AssetMiner
+      - Confluence documentation
+      - operator-facing dashboards
     jod_matched_items: []
   - order: 4
     category: Automation & IaC
@@ -252,6 +259,12 @@ core_technical_skills:
       - runtime image publishing
       - execution-node operations
       - automation workflow templates
+      - ONDA
+      - onda-sm Python package
+      - onda-playbooks
+      - OLAM 2.1/2.2
+      - AWX fact-cache troubleshooting
+      - semantic versioning
     jod_matched_items: []
   - order: 5
     category: Data & Observability
@@ -334,6 +347,9 @@ core_technical_skills:
       - silent data loss detection
       - Slack/email alert routing
       - data-quality drift analysis
+      - OCEAN alert routing
+      - OpenSearch quality reports
+      - funicular visibility
     jod_matched_items: []
   - order: 6
     category: Security & Compliance
@@ -379,6 +395,7 @@ core_technical_skills:
       - read/write isolation
       - audit-centric validation
       - controlled API access
+      - secret-bearing argument rejection
     jod_matched_items: []
   - order: 7
     category: AI Tools
@@ -415,6 +432,9 @@ core_technical_skills:
       - OCI-focused MCP interfaces
       - portable Codex skills
       - AI-assisted workflow reuse
+      - OLAM MCP server
+      - repository guardrails
+      - CX/OCI/Jira skill bundles
     jod_matched_items: []
 professional_experience:
   render: true
@@ -435,3260 +455,1532 @@ professional_experience:
     - order: 1
       categories:
         assigned:
-        - AI-Assisted Engineering
-        - MCP
-        - Developer Productivity
+        - OLAM, Ansible, and ONDA
+        - OLAM Platform Operations and Ansible Automation
         matched:
-        - AI Tools
-        - Platform & API Engineering
-        - Languages & Frameworks
         - Automation & IaC
         - Data & Observability
+        - Distributed Systems & Cloud
+        - Platform & API Engineering
       skills:
-      - category: AI Tools
-        matched:
-        - agentic workflows
-        - MCP (Model Context Protocol)
-        - AI-assisted TDD
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - service orchestration
-        - validation frameworks
-        - repository workflow automation
-        jod_match_count: 0
-      - category: Languages & Frameworks
-        matched:
-        - unit testing frameworks
-        jod_match_count: 0
       - category: Automation & IaC
         matched:
-        - DevOps
-        - Python automation scripts
+        - Oracle Linux Automation Manager (OLAM)
+        - AWX
+        - Ansible
+        - ONDA
+        - OLAM 2.1/2.2
+        - dynamic inventory
+        - credential automation
+        - job scheduling automation
+        - rolling upgrade automation
         jod_match_count: 0
       - category: Data & Observability
         matched:
-        - Observability
+        - workflow logging
         jod_match_count: 0
-      text: Pioneered AI-native engineering workflows by building a custom Model Context Protocol
-        (MCP) server and skills repository to automate complex infrastructure validation and
-        monitoring; achieved an 80% reduction in TDD cycle time for platform features.
+      - category: Distributed Systems & Cloud
+        matched:
+        - execution environments
+        jod_match_count: 0
+      - category: Platform & API Engineering
+        matched:
+        - platform reliability
+        - production troubleshooting
+        - stakeholder enablement
+        jod_match_count: 0
+      text: 'OLAM Platform Operations and Ansible Automation: My OLAM work developed
+        into a broad platform-operations skill set across inventory automation, execution
+        environments, workflow reliability, stakeholder support, and production troubleshooting.
+        I worked on OLAM 2.1 and 2.2 behavior, including single-node deployment patterns,
+        scheduling fixes, funicular behavior, execution node rebuilds, rolling upgrades,
+        inventory sync automation, and stable-service restoration after stuck-job
+        failures. A recurring theme was taking operational problems that were visible
+        to stakeholders and converting them into durable automation or clearer platform
+        behavior, such as dynamic inventory creation, credential handling, workflow
+        logging, and better instance-group alignment. That work gave the PDAF team
+        a more reliable OLAM platform for internal automation and later ONDA workloads.'
       bullet_point_total_match_count: 0
-      render: false
+      render: true
     - order: 2
       categories:
         assigned:
-        - AI-Assisted Engineering
-        - MCP
-        - Developer Productivity
+        - OLAM, Ansible, and ONDA
+        - ONDA-SM Python Utility and Secret Management
         matched:
-        - AI Tools
+        - Automation & IaC
         - Platform & API Engineering
         - Security & Compliance
+        - Languages & Frameworks
       skills:
-      - category: AI Tools
+      - category: Automation & IaC
         matched:
-        - agentic workflows
-        - MCP (Model Context Protocol)
+        - Oracle Linux Automation Manager (OLAM)
+        - AWX
+        - Ansible
+        - ONDA
+        - onda-sm Python package
+        - restore automation
         jod_match_count: 0
       - category: Platform & API Engineering
         matched:
-        - infrastructure platform engineering
-        - validation frameworks
+        - platform reliability
+        - metadata services
+        - restore-point metadata
         jod_match_count: 0
       - category: Security & Compliance
         matched:
-        - Secure Coding Practices
-        - audit-oriented testing
-        - production write controls
-        - read/write isolation
-        - audit-centric validation
+        - secrets management
+        - encrypted secret storage
+        - secret redaction
         jod_match_count: 0
-      text: Engineered production-grade MCP integrations featuring explicit environment routing,
-        read/write isolation, and audit-centric validation to ensure secure infrastructure
-        operations.
+      - category: Languages & Frameworks
+        matched:
+        - Python
+        jod_match_count: 0
+      text: 'ONDA-SM Python Utility and Secret Management: Within ONDA, my deepest
+        implementation work was on the `onda-sm` Python package, especially the `scm_service`,
+        `secret_service`, and `restore_service` areas. I helped build the path where
+        device configurations are sanitized, secrets are separated and encrypted,
+        redacted configs are published to SCM, restore-point metadata is tracked,
+        and previous versions can be retrieved or re-keyed for restore workflows.
+        The initial Cisco implementation became the foundation for a vendor-extensible
+        design rather than a one-off script; later support for F5, WTI, Palo Alto
+        XML, Citrix/NetScaler, OpenGear, APC, Arista, Lantronix/Uplogix, Mellanox,
+        HP, and other families required comparatively incremental extractor work because
+        the core service model held up. This was an important design contribution
+        because it let the ONDA team scale from proof of concept toward production
+        use without rebuilding the entire pipeline for each vendor.'
       bullet_point_total_match_count: 0
-      render: false
+      render: true
     - order: 3
       categories:
         assigned:
-        - AI-Assisted Engineering
-        - MCP
-        - Developer Productivity
+        - OLAM, Ansible, and ONDA
+        - ONDA Playbooks, Data Collection, and AssetHub
         matched:
-        - AI Tools
-        - Platform & API Engineering
-        - Languages & Frameworks
         - Automation & IaC
+        - Platform & API Engineering
       skills:
-      - category: AI Tools
+      - category: Automation & IaC
         matched:
-        - agentic workflows
-        - MCP (Model Context Protocol)
-        - AI-assisted TDD
+        - Oracle Linux Automation Manager (OLAM)
+        - AWX
+        - Ansible
+        - ONDA
+        - job scheduling automation
+        - onda-playbooks
+        - network fact collection
+        - configuration backup automation
         jod_match_count: 0
       - category: Platform & API Engineering
         matched:
-        - infrastructure platform engineering
+        - platform reliability
+        - AssetHub
+        - API Integration
+        - metadata services
         jod_match_count: 0
-      - category: Languages & Frameworks
-        matched:
-        - pytest
-        - unit testing frameworks
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - CI/CD automation
-        jod_match_count: 0
-      text: Optimized TDD cycles by integrating AI agents with focused pytest execution, linting
-        gates, and project-specific coding standards.
+      text: 'ONDA Playbooks, Data Collection, and AssetHub: My `onda-playbooks` work
+        focused on the data-collection side of ONDA, complementing the backup playbook
+        framework that Rakesh took over after the early stages. I built and evolved
+        playbooks and roles for collecting Ansible facts and network resources, dispatching
+        work by vendor/type/model, caching normalized facts in OLAM/AWX, classifying
+        failures, and producing summary output that could be used to tune scheduled
+        runs. That framework expanded ONDA beyond backup replacement into a metadata
+        collection layer for Cisco IOS/IOS-XE, Cisco ASA, Cisco NX-OS/Nexus, Cisco
+        IOS-XR, F5, Arista, Citrix/NetScaler, OpenGear, and other devices where module
+        coverage supported it. I also started the AssetHub push path by shaping stored
+        facts into AssetHub-oriented records and building reusable send/push roles,
+        which connected ONDA''s device data to the larger goal of making ONDA an authoritative
+        source for OHAI network asset information.'
       bullet_point_total_match_count: 0
-      render: false
+      render: true
     - order: 4
       categories:
         assigned:
-        - AI-Assisted Engineering
-        - MCP
-        - Developer Productivity
+        - OLAM, Ansible, and ONDA
+        - ONDA Production Rollout and Reliability
         matched:
-        - AI Tools
-        - Platform & API Engineering
         - Automation & IaC
         - Data & Observability
+        - Platform & API Engineering
       skills:
-      - category: AI Tools
-        matched:
-        - agentic workflows
-        - MCP (Model Context Protocol)
-        - AI-assisted operational reporting
-        - MCP-backed reporting
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        jod_match_count: 0
       - category: Automation & IaC
         matched:
-        - DevOps
-        - Python automation scripts
-        - production rollout automation
+        - Oracle Linux Automation Manager (OLAM)
+        - AWX
+        - Ansible
+        - ONDA
+        - job scheduling automation
+        - source-control publishing automation
+        - configuration backup automation
         jod_match_count: 0
       - category: Data & Observability
         matched:
-        - Data Pipelines
+        - fact-cache analysis
         jod_match_count: 0
-      text: Developed reusable MCP-backed reporting pipelines to inspect automation health
-        and host coverage, significantly reducing manual review overhead during rollouts.
+      - category: Platform & API Engineering
+        matched:
+        - platform reliability
+        - production troubleshooting
+        jod_match_count: 0
+      text: 'ONDA Production Rollout and Reliability: As ONDA moved into scheduled
+        production-like workloads, my contribution shifted toward operational hardening
+        and feedback loops. I diagnosed SCM publish failures caused by shallow-clone
+        history and concurrent backup jobs, helped adjust cleanup behavior so failed
+        jobs would not leave executor storage full of temporary repositories, and
+        investigated AWX fact-cache behavior that was preventing reliable data refreshes.
+        The fact-cache investigation traced the issue to mtime comparisons under executor/controller
+        timezone skew, which led to a UTC rollout across OHAIPROD and OHAISTAGE on-prem
+        executor nodes. I also operationalized Cisco IOS data collection by building
+        schedule/reporting workflows, cleaning invalid schedule groups, staggering
+        runs, and using OLAM/AWX timing and failure analysis to tune switch and router
+        coverage.'
       bullet_point_total_match_count: 0
-      render: false
+      render: true
     - order: 5
       categories:
         assigned:
-        - AI-Assisted Engineering
-        - MCP
-        - Developer Productivity
+        - Chef Cookbooks and Policies
+        - Chef Policy Maintenance and Release Hygiene
         matched:
-        - AI Tools
-        - Platform & API Engineering
         - Automation & IaC
         - Data & Observability
-        - Security & Compliance
+        - Distributed Systems & Cloud
+        - Platform & API Engineering
+        - Languages & Frameworks
       skills:
-      - category: AI Tools
-        matched:
-        - agentic workflows
-        - MCP (Model Context Protocol)
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        jod_match_count: 0
       - category: Automation & IaC
         matched:
-        - dry-run workflows
+        - Chef (Cookbooks/Policies)
+        - policyfile automation
+        - Oracle Linux Automation Manager (OLAM)
+        - cookbook migration
         jod_match_count: 0
       - category: Data & Observability
         matched:
-        - Observability Dashboards
+        - Logstash
+        - alert routing
+        - OCI metrics monitoring
         jod_match_count: 0
-      - category: Security & Compliance
+      - category: Distributed Systems & Cloud
         matched:
-        - Secure Coding Practices
-        - production write controls
-        - dry-run validation
+        - execution environments
         jod_match_count: 0
-      text: Established secure operational skills with read-only defaults and dry-run previews,
-        enforcing explicit confirmation for all production-level modifications.
+      - category: Platform & API Engineering
+        matched:
+        - release engineering
+        jod_match_count: 0
+      - category: Languages & Frameworks
+        matched:
+        - Python
+        jod_match_count: 0
+      text: 'Chef Policy Maintenance and Release Hygiene: My Chef work centered on
+        keeping platform automation current while the supported systems and ownership
+        model changed around it. I updated and published Chef Server, OLAM, GASS,
+        and Logstash cookbook/policy changes for OCEAN routing, monitoring behavior,
+        gallery/artifact source migrations, version pins, yum repositories, POSIX/receptor
+        requirements, and DB execution environment support. This was not only cookbook
+        maintenance; it was the glue that kept monitoring scripts, OLAM automation,
+        Logstash behavior, and Chef-managed infrastructure aligned with the team structure
+        and artifact-source changes. The work reduced operational drift by moving
+        fixes into repeatable policy and cookbook releases instead of relying on manual
+        host edits.'
       bullet_point_total_match_count: 0
-      render: false
+      render: true
     - order: 6
       categories:
         assigned:
-        - AI-Assisted Engineering
-        - MCP
-        - Developer Productivity
+        - Chef Cookbooks and Policies
+        - Chef Monitoring, NADS, Census, and GASS
         matched:
-        - AI Tools
+        - Automation & IaC
+        - Data & Observability
         - Platform & API Engineering
-        - Security & Compliance
+        - Languages & Frameworks
       skills:
-      - category: AI Tools
+      - category: Automation & IaC
         matched:
-        - agentic workflows
-        - MCP (Model Context Protocol)
-        - AI governance
-        - governance-as-code
-        - Human-in-the-Loop (HITL) guardrails
-        - secure AI development environments
+        - Chef (Cookbooks/Policies)
+        - policyfile automation
+        - cookbook migration
+        jod_match_count: 0
+      - category: Data & Observability
+        matched:
+        - alert routing
+        - OCI metrics monitoring
         jod_match_count: 0
       - category: Platform & API Engineering
         matched:
-        - infrastructure platform engineering
-        - service orchestration
+        - release engineering
+        - AssetHub
         jod_match_count: 0
-      - category: Security & Compliance
+      - category: Languages & Frameworks
         matched:
-        - Secure Coding Practices
-        - human approval workflows
-        - production guardrails
-        - SSO-backed AI environments
+        - Python
         jod_match_count: 0
-      text: Operationalized "Governance-as-Code" for AI adoption, navigating enterprise data
-        policies to integrate secure, SSO-backed AI assistants into the engineering lifecycle
-        while maintaining Human-in-the-Loop (HITL) guardrails.
+      text: 'Chef Monitoring, NADS, Census, and GASS: A second Chef skill area was
+        operational monitoring and alert-noise reduction around CCM, CHUM, NADS, Chef
+        Server, GASS, and Census processes. I revisited scripts and policy placement
+        to reduce false positives, tune thresholds, publish updated monitoring logic,
+        and move monitoring responsibilities to the right OCEAN team paths. That work
+        included short-term fixes to reduce memory pressure in Chef Census/NADS paths
+        and longer-term cleanup around where CMDB/AssetHub attributes should be generated.
+        The practical effect was a quieter, more maintainable monitoring surface for
+        the PDAF team, where alerts were more likely to be actionable and easier for
+        the right team to own.'
       bullet_point_total_match_count: 0
-      render: false
+      render: true
     - order: 7
       categories:
         assigned:
-        - AI-Assisted Engineering
-        - MCP
-        - Developer Productivity
+        - Chef Cookbooks and Policies
+        - Asset Cache and CMDB Decommissioning
         matched:
-        - AI Tools
+        - Automation & IaC
+        - Data & Observability
+        - Distributed Systems & Cloud
         - Platform & API Engineering
-        - Languages & Frameworks
-        - Security & Compliance
       skills:
-      - category: AI Tools
+      - category: Automation & IaC
         matched:
-        - agentic workflows
-        - MCP (Model Context Protocol)
-        - Codex
-        - Cline
-        - AI governance
-        - secure AI development environments
+        - Chef (Cookbooks/Policies)
+        - policyfile automation
+        - cookbook migration
+        - ONDA
+        jod_match_count: 0
+      - category: Data & Observability
+        matched:
+        - Logstash
+        - OCI metrics monitoring
+        jod_match_count: 0
+      - category: Distributed Systems & Cloud
+        matched:
+        - Oracle Cloud Infrastructure (OCI)
         jod_match_count: 0
       - category: Platform & API Engineering
         matched:
-        - infrastructure platform engineering
+        - release engineering
+        - AssetHub
+        - AssetMiner
+        - API Integration
         jod_match_count: 0
-      - category: Languages & Frameworks
-        matched:
-        - CLI tooling
-        jod_match_count: 0
-      - category: Security & Compliance
-        matched:
-        - Secure Coding Practices
-        - SSO-backed AI environments
-        - data protection
-        jod_match_count: 0
-      text: Directed enterprise AI governance by migrating teams to secure, SSO-backed Codex/Cline
-        environments, ensuring robust data protection for sensitive codebases.
+      text: 'Asset Cache and CMDB Decommissioning: The Chef and asset-data work also
+        intersected with the broader move away from legacy CMDB dependencies. I investigated
+        Asset Cache and Ohai plugin paths, created development/test environments,
+        helped build OCI function/API front-end pieces for the PDAF Asset Cache Service,
+        and worked on cookbook/data changes that removed or moved CMDB-dependent behavior.
+        This work mattered because asset data was not just a reporting concern; it
+        affected monitoring, Chef node inventory, Logstash processing, AssetMiner
+        fields, and the eventual ONDA-to-AssetHub integration. The throughline was
+        replacing fragile legacy data dependencies with service-backed, testable,
+        and more explicit asset-data flows.'
       bullet_point_total_match_count: 0
-      render: false
+      render: true
     - order: 8
       categories:
         assigned:
-        - AI-Assisted Engineering
-        - MCP
-        - Developer Productivity
+        - OpenSearch, ElasticSearch, and AssetHub
+        - OpenSearch Operations and Monitoring
         matched:
-        - AI Tools
-        - Platform & API Engineering
-        - Distributed Systems & Cloud
         - Automation & IaC
         - Data & Observability
+        - Distributed Systems & Cloud
+        - Platform & API Engineering
       skills:
-      - category: AI Tools
+      - category: Automation & IaC
         matched:
-        - agentic workflows
-        - MCP (Model Context Protocol)
-        - AI-assisted ticket automation
+        - policyfile automation
+        jod_match_count: 0
+      - category: Data & Observability
+        matched:
+        - OpenSearch
+        - shard-count monitoring
+        - alert routing
+        - OCI metrics monitoring
+        jod_match_count: 0
+      - category: Distributed Systems & Cloud
+        matched:
+        - OpenSearch
+        - ElasticSearch
+        - Oracle Cloud Infrastructure (OCI)
+        - OCI Metrics
+        - cross-tenancy policies
         jod_match_count: 0
       - category: Platform & API Engineering
         matched:
-        - infrastructure platform engineering
-        - API Integration
-        - service orchestration
-        - production troubleshooting
-        - JIRA API integrations
-        - ticketing API integrations
-        - implementation stories
+        - AssetHub
+        - technical documentation
+        jod_match_count: 0
+      text: 'OpenSearch Operations and Monitoring: My OpenSearch work developed from
+        day-to-day service monitoring into broader operational design. I improved
+        OpenSearch readiness through disk and shard monitoring, data-quality reports,
+        doomsday monitors, max-field and index-pattern checks, remediation guides,
+        and action-plan documentation. I also helped adapt OpenSearch monitoring to
+        new OHAI and cross-tenancy realities, including OCI metrics, ONS policies,
+        Orasys Notification Service, and OCEAN routing. This gave the team better
+        visibility into both cluster health and data correctness, which is critical
+        because OpenSearch was serving as a shared observability backbone for multiple
+        platform workflows.'
+      bullet_point_total_match_count: 0
+      render: true
+    - order: 9
+      categories:
+        assigned:
+        - OpenSearch, ElasticSearch, and AssetHub
+        - OpenSearch Data Models, AssetHub, and AssetMiner
+        matched:
+        - Automation & IaC
+        - Data & Observability
+        - Distributed Systems & Cloud
+        - Platform & API Engineering
+      skills:
+      - category: Automation & IaC
+        matched:
+        - ONDA
+        jod_match_count: 0
+      - category: Data & Observability
+        matched:
+        - OpenSearch
+        - Logstash
+        jod_match_count: 0
+      - category: Distributed Systems & Cloud
+        matched:
+        - OpenSearch
+        - ElasticSearch
+        jod_match_count: 0
+      - category: Platform & API Engineering
+        matched:
+        - AssetHub
+        - AssetMiner
+        - metadata services
+        jod_match_count: 0
+      text: 'OpenSearch Data Models, AssetHub, and AssetMiner: I also worked on the
+        data-shape side of OpenSearch and AssetHub, where correctness depends on mappings,
+        templates, enrichment fields, and consistent document identity. I updated
+        component templates and index templates for AssetHub/AssetMiner data, added
+        metadata fields, and adjusted Logstash filters such as the data-priority server-all
+        path to use better document identifiers. This work connected infrastructure
+        metadata, asset records, and observability data into searchable structures
+        that downstream teams could trust. It also laid conceptual groundwork for
+        ONDA-collected device metadata flowing into AssetHub and, potentially, OpenSearch-backed
+        reporting.'
+      bullet_point_total_match_count: 0
+      render: true
+    - order: 10
+      categories:
+        assigned:
+        - 2023 ELK to OpenSearch Growth
+        - Migration Execution and Validation
+        matched:
+        - Data & Observability
+        - Distributed Systems & Cloud
+      skills:
+      - category: Data & Observability
+        matched:
+        - ELK-to-OpenSearch migrations
+        - historical data migration
+        - document-count validation
+        - OpenSearch
+        - Logstash
+        - Observability Dashboards
+        - alert routing
+        - OCI metrics monitoring
         jod_match_count: 0
       - category: Distributed Systems & Cloud
         matched:
         - Oracle Cloud Infrastructure (OCI)
-        - OCI telemetry
+        - OCI Search Service
         jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - Observability
-        - incident dashboards
-        - OCI telemetry
-        jod_match_count: 0
-      text: Built MCP-backed agentic workflows that connected OCI telemetry, Jira APIs, and
-        development sessions, converting troubleshooting evidence into structured incident
-        updates and implementation stories.
+      text: 'Migration Execution and Validation: The 2023 ELK/OpenSearch work shows
+        a clear personal development arc from maintaining individual monitors to understanding
+        end-to-end observability migration. I helped execute the migration from self-hosted
+        ELK to OCI Search Service/OpenSearch, including moving GPDAF, GBUCS, and broader
+        GBU indices, automating migration steps, refactoring migration tooling, validating
+        document counts, replicating `gbucs-docstore` data, deduplicating migrated
+        data, and closing historical-data gaps. That required a different engineering
+        posture from simple operations: the work had to prove that data had moved
+        correctly, that duplicate records were handled, and that monitoring remained
+        useful while the backend changed. It became the foundation for later OpenSearch,
+        Logstash, dashboard, and notification work.'
       bullet_point_total_match_count: 0
-      render: false
-    - order: 9
-      categories:
-        assigned:
-        - AI-Assisted Engineering
-        - MCP
-        - Developer Productivity
-        matched:
-        - AI Tools
-        - Platform & API Engineering
-        - Languages & Frameworks
-        - Automation & IaC
-      skills:
-      - category: AI Tools
-        matched:
-        - agentic workflows
-        - MCP (Model Context Protocol)
-        - Codex
-        - portable Codex skills
-        - AI-assisted workflow reuse
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - service orchestration
-        - validation frameworks
-        jod_match_count: 0
-      - category: Languages & Frameworks
-        matched:
-        - CLI tooling
-        - data transformation scripts
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        jod_match_count: 0
-      text: Packaged portable Codex skills with install checks, deterministic helper scripts,
-        and validation commands so AI-assisted operational workflows could be reused across
-        machines instead of living in chat transcripts.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 10
-      categories:
-        assigned:
-        - AI-Assisted Engineering
-        - MCP
-        - Developer Productivity
-        matched:
-        - AI Tools
-        - Platform & API Engineering
-        - Automation & IaC
-        - Data & Observability
-      skills:
-      - category: AI Tools
-        matched:
-        - agentic workflows
-        - MCP (Model Context Protocol)
-        - AI-assisted debugging
-        - AI-assisted ticket automation
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - remediation tooling
-        - repository workflow automation
-        - production troubleshooting
-        - ticketing API integrations
-        - ticket-ready remediation plans
-        - configuration drift analysis
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - Infrastructure as Code (IaC)
-        - DevOps
-        - Python automation scripts
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - cache timestamp analysis
-        jod_match_count: 0
-      text: Used AI-assisted investigation to trace automation failures from symptoms to source-control
-        races, cache timestamp behavior, and cross-environment configuration drift, producing
-        ticket-ready remediation plans.
-      bullet_point_total_match_count: 0
-      render: false
+      render: true
     - order: 11
       categories:
         assigned:
-        - AI-Assisted Engineering
-        - MCP
-        - Developer Productivity
+        - 2023 ELK to OpenSearch Growth
+        - Observability Stack Maturity
         matched:
-        - AI Tools
-        - Platform & API Engineering
         - Automation & IaC
         - Data & Observability
+        - Platform & API Engineering
+        - Security & Compliance
+        - Languages & Frameworks
       skills:
-      - category: AI Tools
-        matched:
-        - agentic workflows
-        - MCP (Model Context Protocol)
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - service orchestration
-        - repository workflow automation
-        jod_match_count: 0
       - category: Automation & IaC
         matched:
-        - DevOps
+        - policyfile automation
         jod_match_count: 0
       - category: Data & Observability
         matched:
-        - Observability
+        - ELK-to-OpenSearch migrations
+        - historical data migration
+        - document-count validation
+        - OpenSearch
+        - Logstash
+        - Filebeat
+        - index lifecycle management (ILM)
+        - Observability Dashboards
+        - alert routing
+        - OCI metrics monitoring
         jod_match_count: 0
-      text: Defined repository workflows for AI-assisted development that start from updated
-        main, enforce scoped branches, require tests and linting, update changelogs, and preserve
-        reviewable commit history.
+      - category: Platform & API Engineering
+        matched:
+        - technical documentation
+        jod_match_count: 0
+      - category: Security & Compliance
+        matched:
+        - incident response lifecycle
+        jod_match_count: 0
+      - category: Languages & Frameworks
+        matched:
+        - Python
+        jod_match_count: 0
+      text: 'Observability Stack Maturity: During the same period, I grew deeper into
+        the observability stack by improving ILM/index checks, non-bootstrapped index
+        monitors, new-basename detection, Logstash stability, Filebeat remediation,
+        dashboard setup, and incident workflows. The work moved older shell/email/SWIM-style
+        monitoring toward Python3-based and auto-resolving patterns, while also connecting
+        data-shipping failures to remediation guides and operator-facing alerts. That
+        breadth matters because observability is a chain: Filebeat and Logstash collect
+        and ship data, indices and lifecycle policies retain it correctly, dashboards
+        and monitors expose it, and incident systems route the resulting failures
+        to people who can act. The 2023 work shows that I moved from fixing isolated
+        pieces to reasoning about the whole chain.'
       bullet_point_total_match_count: 0
-      render: false
+      render: true
     - order: 12
       categories:
         assigned:
-        - AI-Assisted Engineering
-        - MCP
-        - Developer Productivity
+        - Logstash and Filebeat
+        - Logstash Reliability and Alerting
         matched:
-        - AI Tools
-        - Platform & API Engineering
-        - Distributed Systems & Cloud
         - Automation & IaC
         - Data & Observability
+        - Distributed Systems & Cloud
+        - Platform & API Engineering
+      skills:
+      - category: Automation & IaC
+        matched:
+        - cookbook migration
+        - policyfile automation
+        jod_match_count: 0
+      - category: Data & Observability
+        matched:
+        - Logstash
+        - Filebeat
+        - log ingestion pipelines
+        - dead-letter queue monitoring
+        - alert routing
+        - OCI metrics monitoring
+        jod_match_count: 0
+      - category: Distributed Systems & Cloud
+        matched:
+        - Oracle Cloud Infrastructure (OCI)
+        jod_match_count: 0
+      - category: Platform & API Engineering
+        matched:
+        - production troubleshooting
+        jod_match_count: 0
+      text: 'Logstash Reliability and Alerting: My Logstash work focused on reliability,
+        monitoring, and safer operational ownership. I worked on DLQ health checks,
+        IAD crash troubleshooting, network-output monitoring, load-balancer reachability,
+        OCI metric monitors, OCEAN routing, Orasys notification migration, and Logstash
+        cookbook/policy release paths. The work repeatedly tied low-level pipeline
+        behavior to the alerting and ownership systems around it, so failures would
+        not simply become silent data loss or noisy alerts with unclear owners. It
+        also contributed to a cleaner transition as monitoring responsibilities moved
+        across PDAF/PDIO team boundaries.'
+      bullet_point_total_match_count: 0
+      render: true
+    - order: 13
+      categories:
+        assigned:
+        - Logstash and Filebeat
+        - Filebeat and Parsing Pipelines
+        matched:
+        - Data & Observability
+        - Platform & API Engineering
+        - Languages & Frameworks
+      skills:
+      - category: Data & Observability
+        matched:
+        - Logstash
+        - Filebeat
+        - log ingestion pipelines
+        - OpenSearch
+        - PostgreSQL
+        - Observability Dashboards
+        jod_match_count: 0
+      - category: Platform & API Engineering
+        matched:
+        - AssetMiner
+        - technical documentation
+        jod_match_count: 0
+      - category: Languages & Frameworks
+        matched:
+        - YAML
+        jod_match_count: 0
+      text: 'Filebeat and Parsing Pipelines: The Filebeat side of the work involved
+        data onboarding and parser reliability, including creating Postgres prospectors,
+        updating roles, and addressing input data that could break YAML or pipeline
+        assumptions. These changes were smaller than the platform migrations, but
+        they mattered because Filebeat and Logstash are the first handoff points in
+        the observability pipeline; if they parse or route data incorrectly, OpenSearch
+        and dashboard layers inherit bad or missing records. I also worked on AssetMiner
+        Logstash filter changes, which connected data parsing to asset-data correctness
+        rather than just log transport.'
+      bullet_point_total_match_count: 0
+      render: true
+    - order: 14
+      categories:
+        assigned:
+        - Grafana, Dashboards, and Visual Operations
+        - OLAM and Funicular Dashboards
+        matched:
+        - Automation & IaC
+        - Data & Observability
+        - Platform & API Engineering
+      skills:
+      - category: Automation & IaC
+        matched:
+        - Oracle Linux Automation Manager (OLAM)
+        - AWX
+        - job scheduling automation
+        jod_match_count: 0
+      - category: Data & Observability
+        matched:
+        - Grafana
+        - Observability Dashboards
+        - scheduled-job dashboards
+        - OpenSearch
+        - workflow logging
+        jod_match_count: 0
+      - category: Platform & API Engineering
+        matched:
+        - stakeholder enablement
+        jod_match_count: 0
+      text: 'OLAM and Funicular Dashboards: My dashboard work was strongest around
+        OLAM and funicular visibility. I helped capture funicular logs, add timestamps
+        and organization fields, ship OLAM/AWX and funicular output into OpenSearch,
+        and create dashboards that made workflow status and automation behavior visible
+        to operators and stakeholders. This turned previously scattered log output
+        into an inspectable operational surface, which helped the team troubleshoot
+        funicular failures, workflow logging, and scheduled-job behavior more quickly.
+        The dashboards were not decorative; they were part of the feedback loop that
+        made automation safer to operate.'
+      bullet_point_total_match_count: 0
+      render: true
+    - order: 15
+      categories:
+        assigned:
+        - Grafana, Dashboards, and Visual Operations
+        - Monitoring Dashboards and Follow-Up Visibility
+        matched:
+        - Automation & IaC
+        - Data & Observability
+        - Platform & API Engineering
+      skills:
+      - category: Automation & IaC
+        matched:
+        - Oracle Linux Automation Manager (OLAM)
+        - job scheduling automation
+        - ONDA
+        jod_match_count: 0
+      - category: Data & Observability
+        matched:
+        - Grafana
+        - Observability Dashboards
+        - scheduled-job dashboards
+        - OpenSearch
+        - Logstash
+        - alert routing
+        - OCI metrics monitoring
+        jod_match_count: 0
+      - category: Platform & API Engineering
+        matched:
+        - stakeholder enablement
+        jod_match_count: 0
+      text: 'Monitoring Dashboards and Follow-Up Visibility: The later dashboard backlog
+        extended into scheduled jobs, failed-host visibility, OHAI OLAM monitoring,
+        and OpenSearch/Logstash deployment parity between environments. I tracked
+        and contributed to follow-up work where the team needed dashboards and monitors
+        to match the expanding OLAM and ONDA footprint. That included recognizing
+        when a dashboard was only the first step and when additional alerting, failed-host
+        reporting, or stakeholder feedback was needed to make the visual layer operationally
+        useful. This mindset connected dashboard work to actual support workflows
+        rather than treating it as a separate reporting task.'
+      bullet_point_total_match_count: 0
+      render: true
+    - order: 16
+      categories:
+        assigned:
+        - Prometheus, OCEAN, OCI Metrics, and Monitoring
+        - Alert Routing and Ownership
+        matched:
+        - Data & Observability
+        - Distributed Systems & Cloud
+        - Security & Compliance
+      skills:
+      - category: Data & Observability
+        matched:
+        - Prometheus
+        - OCI metrics monitoring
+        - alert routing
+        - OpenSearch
+        - Logstash
+        jod_match_count: 0
+      - category: Distributed Systems & Cloud
+        matched:
+        - Oracle Cloud Infrastructure (OCI)
+        - OCI Metrics
+        jod_match_count: 0
+      - category: Security & Compliance
+        matched:
+        - incident response lifecycle
+        jod_match_count: 0
+      text: 'Alert Routing and Ownership: A major cross-platform skill area was alert
+        routing and ownership cleanup. I helped update PDAF/PDIO monitoring paths
+        during team separation, including OCEAN teams, Slack/email routing, on-call
+        handover implications, OpenSearch-to-Orasys NS flows, and Prometheus alert
+        migration for Logstash servers. This work reduced ambiguity about who receives
+        an alert and what they are supposed to do with it, which is one of the most
+        important reliability improvements a platform team can make. It also gave
+        the team a more consistent pattern for moving alerts from legacy routing into
+        newer OCEAN and OraSys Notification Service paths.'
+      bullet_point_total_match_count: 0
+      render: true
+    - order: 17
+      categories:
+        assigned:
+        - Prometheus, OCEAN, OCI Metrics, and Monitoring
+        - Monitoring Coverage and Local Scripts
+        matched:
+        - AI Tools
+        - Automation & IaC
+        - Data & Observability
+        - Distributed Systems & Cloud
+        - Platform & API Engineering
+        - Languages & Frameworks
+      skills:
+      - category: AI Tools
+        matched:
+        - Oracle Code Assist (OCA)
+        jod_match_count: 0
+      - category: Automation & IaC
+        matched:
+        - Oracle Linux Automation Manager (OLAM)
+        - Chef (Cookbooks/Policies)
+        - cookbook migration
+        - policyfile automation
+        jod_match_count: 0
+      - category: Data & Observability
+        matched:
+        - Prometheus
+        - OCI metrics monitoring
+        - alert routing
+        - OpenSearch
+        - Logstash
+        - PostgreSQL
+        jod_match_count: 0
+      - category: Distributed Systems & Cloud
+        matched:
+        - Oracle Cloud Infrastructure (OCI)
+        - OCI Metrics
+        - managed PostgreSQL
+        jod_match_count: 0
+      - category: Platform & API Engineering
+        matched:
+        - technical documentation
+        - stakeholder enablement
+        jod_match_count: 0
+      - category: Languages & Frameworks
+        matched:
+        - Python
+        jod_match_count: 0
+      text: 'Monitoring Coverage and Local Scripts: I also built and released monitoring
+        coverage for OpenSearch, Logstash, Chef, OLAM, OCI metrics, managed PostgreSQL,
+        disk usage, stuck jobs, and OHAI OLAM nodes. Some of this work was script
+        development, some was cookbook/policy deployment, and some was remediation-guide
+        cleanup, but the common skill was turning observed failure modes into repeatable
+        checks and actionable output. The OLAM stuck-job monitoring and OHAI disk-usage
+        release are good examples: they took specific operational risk and made it
+        visible through reusable local monitoring. This made the PDAF team less dependent
+        on manual inspection and more capable of catching platform degradation before
+        stakeholders reported it.'
+      bullet_point_total_match_count: 0
+      render: true
+    - order: 18
+      categories:
+        assigned:
+        - AI-Assisted Workflows, Codex Skills, and MCP Servers
+        - ONDA-SM Cline Workflow
+        matched:
+        - AI Tools
+        - Automation & IaC
+        - Platform & API Engineering
+        - Security & Compliance
+        - Languages & Frameworks
+      skills:
+      - category: AI Tools
+        matched:
+        - Codex
+        - Cline
+        - MCP server development
+        - Codex skills
+        - MCP (Model Context Protocol)
+        - Oracle Code Assist (OCA)
+        - AI-assisted TDD
+        - AI-assisted operations
+        - Cline rules
+        jod_match_count: 0
+      - category: Automation & IaC
+        matched:
+        - onda-sm Python package
+        - ONDA
+        - restore automation
+        jod_match_count: 0
+      - category: Platform & API Engineering
+        matched:
+        - repository workflow automation
+        - Jira work tracking
+        jod_match_count: 0
+      - category: Security & Compliance
+        matched:
+        - secrets management
+        jod_match_count: 0
+      - category: Languages & Frameworks
+        matched:
+        - Python
+        - CLI tooling
+        - pytest-mock
+        jod_match_count: 0
+      text: 'ONDA-SM Cline Workflow: The earliest AI-assisted workflow evidence is
+        strongest in the ONDA-SM development cycle, where Cline helped accelerate
+        test-driven work around `scm_service`, `secret_service`, `restore_service`,
+        and SCM remote/local behavior. The important contribution was not simply using
+        an AI coding assistant; it was converting the experience into `.clinerules`
+        that made the workflow safer and more repeatable. Those rules emphasized real
+        constructors over bypassing `__init__`, `pytest-mock` and `monkeypatch` patterns,
+        fixture reuse, focused `pytest` iteration, full `make test` and `make lint`
+        validation, changelog hygiene, and careful review of lint output before changing
+        code. That let AI assistance improve TDD efficiency without lowering the quality
+        bar or creating unreviewable test scaffolding. (Representative Jiras and repo
+        evidence: GPDAF-18590, GPDAF-19120, GPDAF-19325, GPDAF-19378, GPDAF-20706;
+        `onda-sm/.clinerules`)'
+      bullet_point_total_match_count: 0
+      render: true
+    - order: 19
+      categories:
+        assigned:
+        - AI-Assisted Workflows, Codex Skills, and MCP Servers
+        - OLAM MCP and Codex Skills
+        matched:
+        - AI Tools
+        - Automation & IaC
+        - Data & Observability
+        - Distributed Systems & Cloud
+        - Platform & API Engineering
+        - Security & Compliance
+        - Languages & Frameworks
+      skills:
+      - category: AI Tools
+        matched:
+        - Codex
+        - Cline
+        - MCP server development
+        - Codex skills
+        - MCP (Model Context Protocol)
+        - AI-assisted operations
+        jod_match_count: 0
+      - category: Automation & IaC
+        matched:
+        - Oracle Linux Automation Manager (OLAM)
+        - AWX
+        - job scheduling automation
+        - CI/CD automation
+        jod_match_count: 0
+      - category: Data & Observability
+        matched:
+        - alert routing
+        jod_match_count: 0
+      - category: Distributed Systems & Cloud
+        matched:
+        - Oracle Cloud Infrastructure (OCI)
+        jod_match_count: 0
+      - category: Platform & API Engineering
+        matched:
+        - repository workflow automation
+        - Jira work tracking
+        jod_match_count: 0
+      - category: Security & Compliance
+        matched:
+        - secrets management
+        - human approval workflows
+        jod_match_count: 0
+      - category: Languages & Frameworks
+        matched:
+        - Python
+        - Ruff
+        jod_match_count: 0
+      text: 'OLAM MCP and Codex Skills: The `~/dev/dev-tools/olam-mcp` work formalized
+        Codex and MCP from ad hoc exploration into a repeatable operational tooling
+        layer. I built the OLAM MCP server and associated skills with strict source-control
+        workflows, version validation, Ruff/unit-test CI, GitLab helper scripts, package
+        validation, and guardrails such as explicit cluster routing, no silent production
+        default, read/write separation, admin-only control-plane tools, cluster binding
+        checks, central argument validation, secret-bearing argument rejection, and
+        tests around sensitive paths. I also built reusable scheduled-workflow reporting
+        skills and scripts that Codex could run against OLAM/AWX to inspect schedules,
+        child jobs, stdout tables, inventory coverage, failure classes, and resource
+        timings. That made AI-assisted investigation useful in production-adjacent
+        operations because it produced repeatable reports instead of one-off chat
+        exploration. (Representative Jiras and repo evidence: GPDAF-21090, GPDAF-21091,
+        GPDAF-21112; `~/dev/dev-tools/olam-mcp`)'
+      bullet_point_total_match_count: 0
+      render: true
+    - order: 20
+      categories:
+        assigned:
+        - AI-Assisted Workflows, Codex Skills, and MCP Servers
+        - Repository Guardrails, Codex Skills, and Repeatable Release Flow
+        matched:
+        - AI Tools
+        - Automation & IaC
+        - Platform & API Engineering
         - Security & Compliance
       skills:
       - category: AI Tools
         matched:
-        - agentic workflows
+        - Codex
+        - Cline
+        - MCP server development
+        - Codex skills
         - MCP (Model Context Protocol)
+        - AI-assisted operations
+        jod_match_count: 0
+      - category: Automation & IaC
+        matched:
+        - Oracle Linux Automation Manager (OLAM)
+        - onda-sm Python package
+        - ONDA
+        - CI/CD automation
+        - semantic versioning
         jod_match_count: 0
       - category: Platform & API Engineering
         matched:
-        - infrastructure platform engineering
-        - service orchestration
-        - remediation tooling
+        - repository workflow automation
+        - Jira work tracking
+        jod_match_count: 0
+      - category: Security & Compliance
+        matched:
+        - human approval workflows
+        jod_match_count: 0
+      text: 'Repository Guardrails, Codex Skills, and Repeatable Release Flow: The
+        broader Codex skill work turned good engineering habits into reusable workflows.
+        I generalized repository discipline into skills such as `git-repo-workflow`,
+        `onda-sm-workflow`, and the Jira workflow under `~/.codex/skills`, with expectations
+        to inspect repo state, protect uncommitted user changes, start from updated
+        `main`, require a `GPDAF-XXXXX` ticket, create scoped feature branches, commit
+        coherent units of work, update `CHANGELOG.md`, bump versions, run focused
+        verification, and use SemVer and conventional-commit style release notes.
+        The `olam-mcp` changelog and CI pipeline show this pattern concretely through
+        version checks, quality checks, unit tests, tag-release stages, and gitmoji-style
+        changelog entries. The skill contribution is reliability and repeatability:
+        future Codex-assisted work can follow the same path instead of depending on
+        memory or informal habits. (Representative Jiras and repo evidence: GPDAF-21112;
+        `~/.codex/skills/git-repo-workflow`, `~/.codex/skills/onda-sm-workflow`, `~/.codex/skills/jira-gbu-ticket`,
+        `~/dev/dev-tools/olam-mcp`)'
+      bullet_point_total_match_count: 0
+      render: true
+    - order: 21
+      categories:
+        assigned:
+        - AI-Assisted Workflows, Codex Skills, and MCP Servers
+        - CX, OCI, and Jira Skill Bundles
+        matched:
+        - AI Tools
+        - Automation & IaC
+        - Distributed Systems & Cloud
+        - Platform & API Engineering
+        - Security & Compliance
+      skills:
+      - category: AI Tools
+        matched:
+        - Codex
+        - Cline
+        - MCP server development
+        - Codex skills
+        - MCP (Model Context Protocol)
+        - Oracle Code Assist (OCA)
+        - AI-assisted operations
+        jod_match_count: 0
+      - category: Automation & IaC
+        matched:
+        - credential automation
         jod_match_count: 0
       - category: Distributed Systems & Cloud
         matched:
         - Oracle Cloud Infrastructure (OCI)
-        - OCI telemetry
         jod_match_count: 0
-      - category: Automation & IaC
+      - category: Platform & API Engineering
         matched:
-        - DevOps
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - Observability
-        - disk usage monitoring
+        - repository workflow automation
+        - metadata services
+        - Jira work tracking
         jod_match_count: 0
       - category: Security & Compliance
         matched:
-        - Secure Coding Practices
-        - production write controls
-        - human approval workflows
+        - secrets management
+        - secret redaction
         jod_match_count: 0
-      text: Built safe agent workflows for OCI operations that propose alarm, cache, and disk-space
-        remediations from telemetry while keeping state-changing actions behind human approval.
+      text: 'CX, OCI, and Jira Skill Bundles: I also built portable skill bundles
+        around CX-management, OCI-management, and Jira workflows so operational processes
+        could be reinstalled, validated, and followed consistently. The CX ticket
+        workflow emphasizes draft-first and read-only behavior, explicit separation
+        from live writes, no invented customer-impacting facts, no hardcoded local
+        defaults, and redaction of credentials or customer secrets. The OCI skills
+        emphasize tenancy alias resolution, read-only defaults, OCID redaction, production
+        write blocking unless explicitly allowed, and tightly controlled workflows
+        such as volume resize with disk inventory, dry-run output, confirmation tokens,
+        exact final-size confirmation, post-resize reporting, and node-side rescan
+        guidance. The Jira skill applies the same pattern to ticket work: read existing
+        issues before creating duplicates, draft and preview payloads, require explicit
+        live-write confirmation, discover fields through metadata, and avoid fabricating
+        owners, priorities, sprints, or custom field IDs. (Representative Jiras and
+        repo evidence: GPDAF-20684, GPDAF-21112; `~/dev/dev-tools/CX-management`,
+        `~/dev/dev-tools/OCI-management`, `~/.codex/skills/jira-gbu-ticket`)'
       bullet_point_total_match_count: 0
-      render: false
-    - order: 13
+      render: true
+    - order: 22
       categories:
         assigned:
-        - AI-Assisted Engineering
-        - MCP
-        - Developer Productivity
+        - Python Utilities and Internal Tooling
+        - Monitoring and Platform Scripts
         matched:
         - AI Tools
-        - Platform & API Engineering
         - Automation & IaC
+        - Data & Observability
+        - Distributed Systems & Cloud
+        - Platform & API Engineering
+        - Languages & Frameworks
       skills:
       - category: AI Tools
         matched:
-        - agentic workflows
+        - Oracle Code Assist (OCA)
+        jod_match_count: 0
+      - category: Automation & IaC
+        matched:
+        - Python automation scripts
+        - Oracle Linux Automation Manager (OLAM)
+        - Chef (Cookbooks/Policies)
+        - cookbook migration
+        jod_match_count: 0
+      - category: Data & Observability
+        matched:
+        - OpenSearch
+        - Logstash
+        - OCI metrics monitoring
+        jod_match_count: 0
+      - category: Distributed Systems & Cloud
+        matched:
+        - Oracle Cloud Infrastructure (OCI)
+        jod_match_count: 0
+      - category: Platform & API Engineering
+        matched:
+        - operational reporting APIs
+        jod_match_count: 0
+      - category: Languages & Frameworks
+        matched:
+        - Python
+        jod_match_count: 0
+      text: 'Monitoring and Platform Scripts: Across the review period, I built and
+        maintained Python and script-based utilities for OpenSearch quality reports,
+        Logstash/OCI monitoring, Chef CCM/CHUM/NADS tuning, OLAM local monitoring,
+        disk usage, and stuck-job detection. These scripts often began as direct responses
+        to operational pain, then became more repeatable through cookbook delivery,
+        gpdaf_utils release paths, or documented operator workflows. The common skill
+        was identifying where manual checks were being repeated and turning those
+        checks into runnable tooling with clearer output and ownership. That reduced
+        toil for the PDAF team and made monitoring behavior easier to maintain across
+        environments.'
+      bullet_point_total_match_count: 0
+      render: true
+    - order: 23
+      categories:
+        assigned:
+        - Python Utilities and Internal Tooling
+        - OLAM and ONDA Automation Utilities
+        matched:
+        - Automation & IaC
+        - Platform & API Engineering
+        - Security & Compliance
+        - Languages & Frameworks
+      skills:
+      - category: Automation & IaC
+        matched:
+        - Python automation scripts
+        - Oracle Linux Automation Manager (OLAM)
+        - AWX
+        - dynamic inventory
+        - credential automation
+        - job scheduling automation
+        - onda-sm Python package
+        - ONDA
+        - configuration backup automation
+        - restore automation
+        jod_match_count: 0
+      - category: Platform & API Engineering
+        matched:
+        - operational reporting APIs
+        - metadata services
+        jod_match_count: 0
+      - category: Security & Compliance
+        matched:
+        - secret redaction
+        jod_match_count: 0
+      - category: Languages & Frameworks
+        matched:
+        - Python
+        jod_match_count: 0
+      text: 'OLAM and ONDA Automation Utilities: The internal tooling work also included
+        OLAM and ONDA utilities such as rolling update scripts, inventory automation
+        helpers, dynamic inventory credential handling, token refresh fixes, schedule
+        reporting scripts, and the `onda-sm` package itself. These utilities sat close
+        to production workflows: they helped create inventories, sync inventory sources,
+        publish sanitized backups, manage restore metadata, validate schedules, and
+        report on AWX job output. The contribution was not just writing scripts, but
+        putting them into a usable operational context where they could support repeatable
+        OLAM and ONDA work. This is one of the clearest links between my Python development
+        and PDAF platform reliability.'
+      bullet_point_total_match_count: 0
+      render: true
+    - order: 24
+      categories:
+        assigned:
+        - OCI, Infrastructure, and Reliability Work
+        - OCI Metrics, Policies, Functions, and Cross-Tenancy Work
+        matched:
+        - Automation & IaC
+        - Data & Observability
+        - Distributed Systems & Cloud
+        - Platform & API Engineering
+      skills:
+      - category: Automation & IaC
+        matched:
+        - policyfile automation
+        - CI/CD automation
+        jod_match_count: 0
+      - category: Data & Observability
+        matched:
+        - managed database monitoring
+        - OpenSearch
+        - PostgreSQL
+        - alert routing
+        - OCI metrics monitoring
+        jod_match_count: 0
+      - category: Distributed Systems & Cloud
+        matched:
+        - Oracle Cloud Infrastructure (OCI)
+        - OCI Metrics
+        - OCI Functions
+        - OCI Alarms
+        - cross-tenancy policies
+        - managed PostgreSQL
+        jod_match_count: 0
+      - category: Platform & API Engineering
+        matched:
+        - platform reliability
+        - API Integration
+        jod_match_count: 0
+      text: 'OCI Metrics, Policies, Functions, and Cross-Tenancy Work: My OCI work
+        included metrics, alarms, notification services, cross-tenancy policy setup,
+        ONS topics, OCI functions, managed PostgreSQL monitoring, and access to OCI
+        infrastructure tooling such as Shepherd and BitBucket-backed deployments.
+        This work often sat between platform automation and observability: alerts
+        needed OCI policies to reach the right notification path, monitoring needed
+        metrics and functions to route correctly, and Asset Cache work needed OCI
+        function/API front-end pieces to make service-backed asset data practical.
+        The result was stronger infrastructure integration around PDAF and OHAI services,
+        especially as monitoring and OpenSearch paths moved across tenancy boundaries.'
+      bullet_point_total_match_count: 0
+      render: true
+    - order: 25
+      categories:
+        assigned:
+        - OCI, Infrastructure, and Reliability Work
+        - OLAM Infrastructure Reliability
+        matched:
+        - Automation & IaC
+        - Data & Observability
+        - Distributed Systems & Cloud
+        - Platform & API Engineering
+      skills:
+      - category: Automation & IaC
+        matched:
+        - Oracle Linux Automation Manager (OLAM)
+        - ONDA
+        jod_match_count: 0
+      - category: Data & Observability
+        matched:
+        - managed database monitoring
+        - PostgreSQL
+        - OCI metrics monitoring
+        jod_match_count: 0
+      - category: Distributed Systems & Cloud
+        matched:
+        - Oracle Cloud Infrastructure (OCI)
+        - OCI Metrics
+        - managed PostgreSQL
+        - execution environments
+        jod_match_count: 0
+      - category: Platform & API Engineering
+        matched:
+        - platform reliability
+        - stakeholder enablement
+        jod_match_count: 0
+      text: 'OLAM Infrastructure Reliability: The infrastructure reliability work
+        also covered OLAM execution nodes, on-prem executor state, OHAI/ICSTG/ICPROD
+        operations, managed PostgreSQL monitoring, storage needs, and federal/OHAI
+        monitoring coverage. I helped diagnose stuck jobs, add and rebuild execution
+        nodes, roll bug-fix upgrades, correct executor timezone skew, and organize
+        monitoring gaps for OHAI and federal OLAM environments. This kind of work
+        is less about a single feature and more about keeping the automation platform
+        healthy enough for all higher-level work to run on it. It supported both day-to-day
+        stakeholders and the newer ONDA production rollout.'
+      bullet_point_total_match_count: 0
+      render: true
+    - order: 26
+      categories:
+        assigned:
+        - Team Support, Stakeholders, and Knowledge Transfer
+        - Stakeholder Support and On-Call
+        matched:
+        - Automation & IaC
+        - Data & Observability
+        - Platform & API Engineering
+        - Security & Compliance
+      skills:
+      - category: Automation & IaC
+        matched:
+        - Oracle Linux Automation Manager (OLAM)
+        - Chef (Cookbooks/Policies)
+        - ONDA
+        jod_match_count: 0
+      - category: Data & Observability
+        matched:
+        - OpenSearch
+        - Logstash
+        - OCI metrics monitoring
+        jod_match_count: 0
+      - category: Platform & API Engineering
+        matched:
+        - technical documentation
+        - stakeholder enablement
+        - Jira work tracking
+        jod_match_count: 0
+      - category: Security & Compliance
+        matched:
+        - incident response lifecycle
+        jod_match_count: 0
+      text: 'Stakeholder Support and On-Call: A steady part of my contribution was
+        production support, on-call participation, and stakeholder assistance across
+        OLAM, OpenSearch, monitoring, Logstash, Chef, and ONDA. These tickets often
+        look repetitive in Jira, but they represent the operational load that keeps
+        platforms useful while project work continues. I helped troubleshoot urgent
+        OLAM failures, support stakeholders through monitoring migrations, handle
+        recurring on-call responsibilities, and prepare follow-up work when support
+        incidents revealed systemic gaps. This work connected engineering delivery
+        to actual service ownership.'
+      bullet_point_total_match_count: 0
+      render: true
+    - order: 27
+      categories:
+        assigned:
+        - Team Support, Stakeholders, and Knowledge Transfer
+        - Documentation, Demos, Training, and Handoff
+        matched:
+        - Automation & IaC
+        - Data & Observability
+        - Platform & API Engineering
+        - Security & Compliance
+      skills:
+      - category: Automation & IaC
+        matched:
+        - Oracle Linux Automation Manager (OLAM)
+        - ONDA
+        - restore automation
+        jod_match_count: 0
+      - category: Data & Observability
+        matched:
+        - OpenSearch
+        - OCI metrics monitoring
+        jod_match_count: 0
+      - category: Platform & API Engineering
+        matched:
+        - technical documentation
+        - stakeholder enablement
+        - Confluence documentation
+        jod_match_count: 0
+      - category: Security & Compliance
+        matched:
+        - incident response lifecycle
+        jod_match_count: 0
+      text: 'Documentation, Demos, Training, and Handoff: I also contributed through
+        documentation, demos, remediation guides, Confluence pages, training, and
+        handoff work. Examples include OpenSearch remediation guides, OLAM/ONDA restore
+        documentation, ONDA restore demo preparation, monitoring handoffs, and training/certification
+        items that supported the team''s ability to operate or transfer ownership.
+        This work matters because platform systems only become sustainable when the
+        knowledge is written down, tested in front of stakeholders, and handed off
+        in a way that others can use. It also helped connect my implementation work
+        to team adoption rather than leaving it as isolated code.'
+      bullet_point_total_match_count: 0
+      render: true
+    - order: 28
+      categories:
+        assigned:
+        - ONDA Project Contribution
+        - What ONDA Is
+        matched:
+        - Automation & IaC
+        - Platform & API Engineering
+        - Security & Compliance
+        - Languages & Frameworks
+      skills:
+      - category: Automation & IaC
+        matched:
+        - ONDA
+        - network automation
+        - Oracle Linux Automation Manager (OLAM)
+        - job scheduling automation
+        - configuration backup automation
+        - restore automation
+        jod_match_count: 0
+      - category: Platform & API Engineering
+        matched:
+        - vendor-extensible service design
+        - AssetHub
+        - metadata services
+        jod_match_count: 0
+      - category: Security & Compliance
+        matched:
+        - secrets management
+        - secret redaction
+        jod_match_count: 0
+      - category: Languages & Frameworks
+        matched:
+        - Python
+        jod_match_count: 0
+      text: 'What ONDA Is: ONDA, or OLAM Network Device Automation, is the OLAM-based
+        replacement for HP Network Automation in OHAI network device management. The
+        ONDA v1 initiative frames the project as replacing and extending HPNA with
+        OLAM-driven scheduled backups, restore, bulk configuration changes, sanitized
+        SCM storage, secret handling, metadata collection, and AssetHub integration
+        across a fleet of 11,000+ devices. The project spans multiple epics: ONDA
+        Secret Management, backup/restore/bulk change, scheduled snapshots, vendor
+        onboarding, data collection, logging, AssetHub integration, and future enhancements.
+        It is a team project, but the scope of my contribution was concentrated in
+        the engineering paths that made the Python utility, vendor model, data collection,
+        and production feedback loops work.'
+      bullet_point_total_match_count: 0
+      render: true
+    - order: 29
+      categories:
+        assigned:
+        - ONDA Project Contribution
+        - My ONDA Implementation Contribution
+        matched:
+        - AI Tools
+        - Automation & IaC
+        - Platform & API Engineering
+        - Security & Compliance
+        - Languages & Frameworks
+      skills:
+      - category: AI Tools
+        matched:
+        - Oracle Code Assist (OCA)
+        jod_match_count: 0
+      - category: Automation & IaC
+        matched:
+        - ONDA
+        - network automation
+        - job scheduling automation
+        - runtime image publishing
+        - onda-sm Python package
+        - onda-playbooks
+        - network fact collection
+        - configuration backup automation
+        - restore automation
+        jod_match_count: 0
+      - category: Platform & API Engineering
+        matched:
+        - vendor-extensible service design
+        - AssetHub
+        - metadata services
+        jod_match_count: 0
+      - category: Security & Compliance
+        matched:
+        - secrets management
+        - encrypted secret storage
+        - secret redaction
+        jod_match_count: 0
+      - category: Languages & Frameworks
+        matched:
+        - Python
+        jod_match_count: 0
+      text: 'My ONDA Implementation Contribution: My ONDA implementation contribution
+        centered on creating reusable building blocks rather than one-off scripts.
+        In `onda-sm`, I built and hardened the service path for sanitized SCM-backed
+        backups, encrypted secret handling, restore metadata, local restore/retrieve
+        behavior, tests, execution-environment readiness, and production cleanup.
+        In `onda-playbooks`, I focused on the data-collection path: facts, network
+        resources, role dispatch, summary reporting, schedule validation, and early
+        AssetHub push framework. Together, those contributions helped the team move
+        ONDA from a broad HPNA replacement goal into working components that could
+        be tested, operated, debugged, and extended across a large multi-vendor network
+        fleet.'
+      bullet_point_total_match_count: 0
+      render: true
+    - order: 30
+      categories:
+        assigned:
+        - Overall Contribution Narrative
+        - Cross-Platform Engineering Growth
+        matched:
+        - AI Tools
+        - Automation & IaC
+        - Data & Observability
+        - Distributed Systems & Cloud
+        - Platform & API Engineering
+        - Security & Compliance
+        - Languages & Frameworks
+      skills:
+      - category: AI Tools
+        matched:
+        - AI-assisted workflow reuse
+        jod_match_count: 0
+      - category: Automation & IaC
+        matched:
+        - Oracle Linux Automation Manager (OLAM)
+        - Chef (Cookbooks/Policies)
+        - ONDA
+        jod_match_count: 0
+      - category: Data & Observability
+        matched:
+        - OpenSearch
+        - ELK-to-OpenSearch migrations
+        - Logstash
+        - Filebeat
+        - index lifecycle management (ILM)
+        - Observability Dashboards
+        - alert routing
+        - OCI metrics monitoring
+        jod_match_count: 0
+      - category: Distributed Systems & Cloud
+        matched:
+        - Oracle Cloud Infrastructure (OCI)
+        jod_match_count: 0
+      - category: Platform & API Engineering
+        matched:
+        - infrastructure platform engineering
+        - AssetHub
+        - metadata services
+        jod_match_count: 0
+      - category: Security & Compliance
+        matched:
+        - incident response lifecycle
+        jod_match_count: 0
+      - category: Languages & Frameworks
+        matched:
+        - Python
+        jod_match_count: 0
+      text: 'Cross-Platform Engineering Growth: From 2023 through June 2026, my work
+        for the PDAF team consistently sat at the intersection of infrastructure operations,
+        automation engineering, observability, and platform modernization. The 2023
+        ELK/OpenSearch work shows a growth path from maintaining monitors and scripts
+        to understanding full observability pipelines, migration correctness, index
+        lifecycle behavior, data shipping, notification routing, remediation, dashboards,
+        and operator-facing incident tooling. That foundation carried forward into
+        OLAM, Chef, Logstash/Filebeat, OpenSearch, OCEAN/monitoring, OCI infrastructure,
+        ONDA, and AssetHub-oriented metadata collection. Across these areas, the recurring
+        skill was converting operational pain into automation, clearer monitoring,
+        safer release paths, reusable utilities, and documented workflows that made
+        the PDAF team more effective.'
+      bullet_point_total_match_count: 0
+      render: true
+    - order: 31
+      categories:
+        assigned:
+        - Overall Contribution Narrative
+        - AI as an Engineering Amplifier
+        matched:
+        - AI Tools
+        - Automation & IaC
+        - Distributed Systems & Cloud
+        - Platform & API Engineering
+        - Security & Compliance
+        - Languages & Frameworks
+      skills:
+      - category: AI Tools
+        matched:
+        - AI-assisted workflow reuse
+        - Codex
+        - Cline
         - MCP (Model Context Protocol)
-        - AI-assisted ticket automation
+        - MCP server development
+        - Codex skills
+        - AI-assisted TDD
+        - AI-assisted operations
+        - Cline rules
+        jod_match_count: 0
+      - category: Automation & IaC
+        matched:
+        - Oracle Linux Automation Manager (OLAM)
+        - AWX
+        - onda-sm Python package
+        - ONDA
+        jod_match_count: 0
+      - category: Distributed Systems & Cloud
+        matched:
+        - Oracle Cloud Infrastructure (OCI)
         jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - infrastructure platform engineering
         - Jira work tracking
         jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        jod_match_count: 0
-      text: Linked AI-assisted sessions to Jira work tracking so operational findings, test
-        evidence, and follow-up actions could be captured without manual transcript cleanup.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 14
-      categories:
-        assigned:
-        - AI-Assisted Engineering
-        - MCP
-        - Developer Productivity
-        matched:
-        - AI Tools
-        - Platform & API Engineering
-        - Distributed Systems & Cloud
-        - Data & Observability
-        - Security & Compliance
-      skills:
-      - category: AI Tools
-        matched:
-        - agentic workflows
-        - MCP (Model Context Protocol)
-        - tool-using AI agents
-        - OCI-focused MCP interfaces
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - API Integration
-        jod_match_count: 0
-      - category: Distributed Systems & Cloud
-        matched:
-        - Oracle Cloud Infrastructure (OCI)
-        - OCI monitoring
-        - OCI Alarms
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - Observability
-        - disk usage monitoring
-        - alarm inspection
-        - disk pressure monitoring
-        jod_match_count: 0
       - category: Security & Compliance
         matched:
-        - Secure Coding Practices
-        - controlled API access
-        jod_match_count: 0
-      text: Built an OCI-focused MCP interface that allowed agents to inspect alarms, monitoring
-        events, disk pressure, and infrastructure state through controlled API calls.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 15
-      categories:
-        assigned:
-        - AI-Assisted Engineering
-        - MCP
-        - Developer Productivity
-        matched:
-        - AI Tools
-        - Platform & API Engineering
-        - Automation & IaC
-      skills:
-      - category: AI Tools
-        matched:
-        - agentic workflows
-        - MCP (Model Context Protocol)
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - service orchestration
-        - workflow template migration
-        - job template migration
-        - configuration drift analysis
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - Infrastructure as Code (IaC)
-        - DevOps
-        - Python automation scripts
-        - job scheduling automation
-        - production rollout automation
-        - automation workflow templates
-        jod_match_count: 0
-      text: Automated transliteration of automation workflow and job templates between staging
-        and production clusters, reducing manual configuration drift during rollout preparation.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 16
-      categories:
-        assigned:
-        - AI-Assisted Engineering
-        - MCP
-        - Developer Productivity
-        matched:
-        - AI Tools
-        - Platform & API Engineering
-        - Data & Observability
-      skills:
-      - category: AI Tools
-        matched:
-        - agentic workflows
-        - MCP (Model Context Protocol)
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - remediation tooling
-        - planned change review
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - Data Pipelines
-        jod_match_count: 0
-      text: Designed proposed-action payloads for high-risk agent operations so reviewers
-        could inspect exact planned infrastructure changes before approving remediation.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 17
-      categories:
-        assigned:
-        - AI-Assisted Engineering
-        - MCP
-        - Developer Productivity
-        matched:
-        - AI Tools
-        - Platform & API Engineering
-        - Automation & IaC
-      skills:
-      - category: AI Tools
-        matched:
-        - agentic workflows
-        - MCP (Model Context Protocol)
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - Systems Architecture
-        - service orchestration
-        - state-store architecture
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        jod_match_count: 0
-      text: Identified state and context limits in early agentic workflows and proposed an
-        idempotent state-store architecture for longer cross-region or cross-cluster operations.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 18
-      categories:
-        assigned:
-        - AI-Assisted Engineering
-        - MCP
-        - Developer Productivity
-        matched:
-        - AI Tools
-        - Platform & API Engineering
-        - Languages & Frameworks
-      skills:
-      - category: AI Tools
-        matched:
-        - agentic workflows
-        - MCP (Model Context Protocol)
-        - Codex
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - validation frameworks
-        - package validation
-        - skill validation
+        - human approval workflows
         jod_match_count: 0
       - category: Languages & Frameworks
         matched:
-        - data transformation scripts
-        jod_match_count: 0
-      text: Built reusable package-validation and skill-validation scripts for MCP and Codex-skill
-        repositories, including checks for required files, sensitive paths, and local artifacts.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 19
-      categories:
-        assigned:
-        - AI-Assisted Engineering
-        - MCP
-        - Developer Productivity
-        matched:
-        - AI Tools
-        - Platform & API Engineering
-        - Automation & IaC
-        - Data & Observability
-      skills:
-      - category: AI Tools
-        matched:
-        - agentic workflows
-        - MCP (Model Context Protocol)
-        - AI-assisted debugging
-        - AI-assisted ticket automation
-        - AI-assisted operational reporting
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - production troubleshooting
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - schedule metadata parsing
-        - summary table reporting
-        jod_match_count: 0
-      text: Turned AI-assisted debugging sessions into repeatable operational reporting by
-        combining MCP queries, stdout parsing, schedule metadata, and Jira-ready summaries.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 20
-      categories:
-        assigned:
-        - AI-Assisted Engineering
-        - MCP
-        - Developer Productivity
-        matched:
-        - AI Tools
-        - Platform & API Engineering
-        - Languages & Frameworks
-      skills:
-      - category: AI Tools
-        matched:
-        - agentic workflows
-        - MCP (Model Context Protocol)
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - repository workflow automation
-        jod_match_count: 0
-      - category: Languages & Frameworks
-        matched:
-        - pytest
-        - unit testing frameworks
-        jod_match_count: 0
-      text: Created repository-specific AI rules that require real constructors, fixture reuse,
-        pytest-mock, focused test execution, lint review, and changelog updates before AI-assisted
-        changes are considered ready.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 21
-      categories:
-        assigned:
-        - Infrastructure Automation
-        - Configuration Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-        - Distributed Systems & Cloud
-      skills:
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Infrastructure as Code (IaC)
-        - Python automation scripts
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - API Integration
-        - Systems Architecture
-        - Scalability
-        - service orchestration
-        jod_match_count: 0
-      - category: Distributed Systems & Cloud
-        matched:
-        - multi-tenant cloud platforms
-        jod_match_count: 0
-      text: Architected and scaled a global multi-tenant infrastructure orchestrating 40,000+
-        managed endpoints, managing the end-to-end lifecycle of configuration and automation
-        across international datacenters.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 22
-      categories:
-        assigned:
-        - Infrastructure Automation
-        - Configuration Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-      skills:
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Infrastructure as Code (IaC)
-        - Python automation scripts
-        - dynamic inventory
-        - credential automation
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - service orchestration
-        - stakeholder enablement
-        jod_match_count: 0
-      text: Managed global automation workflows for dynamic inventory generation, credential
-        orchestration, and production stakeholder support.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 23
-      categories:
-        assigned:
-        - Infrastructure Automation
-        - Configuration Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-        - Distributed Systems & Cloud
-      skills:
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Infrastructure as Code (IaC)
-        - Chef (Cookbooks/Policies)
-        - versioned artifact sources
-        - cookbook migration
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - release engineering
-        jod_match_count: 0
-      - category: Distributed Systems & Cloud
-        matched:
-        - Oracle Cloud Infrastructure (OCI)
-        jod_match_count: 0
-      text: Led the migration of production cookbooks to OCI-native artifact sources, streamlining
-        release paths and reducing dependency on legacy storage.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 24
-      categories:
-        assigned:
-        - Infrastructure Automation
-        - Configuration Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-      skills:
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Infrastructure as Code (IaC)
-        - Chef (Cookbooks/Policies)
-        - Python automation scripts
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - validation frameworks
-        - release engineering
-        jod_match_count: 0
-      text: Enhanced policy distribution by optimizing ownership routing, dependency pinning,
-        and automated publishing validation.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 25
-      categories:
-        assigned:
-        - Infrastructure Automation
-        - Configuration Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-        - Languages & Frameworks
-        - Distributed Systems & Cloud
-      skills:
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Infrastructure as Code (IaC)
-        - Ansible
-        - AWX
-        - Python automation scripts
-        - credential automation
-        - credential pruning
-        - AWX cluster operations
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        jod_match_count: 0
-      - category: Languages & Frameworks
-        matched:
-        - Python
-        jod_match_count: 0
-      - category: Distributed Systems & Cloud
-        matched:
-        - multi-tenant cloud platforms
-        jod_match_count: 0
-      text: Reduced manual operational overhead by developing Python-based automation for
-        dynamic Ansible/AWX inventory management, credential pruning, and automated resource
-        cleanup across multi-tenant clusters.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 26
-      categories:
-        assigned:
-        - Infrastructure Automation
-        - Configuration Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-        - Data & Observability
-      skills:
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Infrastructure as Code (IaC)
-        - Chef (Cookbooks/Policies)
-        - CI/CD automation
-        - continuous integration
-        - Python automation scripts
-        - versioned artifact sources
-        - cookbook migration
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - validation frameworks
-        - release engineering
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - Observability
-        - Logstash
-        - Data Pipelines
-        jod_match_count: 0
-      text: Reworked Chef Server, automation-manager, Logstash, and monitoring cookbooks to
-        use version-pinned artifact sources and validated releases through internal CI/CD
-        pipelines.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 27
-      categories:
-        assigned:
-        - Infrastructure Automation
-        - Configuration Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-        - Languages & Frameworks
-      skills:
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Infrastructure as Code (IaC)
-        - CI/CD automation
-        - continuous integration
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        jod_match_count: 0
-      - category: Languages & Frameworks
-        matched:
-        - Python
-        - pytest
-        - Ruff
-        - semantic versioning
-        jod_match_count: 0
-      text: Established a paved-road standard for internal platform tools with Ruff, pytest,
-        semantic versioning, changelog discipline, and CI checks across Python repositories.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 28
-      categories:
-        assigned:
-        - Infrastructure Automation
-        - Configuration Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-        - Distributed Systems & Cloud
-        - Data & Observability
-      skills:
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Infrastructure as Code (IaC)
-        - Python automation scripts
-        - execution environment builds
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        jod_match_count: 0
-      - category: Distributed Systems & Cloud
-        matched:
-        - execution environments
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - Observability
-        jod_match_count: 0
-      text: Consolidated configuration-as-code for automation managers, observability services,
-        monitoring ownership, and execution environments, reducing drift across platform components.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 29
-      categories:
-        assigned:
-        - Infrastructure Automation
-        - Configuration Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-        - Distributed Systems & Cloud
-        - Data & Observability
-      skills:
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Infrastructure as Code (IaC)
-        - Chef (Cookbooks/Policies)
-        - Python automation scripts
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - remediation tooling
-        - technical documentation
-        jod_match_count: 0
-      - category: Distributed Systems & Cloud
-        matched:
-        - OCI monitoring
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - Observability
-        - OpenSearch
-        - Logstash
-        - alert-noise reduction
-        jod_match_count: 0
-      text: Tuned monitor thresholds, ownership routing, notification channels, and remediation
-        documentation to reduce noisy alerts across Chef, automation, OpenSearch, and Logstash
-        services.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 30
-      categories:
-        assigned:
-        - Infrastructure Automation
-        - Configuration Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-        - Languages & Frameworks
-      skills:
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Infrastructure as Code (IaC)
-        - Python automation scripts
-        - credential automation
-        - job scheduling automation
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - remediation tooling
-        jod_match_count: 0
-      - category: Languages & Frameworks
-        matched:
-        - Python
-        jod_match_count: 0
-      text: Built Python tooling for inventory pruning, dynamic credential assignment, token
-        handling, schedule cleanup, and self-service operational repair.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 31
-      categories:
-        assigned:
-        - Infrastructure Automation
-        - Configuration Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-        - Distributed Systems & Cloud
-        - Data & Observability
-      skills:
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Infrastructure as Code (IaC)
-        - Ansible
-        - AWX
-        - Oracle Linux Automation Manager (OLAM)
-        - Python automation scripts
-        - job scheduling automation
-        - rolling upgrade automation
-        - execution-node operations
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - service orchestration
-        - stakeholder enablement
-        jod_match_count: 0
-      - category: Distributed Systems & Cloud
-        matched:
-        - execution nodes
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - Observability
-        - workflow logging
-        - workflow log analytics
-        jod_match_count: 0
-      text: Supported Oracle Linux Automation Manager and AWX migration work across version
-        upgrades, execution-node changes, job scheduling, workflow logging, and stakeholder
-        production support.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 32
-      categories:
-        assigned:
-        - Infrastructure Automation
-        - Configuration Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-        - Distributed Systems & Cloud
-        - Data & Observability
-      skills:
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Infrastructure as Code (IaC)
-        - Ansible
-        - AWX
-        - AWX cluster operations
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - remediation tooling
-        - production troubleshooting
-        jod_match_count: 0
-      - category: Distributed Systems & Cloud
-        matched:
-        - managed PostgreSQL
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - Observability
-        - PostgreSQL
-        - stuck-job detection
-        jod_match_count: 0
-      text: Added PostgreSQL and stuck-job monitoring to AWX operations, turning recurring
-        failure modes into visible operator signals with follow-up remediation paths.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 33
-      categories:
-        assigned:
-        - Infrastructure Automation
-        - Configuration Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-        - Data & Observability
-        - Security & Compliance
-      skills:
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Infrastructure as Code (IaC)
-        - production rollout automation
-        - schedule validation
-        - production-readiness checks
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - validation frameworks
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - incident dashboards
-        jod_match_count: 0
-      - category: Security & Compliance
-        matched:
-        - Secure Coding Practices
-        - production guardrails
-        jod_match_count: 0
-      text: Implemented cluster schedule validation and production-readiness checks after
-        prior patching incidents exposed the need for stronger pre- and post-patch guardrails.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 34
-      categories:
-        assigned:
-        - Infrastructure Automation
-        - Configuration Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-        - Languages & Frameworks
-        - Distributed Systems & Cloud
-      skills:
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Infrastructure as Code (IaC)
-        - Ansible
-        - execution environment builds
-        - runtime image publishing
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - service orchestration
-        jod_match_count: 0
-      - category: Languages & Frameworks
-        matched:
-        - Python
-        jod_match_count: 0
-      - category: Distributed Systems & Cloud
-        matched:
-        - execution environments
-        - container images
-        jod_match_count: 0
-      text: Maintained centralized execution environments by adding Python and Ansible dependencies,
-        validating collections, and publishing updated runtime images for production workflows.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 35
-      categories:
-        assigned:
-        - Infrastructure Automation
-        - Configuration Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-        - Distributed Systems & Cloud
-      skills:
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Infrastructure as Code (IaC)
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - API Integration
-        - asset inventory systems
-        jod_match_count: 0
-      - category: Distributed Systems & Cloud
-        matched:
-        - API-backed data sources
-        jod_match_count: 0
-      text: Improved infrastructure metadata freshness by decoupling asset records from legacy
-        manual update patterns and moving toward API-backed data sources.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 36
-      categories:
-        assigned:
-        - Infrastructure Automation
-        - Configuration Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-      skills:
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Infrastructure as Code (IaC)
-        - Python automation scripts
-        - dynamic inventory
-        - credential automation
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - service orchestration
-        jod_match_count: 0
-      text: Built automation around inventory creation, pruning, credential handling, and
-        workflow integration for customer-facing and internal infrastructure inventories.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 37
-      categories:
-        assigned:
-        - Network Automation
-        - Multi-Vendor Device Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-        - Languages & Frameworks
-        - Security & Compliance
-      skills:
-      - category: Automation & IaC
-        matched:
-        - network automation
-        - Ansible
-        - DevOps
-        - Python automation scripts
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - Scalability
-        jod_match_count: 0
-      - category: Languages & Frameworks
-        matched:
-        - Python
-        jod_match_count: 0
-      - category: Security & Compliance
-        matched:
-        - Secure Coding Practices
-        - secrets management
-        jod_match_count: 0
-      text: Delivered a large-scale network automation platform utilizing Ansible and Python,
-        incorporating secure secret handling and metadata collection.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 38
-      categories:
-        assigned:
-        - Network Automation
-        - Multi-Vendor Device Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-        - Languages & Frameworks
-        - Security & Compliance
-      skills:
-      - category: Automation & IaC
-        matched:
-        - network automation
-        - Ansible
-        - Infrastructure as Code (IaC)
-        - DevOps
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - service orchestration
-        jod_match_count: 0
-      - category: Languages & Frameworks
-        matched:
-        - Python
-        jod_match_count: 0
-      - category: Security & Compliance
-        matched:
-        - source-control sanitization
-        - restore readiness
-        jod_match_count: 0
-      text: Hardened Python services for the sanitization and storage of device configurations,
-        enabling reliable restore workflows and versioned metadata tracking.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 39
-      categories:
-        assigned:
-        - Network Automation
-        - Multi-Vendor Device Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-        - Languages & Frameworks
-        - Security & Compliance
-      skills:
-      - category: Automation & IaC
-        matched:
-        - network automation
-        - Ansible
-        - Infrastructure as Code (IaC)
-        - DevOps
-        - Python automation scripts
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        jod_match_count: 0
-      - category: Languages & Frameworks
-        matched:
-        - Python
-        jod_match_count: 0
-      - category: Security & Compliance
-        matched:
-        - Secure Coding Practices
-        - secrets management
-        - source-control sanitization
-        - audit-oriented testing
-        jod_match_count: 0
-      text: Developed a Python-based automation framework for secure, sanitized configuration
-        management and secret retrieval across a fleet of 11,000+ distributed network devices
-        (Cisco, F5, Palo Alto), prioritizing auditability and recovery.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 40
-      categories:
-        assigned:
-        - Network Automation
-        - Multi-Vendor Device Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-        - Data & Observability
-        - AI Tools
-      skills:
-      - category: Automation & IaC
-        matched:
-        - network automation
-        - Ansible
-        - DevOps
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - Scalability
-        - production troubleshooting
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - device fact collection
-        - summary table reporting
-        jod_match_count: 0
-      - category: AI Tools
-        matched:
-        - AI-assisted operational reporting
-        jod_match_count: 0
-      text: Created playbook frameworks to normalize device facts, classify failures, and
-        generate executive summaries for large-scale scheduled operations.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 41
-      categories:
-        assigned:
-        - Network Automation
-        - Multi-Vendor Device Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-      skills:
-      - category: Automation & IaC
-        matched:
-        - network automation
-        - Ansible
-        - DevOps
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - production troubleshooting
-        jod_match_count: 0
-      text: Operationalized complex data collection schedules for thousands of switch and
-        router hosts, tuning expensive paths based on failure analysis.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 42
-      categories:
-        assigned:
-        - Network Automation
-        - Multi-Vendor Device Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-      skills:
-      - category: Automation & IaC
-        matched:
-        - network automation
-        - Ansible
-        - source-control publishing automation
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - platform reliability
-        - repository workflow automation
-        jod_match_count: 0
-      text: Resolved production backup instability by optimizing source-control publishing
-        behavior and concurrent job handling.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 43
-      categories:
-        assigned:
-        - Network Automation
-        - Multi-Vendor Device Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-        - Data & Observability
-      skills:
-      - category: Automation & IaC
-        matched:
-        - network automation
-        - Ansible
-        - DevOps
-        - Python automation scripts
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - platform reliability
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - device fact collection
-        jod_match_count: 0
-      text: Rectified fact-cache reliability issues by implementing executor timezone corrections
-        across the automation fleet.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 44
-      categories:
-        assigned:
-        - Network Automation
-        - Multi-Vendor Device Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-      skills:
-      - category: Automation & IaC
-        matched:
-        - network automation
-        - Ansible
-        - DevOps
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - service orchestration
-        - technical documentation
-        jod_match_count: 0
-      text: Authored technical documentation and provided executive demos for enterprise backup
-        and recovery workflows.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 45
-      categories:
-        assigned:
-        - Network Automation
-        - Multi-Vendor Device Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-        - Security & Compliance
-      skills:
-      - category: Automation & IaC
-        matched:
-        - network automation
-        - Ansible
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        jod_match_count: 0
-      - category: Security & Compliance
-        matched:
-        - restore readiness
-        jod_match_count: 0
-      text: Designed vendor-specific extractor modules that plug into a shared backup, restore,
-        and fact-collection pipeline, allowing new device families to be added with targeted
-        parser work instead of core rewrites.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 46
-      categories:
-        assigned:
-        - Network Automation
-        - Multi-Vendor Device Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-        - Languages & Frameworks
-        - Data & Observability
-      skills:
-      - category: Automation & IaC
-        matched:
-        - network automation
-        - Ansible
-        - DevOps
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - API Integration
-        - asset inventory systems
-        jod_match_count: 0
-      - category: Languages & Frameworks
-        matched:
-        - JSON
-        - CSV
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - Data Pipelines
-        - device fact collection
-        - normalized metadata pipelines
-        - asset inventory data pipelines
-        jod_match_count: 0
-      text: Built asset-inventory publishing paths that transform normalized network facts
-        into JSON/CSV payloads and API-ready records for downstream infrastructure metadata
-        systems.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 47
-      categories:
-        assigned:
-        - Network Automation
-        - Multi-Vendor Device Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-        - Security & Compliance
-      skills:
-      - category: Automation & IaC
-        matched:
-        - network automation
-        - Ansible
-        - Infrastructure as Code (IaC)
-        - DevOps
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - service orchestration
-        jod_match_count: 0
-      - category: Security & Compliance
-        matched:
-        - Secure Coding Practices
-        - secrets management
-        - encrypted secret storage
-        - source-control sanitization
-        - restore readiness
-        jod_match_count: 0
-      text: Implemented sanitized network configuration publishing with encrypted secrets,
-        restore-point tags, prior-version retrieval, and re-keying support for recovery workflows.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 48
-      categories:
-        assigned:
-        - Network Automation
-        - Multi-Vendor Device Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-        - Data & Observability
-      skills:
-      - category: Automation & IaC
-        matched:
-        - network automation
-        - Ansible
-        - DevOps
-        - network fact collection
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - production troubleshooting
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - device fact collection
-        - summary table reporting
-        - timing analysis
-        jod_match_count: 0
-      text: Built fleetwide fact and resource collection playbooks that produced summary tables,
-        timing analysis, and failure classifications for large scheduled network runs.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 49
-      categories:
-        assigned:
-        - Network Automation
-        - Multi-Vendor Device Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-      skills:
-      - category: Automation & IaC
-        matched:
-        - network automation
-        - Ansible
-        - DevOps
-        - Python automation scripts
-        - credential automation
-        - production rollout automation
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - production troubleshooting
-        - stakeholder enablement
-        jod_match_count: 0
-      text: Classified scheduled network automation failures by reachability, credential,
-        unsupported-resource, and runtime categories to guide rollout tuning and stakeholder
-        follow-up.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 50
-      categories:
-        assigned:
-        - Network Automation
-        - Multi-Vendor Device Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-      skills:
-      - category: Automation & IaC
-        matched:
-        - network automation
-        - Ansible
-        - DevOps
-        - network fact collection
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - validation frameworks
-        jod_match_count: 0
-      text: Validated switch coverage across 2,162 unique hosts and router coverage across
-        1,163 resolvable enabled hosts while tuning schedules for expensive resource collection.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 51
-      categories:
-        assigned:
-        - Network Automation
-        - Multi-Vendor Device Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-        - Data & Observability
-      skills:
-      - category: Automation & IaC
-        matched:
-        - network automation
-        - Ansible
-        - DevOps
-        - Python automation scripts
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - service orchestration
-        - asset inventory systems
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - device fact collection
-        jod_match_count: 0
-      text: Helped evolve network automation from backup replacement into a metadata platform
-        by connecting collected device facts to downstream asset-record workflows.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 52
-      categories:
-        assigned:
-        - Network Automation
-        - Multi-Vendor Device Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-      skills:
-      - category: Automation & IaC
-        matched:
-        - network automation
-        - Ansible
-        - AWX
-        - DevOps
-        - Python automation scripts
-        - credential automation
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - validation frameworks
-        jod_match_count: 0
-      text: Validated production execution readiness for network automation by packaging dependencies,
-        credentials, Ansible collections, and execution-environment behavior into repeatable
-        AWX runs.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 53
-      categories:
-        assigned:
-        - Network Automation
-        - Multi-Vendor Device Management
-        matched:
-        - Automation & IaC
-        - Platform & API Engineering
-        - Security & Compliance
-      skills:
-      - category: Automation & IaC
-        matched:
-        - network automation
-        - Ansible
-        - Infrastructure as Code (IaC)
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - validation frameworks
-        - technical documentation
-        - stakeholder enablement
-        jod_match_count: 0
-      - category: Security & Compliance
-        matched:
-        - restore readiness
-        jod_match_count: 0
-      text: Produced restore demonstrations and usage documentation that helped stakeholders
-        validate network configuration recovery rather than treating backups as opaque artifacts.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 54
-      categories:
-        assigned:
-        - Observability
-        - OpenSearch
-        - Logging
-        matched:
-        - Data & Observability
-        - Automation & IaC
-        - Languages & Frameworks
-        - Distributed Systems & Cloud
-        - Platform & API Engineering
-      skills:
-      - category: Data & Observability
-        matched:
-        - Observability
-        - OpenSearch
-        - Logstash
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        jod_match_count: 0
-      - category: Languages & Frameworks
-        matched:
-        - Python
-        jod_match_count: 0
-      - category: Distributed Systems & Cloud
-        matched:
-        - Oracle Cloud Infrastructure (OCI)
-        - multi-tenant cloud platforms
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - service orchestration
-        jod_match_count: 0
-      text: Led the migration of multi-tenant Elasticsearch clusters to OCI Native OpenSearch,
-        engineering a custom Python orchestration engine using parallel-processed Logstash
-        instances to ensure idempotent, self-recovering data transfers.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 55
-      categories:
-        assigned:
-        - Observability
-        - OpenSearch
-        - Logging
-        matched:
-        - Data & Observability
-        - Automation & IaC
-        - Platform & API Engineering
-        - AI Tools
-      skills:
-      - category: Data & Observability
-        matched:
-        - Observability
-        - OpenSearch
-        - Logstash
-        - Filebeat
-        - Kafka
-        - Grafana
-        - Prometheus
-        - Data Pipelines
-        - incident dashboards
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - remediation tooling
-        jod_match_count: 0
-      - category: AI Tools
-        matched:
-        - AI-assisted incident response
-        jod_match_count: 0
-      text: Built high-throughput observability pipelines using Kafka, Logstash, and Filebeat
-        to feed regional metadata into Prometheus/Grafana, automating incident response through
-        a custom "remediation-as-code" framework.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 56
-      categories:
-        assigned:
-        - Observability
-        - OpenSearch
-        - Logging
-        matched:
-        - Data & Observability
-        - Automation & IaC
-        - Platform & API Engineering
-      skills:
-      - category: Data & Observability
-        matched:
-        - Observability
-        - OpenSearch
-        - historical data migration
-        - document-count validation
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Python automation scripts
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - Scalability
-        - validation frameworks
-        jod_match_count: 0
-      text: Automated search-index validation and historical data replication, ensuring document-count
-        integrity during large-scale migrations.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 57
-      categories:
-        assigned:
-        - Observability
-        - OpenSearch
-        - Logging
-        matched:
-        - Data & Observability
-        - Automation & IaC
-        - Platform & API Engineering
-      skills:
-      - category: Data & Observability
-        matched:
-        - Observability
-        - OpenSearch
-        - data quality remediation
-        - shard-health checks
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - remediation tooling
-        - technical documentation
-        jod_match_count: 0
-      text: Improved OpenSearch operational readiness by developing shard-monitoring tools,
-        data-quality guides, and health remediations.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 58
-      categories:
-        assigned:
-        - Observability
-        - OpenSearch
-        - Logging
-        matched:
-        - Data & Observability
-        - Automation & IaC
-        - Platform & API Engineering
-      skills:
-      - category: Data & Observability
-        matched:
-        - Observability
-        - OpenSearch
-        - network telemetry
-        - dead-letter queue monitoring
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - platform reliability
-        jod_match_count: 0
-      text: Optimized pipeline reliability through dead-letter queue monitoring and network-flow
-        analysis for logging infrastructure.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 59
-      categories:
-        assigned:
-        - Observability
-        - OpenSearch
-        - Logging
-        matched:
-        - Data & Observability
-        - Automation & IaC
-      skills:
-      - category: Data & Observability
-        matched:
-        - Observability
-        - OpenSearch
-        - Observability Dashboards
-        - managed database monitoring
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        jod_match_count: 0
-      text: Designed and tuned dashboards for cluster health and database performance monitoring.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 60
-      categories:
-        assigned:
-        - Observability
-        - OpenSearch
-        - Logging
-        matched:
-        - Data & Observability
-        - Automation & IaC
-        - Distributed Systems & Cloud
-        - Platform & API Engineering
-        - Security & Compliance
-      skills:
-      - category: Data & Observability
-        matched:
-        - Observability
-        - OpenSearch
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        jod_match_count: 0
-      - category: Distributed Systems & Cloud
-        matched:
-        - Oracle Cloud Infrastructure (OCI)
-        - OCI monitoring
-        - OCI Metrics
-        - cross-tenancy policies
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        jod_match_count: 0
-      - category: Security & Compliance
-        matched:
-        - cross-tenancy policy governance
-        jod_match_count: 0
-      text: Designed and implemented cross-tenancy notification integration using OpenSearch
-        and OCI metrics, providing unified visibility into infrastructure health across fragmented
-        cloud environments.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 61
-      categories:
-        assigned:
-        - Observability
-        - OpenSearch
-        - Logging
-        matched:
-        - Data & Observability
-        - Automation & IaC
-        - Distributed Systems & Cloud
-        - Platform & API Engineering
-      skills:
-      - category: Data & Observability
-        matched:
-        - Observability
-        - OpenSearch
-        - PostgreSQL
-        - Observability Dashboards
-        - workflow logging
-        - scheduled-job dashboards
-        - managed database monitoring
-        - workflow log analytics
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Python automation scripts
-        - production rollout automation
-        jod_match_count: 0
-      - category: Distributed Systems & Cloud
-        matched:
-        - OCI monitoring
-        - OCI Metrics
-        - managed PostgreSQL
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - service orchestration
-        jod_match_count: 0
-      text: Built OpenSearch-backed dashboards that combine automation workflow logs, scheduled
-        job status, system logs, PostgreSQL health, and cluster metrics into operator-visible
-        rollout views.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 62
-      categories:
-        assigned:
-        - Observability
-        - OpenSearch
-        - Logging
-        matched:
-        - Data & Observability
-        - Automation & IaC
-        - Languages & Frameworks
-        - Platform & API Engineering
-      skills:
-      - category: Data & Observability
-        matched:
-        - Observability
-        - OpenSearch
-        - Logstash
-        - Filebeat
-        - disk usage monitoring
-        - incident dashboards
-        - auto-resolving incident workflows
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Chef (Cookbooks/Policies)
-        jod_match_count: 0
-      - category: Languages & Frameworks
-        matched:
-        - Python
-        - Bash
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - service orchestration
-        jod_match_count: 0
-      text: Refactored monitoring for Logstash, Filebeat, disk, Kibana, Chef, and OpenSearch
-        from shell/email patterns into Python3 workflows with auto-resolving incident behavior.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 63
-      categories:
-        assigned:
-        - Observability
-        - OpenSearch
-        - Logging
-        matched:
-        - Data & Observability
-        - Automation & IaC
-        - Distributed Systems & Cloud
-        - Platform & API Engineering
-      skills:
-      - category: Data & Observability
-        matched:
-        - Observability
-        - OpenSearch
-        - alert routing
-        - alert-noise reduction
-        - remediation guides
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        jod_match_count: 0
-      - category: Distributed Systems & Cloud
-        matched:
-        - OCI monitoring
-        - OCI Notification Service
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - infrastructure platform engineering
-        - remediation tooling
-        - technical documentation
-        - runbook authoring
-        jod_match_count: 0
-      text: Reduced alert fatigue by pairing tuned monitor logic with clear ownership, remediation
-        guides, and notification routing for platform and observability services.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 64
-      categories:
-        assigned:
-        - Observability
-        - OpenSearch
-        - Logging
-        matched:
-        - Data & Observability
-        - Automation & IaC
-        - Platform & API Engineering
-      skills:
-      - category: Data & Observability
-        matched:
-        - Observability
-        - OpenSearch
-        - data quality remediation
-        - shard-health checks
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - remediation tooling
-        jod_match_count: 0
-      text: Built data-quality remediation paths for OpenSearch, including non-bootstrapped
-        index checks, max-field monitoring, shard-count analysis, and storage action plans.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 65
-      categories:
-        assigned:
-        - Observability
-        - OpenSearch
-        - Logging
-        matched:
-        - Data & Observability
-        - Automation & IaC
-        - Platform & API Engineering
-      skills:
-      - category: Data & Observability
-        matched:
-        - Observability
-        - OpenSearch
-        - historical data migration
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - service orchestration
-        jod_match_count: 0
-      text: Orchestrated historical log-index migration while validating document counts,
-        deduplicating legacy search data, and preserving access to older operational records.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 66
-      categories:
-        assigned:
-        - Observability
-        - OpenSearch
-        - Logging
-        matched:
-        - Data & Observability
-        - Automation & IaC
-      skills:
-      - category: Data & Observability
-        matched:
-        - Observability
-        - OpenSearch
-        - Logstash
-        - silent data loss detection
-        - dead-letter queue monitoring
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        jod_match_count: 0
-      text: Built Logstash dead-letter-queue and network-output monitors to catch failed pipeline
-        behavior before it became silent data loss.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 67
-      categories:
-        assigned:
-        - Observability
-        - OpenSearch
-        - Logging
-        matched:
-        - Data & Observability
-        - Automation & IaC
-        - Distributed Systems & Cloud
-      skills:
-      - category: Data & Observability
-        matched:
-        - Observability
-        - OpenSearch
-        - Filebeat
-        - PostgreSQL
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Infrastructure as Code (IaC)
-        jod_match_count: 0
-      - category: Distributed Systems & Cloud
-        matched:
-        - managed PostgreSQL
-        jod_match_count: 0
-      text: Developed Filebeat and PostgreSQL log collection updates, role configuration,
-        and pipeline fixes during observability migration work.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 68
-      categories:
-        assigned:
-        - Observability
-        - OpenSearch
-        - Logging
-        matched:
-        - Data & Observability
-        - Automation & IaC
-        - Platform & API Engineering
-      skills:
-      - category: Data & Observability
-        matched:
-        - Observability
-        - OpenSearch
-        - data-quality drift analysis
-        - remediation guides
-        - data quality remediation
-        - shard-health checks
-        - index lifecycle management (ILM)
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - service orchestration
-        - remediation tooling
-        - technical documentation
-        - runbook authoring
-        jod_match_count: 0
-      text: Created OpenSearch remediation guides for shard counts, field limits, storage
-        pressure, data-quality drift, and index lifecycle issues.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 69
-      categories:
-        assigned:
-        - Observability
-        - OpenSearch
-        - Logging
-        matched:
-        - Data & Observability
-        - Automation & IaC
-        - Distributed Systems & Cloud
-        - Security & Compliance
-      skills:
-      - category: Data & Observability
-        matched:
-        - Observability
-        - OpenSearch
-        - alert routing
-        - Slack/email alert routing
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        jod_match_count: 0
-      - category: Distributed Systems & Cloud
-        matched:
-        - OCI monitoring
-        - OCI Notification Service
-        - cross-tenancy policies
-        jod_match_count: 0
-      - category: Security & Compliance
-        matched:
-        - cross-tenancy policy governance
-        jod_match_count: 0
-      text: Integrated alert routing with notification services, Slack/email channels, and
-        cross-tenancy policies as monitoring ownership moved between teams.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 70
-      categories:
-        assigned:
-        - Observability
-        - OpenSearch
-        - Logging
-        matched:
-        - Data & Observability
-        - Automation & IaC
-        - Platform & API Engineering
-      skills:
-      - category: Data & Observability
-        matched:
-        - Observability
-        - OpenSearch
-        - Observability Dashboards
-        - workflow logging
-        - scheduled-job dashboards
-        - workflow log analytics
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Python automation scripts
-        - production rollout automation
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - service orchestration
-        - production troubleshooting
-        jod_match_count: 0
-      text: Improved dashboard coverage for automation workflow logs, scheduled jobs, failed
-        hosts, database health, and cluster health so operators could diagnose rollout issues
-        faster.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 71
-      categories:
-        assigned:
-        - Cloud Infrastructure
-        - OCI
-        - Platform Reliability
-        matched:
-        - Distributed Systems & Cloud
-        - Platform & API Engineering
-        - Automation & IaC
-        - Data & Observability
-      skills:
-      - category: Distributed Systems & Cloud
-        matched:
-        - Oracle Cloud Infrastructure (OCI)
-        - managed PostgreSQL
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - platform reliability
-        - service orchestration
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Ansible
-        - AWX
-        - Python automation scripts
-        - rolling upgrade automation
-        - AWX cluster operations
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - PostgreSQL
-        - stuck-job detection
-        jod_match_count: 0
-      text: Owned the reliability and lifecycle of enterprise Ansible (AWX) clusters, managing
-        rolling upgrades, PostgreSQL performance tuning, and automated "stuck-job" detection
-        to maintain high availability for thousands of daily workflows.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 72
-      categories:
-        assigned:
-        - Cloud Infrastructure
-        - OCI
-        - Platform Reliability
-        matched:
-        - Distributed Systems & Cloud
-        - Platform & API Engineering
-        - Automation & IaC
-      skills:
-      - category: Distributed Systems & Cloud
-        matched:
-        - Oracle Cloud Infrastructure (OCI)
-        - cloud-native platforms
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - platform reliability
-        - Systems Architecture
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Python automation scripts
-        - rolling upgrade automation
-        jod_match_count: 0
-      text: Ensured reliability of cloud-native automation clusters through rolling upgrades
-        and systematic restoration of production services.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 73
-      categories:
-        assigned:
-        - Cloud Infrastructure
-        - OCI
-        - Platform Reliability
-        matched:
-        - Distributed Systems & Cloud
-        - Platform & API Engineering
-        - Automation & IaC
-        - Data & Observability
-        - Security & Compliance
-      skills:
-      - category: Distributed Systems & Cloud
-        matched:
-        - Oracle Cloud Infrastructure (OCI)
-        - OCI monitoring
-        - OCI Metrics
-        - OCI Notification Service
-        - cross-tenancy policies
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - platform reliability
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - Observability
-        jod_match_count: 0
-      - category: Security & Compliance
-        matched:
-        - cross-tenancy policy governance
-        jod_match_count: 0
-      text: Optimized OCI metrics and cross-tenancy notification policies to enhance global
-        cloud monitoring coverage.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 74
-      categories:
-        assigned:
-        - Cloud Infrastructure
-        - OCI
-        - Platform Reliability
-        matched:
-        - Distributed Systems & Cloud
-        - Platform & API Engineering
-        - Automation & IaC
-        - Data & Observability
-      skills:
-      - category: Distributed Systems & Cloud
-        matched:
-        - Oracle Cloud Infrastructure (OCI)
-        - production/staging environments
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - platform reliability
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - Observability
-        - managed database monitoring
-        - disk usage monitoring
-        jod_match_count: 0
-      text: Enhanced monitoring for managed databases and disk utilization across production
-        and staging environments.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 75
-      categories:
-        assigned:
-        - Cloud Infrastructure
-        - OCI
-        - Platform Reliability
-        matched:
-        - Distributed Systems & Cloud
-        - Platform & API Engineering
-        - Automation & IaC
-        - Data & Observability
-        - Security & Compliance
-      skills:
-      - category: Distributed Systems & Cloud
-        matched:
-        - Oracle Cloud Infrastructure (OCI)
-        - execution environments
-        - regulated cloud environments
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - platform reliability
-        - infrastructure platform engineering
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - execution environment builds
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - Observability
-        jod_match_count: 0
-      - category: Security & Compliance
-        matched:
-        - Secure Coding Practices
-        - audit-oriented testing
-        jod_match_count: 0
-      text: Contributed to the deployment of regulated infrastructure, implementing inventory
-        tracking and audit logs for execution environments.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 76
-      categories:
-        assigned:
-        - Cloud Infrastructure
-        - OCI
-        - Platform Reliability
-        matched:
-        - Distributed Systems & Cloud
-        - Platform & API Engineering
-        - Automation & IaC
-        - Languages & Frameworks
-        - Data & Observability
-      skills:
-      - category: Distributed Systems & Cloud
-        matched:
-        - Oracle Cloud Infrastructure (OCI)
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - platform reliability
-        - infrastructure platform engineering
-        - service orchestration
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        jod_match_count: 0
-      - category: Languages & Frameworks
-        matched:
-        - Python
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - Observability
-        - alert-noise reduction
-        - incident dashboards
-        - auto-resolving incident workflows
-        jod_match_count: 0
-      text: Modernized legacy monitoring into Python3-based, auto-resolving incident workflows,
-        reducing alert noise and improving operational readiness for mission-critical platform
-        services.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 77
-      categories:
-        assigned:
-        - Cloud Infrastructure
-        - OCI
-        - Platform Reliability
-        matched:
-        - Distributed Systems & Cloud
-        - Platform & API Engineering
-        - Automation & IaC
-        - Data & Observability
-      skills:
-      - category: Distributed Systems & Cloud
-        matched:
-        - Oracle Cloud Infrastructure (OCI)
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - platform reliability
-        - service orchestration
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - Observability
-        - OpenSearch
-        - Observability Dashboards
-        - shard-health checks
-        - index lifecycle management (ILM)
-        jod_match_count: 0
-      text: Optimized data ingestion and storage by designing index lifecycle (ILM) monitors
-        and shard-health check systems, ensuring high-quality data availability for global
-        observability dashboards.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 78
-      categories:
-        assigned:
-        - Cloud Infrastructure
-        - OCI
-        - Platform Reliability
-        matched:
-        - Distributed Systems & Cloud
-        - Platform & API Engineering
-        - Automation & IaC
-        - Languages & Frameworks
-      skills:
-      - category: Distributed Systems & Cloud
-        matched:
-        - Oracle Cloud Infrastructure (OCI)
-        - cloud-facing interfaces
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - platform reliability
-        - API Integration
-        - infrastructure platform engineering
-        - service orchestration
-        - metadata services
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        jod_match_count: 0
-      - category: Languages & Frameworks
-        matched:
-        - Python
-        jod_match_count: 0
-      text: Built Python APIs and OCI serverless functions for infrastructure metadata-cache
-        workflows, replacing manual record updates with cloud-facing interfaces and reusable
-        data paths.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 79
-      categories:
-        assigned:
-        - Cloud Infrastructure
-        - OCI
-        - Platform Reliability
-        matched:
-        - Distributed Systems & Cloud
-        - Platform & API Engineering
-        - Automation & IaC
-        - Data & Observability
-      skills:
-      - category: Distributed Systems & Cloud
-        matched:
-        - Oracle Cloud Infrastructure (OCI)
-        - production/staging environments
-        - cloud-native platforms
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - platform reliability
-        - validation frameworks
-        - remediation tooling
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Python automation scripts
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - Observability
-        - disk usage monitoring
-        jod_match_count: 0
-      text: Built managed-database and disk-usage monitors for production and staging automation
-        clusters, tying alerts to concrete validation and remediation steps.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 80
-      categories:
-        assigned:
-        - Cloud Infrastructure
-        - OCI
-        - Platform Reliability
-        matched:
-        - Distributed Systems & Cloud
-        - Platform & API Engineering
-        - Automation & IaC
-        - Data & Observability
-        - Security & Compliance
-      skills:
-      - category: Distributed Systems & Cloud
-        matched:
-        - Oracle Cloud Infrastructure (OCI)
-        - execution environments
-        - regulated cloud environments
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - platform reliability
-        - service orchestration
-        - validation frameworks
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Python automation scripts
-        - execution environment builds
-        - production rollout automation
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - Observability
-        jod_match_count: 0
-      - category: Security & Compliance
-        matched:
-        - Secure Coding Practices
-        - audit-oriented testing
-        jod_match_count: 0
-      text: Supported regulated automation deployments with inventory tracking, execution
-        environments, audit logs, and controlled production validation workflows.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 81
-      categories:
-        assigned:
-        - Cloud Infrastructure
-        - OCI
-        - Platform Reliability
-        matched:
-        - Distributed Systems & Cloud
-        - Platform & API Engineering
-        - Automation & IaC
-        - Security & Compliance
-      skills:
-      - category: Distributed Systems & Cloud
-        matched:
-        - Oracle Cloud Infrastructure (OCI)
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - platform reliability
-        - validation frameworks
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Python automation scripts
-        - rolling upgrade automation
-        - schedule validation
-        jod_match_count: 0
-      - category: Security & Compliance
-        matched:
-        - restore readiness
-        jod_match_count: 0
-      text: Restored automation service stability after upgrades by combining rolling rebuilds,
-        execution-environment fixes, schedule checks, and post-upgrade service validation.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 82
-      categories:
-        assigned:
-        - Cloud Infrastructure
-        - OCI
-        - Platform Reliability
-        matched:
-        - Distributed Systems & Cloud
-        - Platform & API Engineering
-        - Automation & IaC
-        - Data & Observability
-        - Security & Compliance
-      skills:
-      - category: Distributed Systems & Cloud
-        matched:
-        - Oracle Cloud Infrastructure (OCI)
-        - OCI monitoring
-        - OCI Metrics
-        - OCI Alarms
-        - OCI Notification Service
-        - cross-tenancy policies
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - platform reliability
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - Observability
-        - Observability Dashboards
-        jod_match_count: 0
-      - category: Security & Compliance
-        matched:
-        - cross-tenancy policy governance
-        jod_match_count: 0
-      text: Improved OCI monitoring coverage by connecting metrics, alarms, notification policies,
-        and cross-tenancy routing into actionable operational views.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 83
-      categories:
-        assigned:
-        - Cloud Infrastructure
-        - OCI
-        - Platform Reliability
-        matched:
-        - Distributed Systems & Cloud
-        - Platform & API Engineering
-        - Automation & IaC
-        - Languages & Frameworks
-      skills:
-      - category: Distributed Systems & Cloud
-        matched:
-        - Oracle Cloud Infrastructure (OCI)
-        - cloud-facing interfaces
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - platform reliability
-        - API Integration
-        - infrastructure platform engineering
-        - metadata services
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        jod_match_count: 0
-      - category: Languages & Frameworks
-        matched:
-        - Python
-        jod_match_count: 0
-      text: Built cloud-facing interfaces for infrastructure metadata-cache work using Python
-        APIs and serverless functions, improving the freshness of operational records.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 84
-      categories:
-        assigned:
-        - Engineering Practices
-        - Delivery
-        - Stakeholder Support
-        matched:
-        - Platform & API Engineering
-        - Automation & IaC
-      skills:
-      - category: Platform & API Engineering
-        matched:
-        - production troubleshooting
-        - technical documentation
-        - infrastructure platform engineering
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Python automation scripts
-        - rolling upgrade automation
-        jod_match_count: 0
-      text: Provided sustained production forensics and support for mission-critical automation
-        failures and platform upgrades.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 85
-      categories:
-        assigned:
-        - Engineering Practices
-        - Delivery
-        - Stakeholder Support
-        matched:
-        - Platform & API Engineering
-        - Automation & IaC
-        - Languages & Frameworks
-        - Data & Observability
-      skills:
-      - category: Platform & API Engineering
-        matched:
-        - production troubleshooting
-        - technical documentation
-        - infrastructure platform engineering
-        - runbook authoring
-        - stakeholder enablement
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Python automation scripts
-        - runbook automation
-        jod_match_count: 0
-      - category: Languages & Frameworks
-        matched:
-        - Python
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - Observability
-        - Observability Dashboards
-        jod_match_count: 0
-      text: Turned recurring operational friction into Python automation, monitors, runbooks,
-        and dashboards that reduced manual toil for platform engineers and stakeholders.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 86
-      categories:
-        assigned:
-        - Engineering Practices
-        - Delivery
-        - Stakeholder Support
-        matched:
-        - Platform & API Engineering
-        - Automation & IaC
-        - Data & Observability
-        - Security & Compliance
-        - AI Tools
-      skills:
-      - category: Platform & API Engineering
-        matched:
-        - production troubleshooting
-        - technical documentation
-        - service orchestration
-        - stakeholder enablement
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Python automation scripts
-        - rolling upgrade automation
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - Observability
-        jod_match_count: 0
-      - category: Security & Compliance
-        matched:
-        - restore readiness
-        jod_match_count: 0
-      - category: AI Tools
-        matched:
-        - AI-assisted operational reporting
-        jod_match_count: 0
-      text: Produced stakeholder-ready documentation, Confluence guides, handoff materials,
-        and demos for automation upgrades, restore workflows, monitoring transitions, and
-        operational reporting.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 87
-      categories:
-        assigned:
-        - Engineering Practices
-        - Delivery
-        - Stakeholder Support
-        matched:
-        - Platform & API Engineering
-        - Automation & IaC
-        - Distributed Systems & Cloud
-        - Data & Observability
-      skills:
-      - category: Platform & API Engineering
-        matched:
-        - production troubleshooting
-        - technical documentation
-        - infrastructure platform engineering
-        - platform reliability
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Chef (Cookbooks/Policies)
-        - Ansible
-        - AWX
-        - Python automation scripts
-        - network automation
-        jod_match_count: 0
-      - category: Distributed Systems & Cloud
-        matched:
-        - cloud-native platforms
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - Observability
-        jod_match_count: 0
-      text: Balanced on-call production support with long-running platform initiatives across
-        cloud reliability, observability modernization, Chef automation, AWX operations, and
-        network automation.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 88
-      categories:
-        assigned:
-        - Engineering Practices
-        - Delivery
-        - Stakeholder Support
-        matched:
-        - Platform & API Engineering
-        - Automation & IaC
-        - Data & Observability
-      skills:
-      - category: Platform & API Engineering
-        matched:
-        - production troubleshooting
-        - technical documentation
-        - infrastructure platform engineering
-        - service orchestration
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - Observability
-        - OpenSearch
-        - Logstash
-        - Filebeat
-        - incident dashboards
-        jod_match_count: 0
-      text: Resolved 370+ assigned platform issues from 2024 to 2026 while also contributing
-        to observability-heavy 2023 work across ELK/OpenSearch, monitoring, Logstash, Filebeat,
-        and incident workflows.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 89
-      categories:
-        assigned:
-        - Engineering Practices
-        - Delivery
-        - Stakeholder Support
-        matched:
-        - Platform & API Engineering
-        - Automation & IaC
-        - AI Tools
-      skills:
-      - category: Platform & API Engineering
-        matched:
-        - production troubleshooting
-        - technical documentation
-        - infrastructure platform engineering
-        - ticketing API integrations
-        - success criteria definition
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        jod_match_count: 0
-      - category: AI Tools
-        matched:
-        - AI-assisted ticket automation
-        jod_match_count: 0
-      text: Defined explicit success criteria at the ticket and epic level so platform work
-        had measurable outcomes before implementation began.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 90
-      categories:
-        assigned:
-        - Engineering Practices
-        - Delivery
-        - Stakeholder Support
-        matched:
-        - Platform & API Engineering
-        - Automation & IaC
-      skills:
-      - category: Platform & API Engineering
-        matched:
-        - production troubleshooting
-        - technical documentation
-        - infrastructure platform engineering
-        - platform reliability
-        - stakeholder enablement
-        - stakeholder alignment
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Python automation scripts
-        jod_match_count: 0
-      text: Prioritized platform work according to internal stability, operational cost, developer
-        friction, and stakeholder impact rather than treating all automation requests as equal.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 91
-      categories:
-        assigned:
-        - Engineering Practices
-        - Delivery
-        - Stakeholder Support
-        matched:
-        - Platform & API Engineering
-        - Automation & IaC
-        - AI Tools
-      skills:
-      - category: Platform & API Engineering
-        matched:
-        - production troubleshooting
-        - technical documentation
-        - remediation tooling
-        - stakeholder enablement
-        - ticketing API integrations
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        jod_match_count: 0
-      - category: AI Tools
-        matched:
-        - AI-assisted ticket automation
-        jod_match_count: 0
-      text: Translated complex troubleshooting into leadership-readable technical briefs,
-        remediation plans, and follow-up tickets that preserved evidence without overwhelming
-        stakeholders.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 92
-      categories:
-        assigned:
-        - Engineering Practices
-        - Delivery
-        - Stakeholder Support
-        matched:
-        - Platform & API Engineering
-        - Automation & IaC
-      skills:
-      - category: Platform & API Engineering
-        matched:
-        - production troubleshooting
-        - technical documentation
-        - platform reliability
-        - stakeholder enablement
-        - stakeholder alignment
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        - Python automation scripts
-        jod_match_count: 0
-      text: Collaborated across engineering, security, product, and operations stakeholders
-        to align automation changes with production reliability and downstream consumer needs.
-      bullet_point_total_match_count: 0
-      render: false
-    - order: 93
-      categories:
-        assigned:
-        - Engineering Practices
-        - Delivery
-        - Stakeholder Support
-        matched:
-        - Platform & API Engineering
-        - Automation & IaC
-      skills:
-      - category: Platform & API Engineering
-        matched:
-        - production troubleshooting
-        - technical documentation
-        - infrastructure platform engineering
-        - product feedback loops
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - DevOps
-        jod_match_count: 0
-      text: Treated customer-reported issues as product feedback by connecting defect handling,
-        training, documentation, and future platform enhancements.
-      bullet_point_total_match_count: 0
-      render: false
+        - CLI tooling
+        jod_match_count: 0
+      text: 'AI as an Engineering Amplifier: Starting in late 2025 and becoming explicit
+        in 2026, I began using AI-assisted workflows, Codex, Cline, MCP servers, and
+        Codex skills as a practical engineering layer rather than a novelty. The strongest
+        value was not faster text generation; it was creating repeatable workflows
+        for diagnosis, TDD, repo hygiene, ticket-ready writeups, OLAM/AWX reporting,
+        and safety guardrails around operational tools. By codifying these practices
+        in `.clinerules`, `olam-mcp`, `git-repo-workflow`, `onda-sm-workflow`, Jira
+        skills, OCI skills, and CX skills, I helped turn personal productivity into
+        a pattern other future operators can inspect, reuse, and improve. This is
+        an important personal-development thread because it shows the same pattern
+        as the observability work: move from ad hoc fixes to repeatable systems.'
+      bullet_point_total_match_count: 0
+      render: true
   - order: 2
     render: true
     min_bullet_points: 2
@@ -3724,9 +2016,9 @@ professional_experience:
         - AutoIT automation scripts
         - mass patch orchestration
         jod_match_count: 0
-      text: Adhered to strict software development lifecycles to build custom Python and AutoIT
-        automation scripts, streamlining system upgrades across hundreds of mission-critical
-        platform nodes as full-cycle software engineering work.
+      text: Adhered to strict software development lifecycles to build custom Python
+        and AutoIT automation scripts, streamlining system upgrades across hundreds
+        of mission-critical platform nodes as full-cycle software engineering work.
       bullet_point_total_match_count: 0
       render: false
     - order: 2
@@ -3767,8 +2059,9 @@ professional_experience:
         - remote software deployment
         - mass patch orchestration
         jod_match_count: 0
-      text: Conducted performance troubleshooting, defect handling, and remote patch deployments
-        on highly regulated medical platform surfaces through deep debugging and patching.
+      text: Conducted performance troubleshooting, defect handling, and remote patch
+        deployments on highly regulated medical platform surfaces through deep debugging
+        and patching.
       bullet_point_total_match_count: 0
       render: false
     - order: 4
@@ -3783,9 +2076,9 @@ professional_experience:
         - EHR/HCIS systems
         - healthcare application support
         jod_match_count: 0
-      text: Administered IT and HIS systems for the department of radiology, including Philips
-        Vue PACS and interconnected applications/software used by regulated clinical teams
-        as radiology systems administration.
+      text: Administered IT and HIS systems for the department of radiology, including
+        Philips Vue PACS and interconnected applications/software used by regulated
+        clinical teams as radiology systems administration.
       bullet_point_total_match_count: 0
       render: false
     - order: 5
@@ -3799,8 +2092,8 @@ professional_experience:
         - EHR/HCIS systems
         - healthcare application support
         jod_match_count: 0
-      text: Provided technical support for HCIS radiology servers and computer systems across
-        mission-critical hospital environments across the support scope.
+      text: Provided technical support for HCIS radiology servers and computer systems
+        across mission-critical hospital environments across the support scope.
       bullet_point_total_match_count: 0
       render: false
     - order: 6
@@ -3824,8 +2117,9 @@ professional_experience:
         - mass patch orchestration
         - production rollout automation
         jod_match_count: 0
-      text: Wrote Python and AutoIT scripts for remote software/update deployment and performed
-        mass patch rollouts across hundreds of systems as automation detail.
+      text: Wrote Python and AutoIT scripts for remote software/update deployment
+        and performed mass patch rollouts across hundreds of systems as automation
+        detail.
       bullet_point_total_match_count: 0
       render: false
     - order: 7
@@ -3843,8 +2137,8 @@ professional_experience:
         matched:
         - DICOM over IPv4
         jod_match_count: 0
-      text: Helped implement a DICOM anonymization server over IPv4 with a React.js frontend
-        as DICOM detail.
+      text: Helped implement a DICOM anonymization server over IPv4 with a React.js
+        frontend as DICOM detail.
       bullet_point_total_match_count: 0
       render: false
   - order: 3
@@ -3875,9 +2169,9 @@ professional_experience:
         - Systems Architecture
         - infrastructure platform engineering
         jod_match_count: 0
-      text: Led the engineering lifecycle to modernize 7+ year old core infrastructure systems,
-        executing legacy virtualization overhauls via ESX/VMware and migrating services to
-        Azure Cloud as cloud migrations and architecture work.
+      text: Led the engineering lifecycle to modernize 7+ year old core infrastructure
+        systems, executing legacy virtualization overhauls via ESX/VMware and migrating
+        services to Azure Cloud as cloud migrations and architecture work.
       bullet_point_total_match_count: 0
       render: false
     - order: 2
@@ -3901,8 +2195,8 @@ professional_experience:
         - service orchestration
         jod_match_count: 0
       text: Built custom PHP plugins and integrated secure Azure SharePoint document-control
-        workflows to boost internal process cross-functional alignment as API and workflow
-        integration.
+        workflows to boost internal process cross-functional alignment as API and
+        workflow integration.
       bullet_point_total_match_count: 0
       render: false
     - order: 3
@@ -3934,9 +2228,9 @@ professional_experience:
         matched:
         - AI-assisted ticket automation
         jod_match_count: 0
-      text: Launched an enterprise ticketing and incident-tracking system, designing centralized
-        health monitoring dashboards and automated analytical reporting tools as observability
-        dashboards work.
+      text: Launched an enterprise ticketing and incident-tracking system, designing
+        centralized health monitoring dashboards and automated analytical reporting
+        tools as observability dashboards work.
       bullet_point_total_match_count: 0
       render: false
     - order: 4
@@ -3950,9 +2244,9 @@ professional_experience:
         - EHR/HCIS systems
         - healthcare application support
         jod_match_count: 0
-      text: Administered IT and HIS systems for an orthopedic clinic with 20+ providers, 80
-        employees, and 5 remote clinics while providing tier 1-3 support within clinical IT
-        scope.
+      text: Administered IT and HIS systems for an orthopedic clinic with 20+ providers,
+        80 employees, and 5 remote clinics while providing tier 1-3 support within
+        clinical IT scope.
       bullet_point_total_match_count: 0
       render: false
     - order: 5
@@ -3965,9 +2259,9 @@ professional_experience:
         matched:
         - VMware ESX/vSphere
         jod_match_count: 0
-      text: Replaced phone, fax, print, firewall, antivirus, and remote-access systems; deployed
-        ESX servers; upgraded Windows Server 2008 systems; and migrated workloads to VMware
-        where applicable as modernization detail.
+      text: Replaced phone, fax, print, firewall, antivirus, and remote-access systems;
+        deployed ESX servers; upgraded Windows Server 2008 systems; and migrated workloads
+        to VMware where applicable as modernization detail.
       bullet_point_total_match_count: 0
       render: false
     - order: 6
@@ -3983,7 +2277,8 @@ professional_experience:
         - private cloud VMware clusters
         jod_match_count: 0
       text: Added load balancing, extended Active Directory for redundancy, and duplicated
-        selected services in an offsite private-cloud VMware cluster as resilience detail.
+        selected services in an offsite private-cloud VMware cluster as resilience
+        detail.
       bullet_point_total_match_count: 0
       render: false
     - order: 7
@@ -4008,8 +2303,9 @@ professional_experience:
         matched:
         - AI-assisted operational reporting
         jod_match_count: 0
-      text: Implemented change and incident-management practices to support HIPAA compliance,
-        business continuity, and operational reporting for compliance and continuity.
+      text: Implemented change and incident-management practices to support HIPAA
+        compliance, business continuity, and operational reporting for compliance
+        and continuity.
       bullet_point_total_match_count: 0
       render: false
     - order: 8
@@ -4044,8 +2340,8 @@ professional_experience:
         - custom PHP plugins
         - service orchestration
         jod_match_count: 0
-      text: Helped launch a WordPress website, configured custom PHP plugins, and built SharePoint/OneDrive
-        document-control workflows as web and workflow support.
+      text: Helped launch a WordPress website, configured custom PHP plugins, and
+        built SharePoint/OneDrive document-control workflows as web and workflow support.
       bullet_point_total_match_count: 0
       render: false
   - order: 4
@@ -4070,9 +2366,9 @@ professional_experience:
         - Systems Architecture
         - infrastructure platform engineering
         jod_match_count: 0
-      text: Partnered with cross-functional leadership to architect and execute a multi-million
-        dollar infrastructure upgrade, maximizing capacity and network availability as infrastructure
-        optimization.
+      text: Partnered with cross-functional leadership to architect and execute a
+        multi-million dollar infrastructure upgrade, maximizing capacity and network
+        availability as infrastructure optimization.
       bullet_point_total_match_count: 0
       render: false
     - order: 2
@@ -4086,9 +2382,9 @@ professional_experience:
         - Azure
         - Exchange Online
         jod_match_count: 0
-      text: Spearheaded on-premise Exchange migrations to Azure cloud environments while ensuring
-        strict alignment with enterprise information security standards as cloud ecosystem
-        deployment.
+      text: Spearheaded on-premise Exchange migrations to Azure cloud environments
+        while ensuring strict alignment with enterprise information security standards
+        as cloud ecosystem deployment.
       bullet_point_total_match_count: 0
       render: false
     - order: 3
@@ -4104,8 +2400,8 @@ professional_experience:
         - infrastructure platform engineering
         jod_match_count: 0
       text: Administered company IT systems and network infrastructure for 150+ employees
-        and contractors, including internal/external web servers, client databases, security
-        solutions, and Windows environments across administration scope.
+        and contractors, including internal/external web servers, client databases,
+        security solutions, and Windows environments across administration scope.
       bullet_point_total_match_count: 0
       render: false
     - order: 4
@@ -4119,9 +2415,9 @@ professional_experience:
         - Palo Alto firewalls
         - Carbon Black Defense
         jod_match_count: 0
-      text: Deployed Palo Alto firewalls across all sites, rolled out Carbon Black Defense
-        across servers and workstations, and conducted a company-wide software inventory audit
-        as security modernization.
+      text: Deployed Palo Alto firewalls across all sites, rolled out Carbon Black
+        Defense across servers and workstations, and conducted a company-wide software
+        inventory audit as security modernization.
       bullet_point_total_match_count: 0
       render: false
     - order: 5
@@ -4134,8 +2430,8 @@ professional_experience:
         matched:
         - data transformation scripts
         jod_match_count: 0
-      text: Reduced IT operating costs by 30% by identifying and removing unnecessary subscriptions
-        and products through cost optimization.
+      text: Reduced IT operating costs by 30% by identifying and removing unnecessary
+        subscriptions and products through cost optimization.
       bullet_point_total_match_count: 0
       render: false
     - order: 6
@@ -4167,8 +2463,8 @@ professional_experience:
         matched:
         - SQL
         jod_match_count: 0
-      text: Managed 15+ client Django and Node.js websites plus SQL servers running in Dockerized
-        environments as web platform support.
+      text: Managed 15+ client Django and Node.js websites plus SQL servers running
+        in Dockerized environments as web platform support.
       bullet_point_total_match_count: 0
       render: false
     - order: 7
@@ -4189,8 +2485,8 @@ professional_experience:
         - Python automation scripts
         - AutoIT automation scripts
         jod_match_count: 0
-      text: Provided tier 1-3 technical support and wrote Python/AutoIT automation scripts
-        for recurring IT tasks as support and automation work.
+      text: Provided tier 1-3 technical support and wrote Python/AutoIT automation
+        scripts for recurring IT tasks as support and automation work.
       bullet_point_total_match_count: 0
       render: false
   - order: 5
@@ -4238,9 +2534,9 @@ professional_experience:
         - Dell SAN/NAS systems
         - CT/MR image data processing
         jod_match_count: 0
-      text: Wrote highly scalable Python data-transfer scripts optimizing the ingestion and
-        transit of massive CT imagery cache structures between Linux environments and SAN/NAS
-        storage arrays as algorithmic data engineering.
+      text: Wrote highly scalable Python data-transfer scripts optimizing the ingestion
+        and transit of massive CT imagery cache structures between Linux environments
+        and SAN/NAS storage arrays as algorithmic data engineering.
       bullet_point_total_match_count: 0
       render: false
     - order: 2
@@ -4259,8 +2555,8 @@ professional_experience:
         - WordPress
         - infrastructure platform engineering
         jod_match_count: 0
-      text: Rebuilt corporate web platforms entirely from WordPress to a robust, secure Django
-        framework to improve backend structural integrity as framework refactoring.
+      text: Rebuilt corporate web platforms entirely from WordPress to a robust, secure
+        Django framework to improve backend structural integrity as framework refactoring.
       bullet_point_total_match_count: 0
       render: false
     - order: 3
@@ -4279,9 +2575,9 @@ professional_experience:
         - Systems Architecture
         - infrastructure platform engineering
         jod_match_count: 0
-      text: Architected, deployed, and administered storage, networking, security, Windows,
-        Linux, and web infrastructure during company growth from roughly 20 to 60+ employees
-        as infrastructure ownership.
+      text: Architected, deployed, and administered storage, networking, security,
+        Windows, Linux, and web infrastructure during company growth from roughly
+        20 to 60+ employees as infrastructure ownership.
       bullet_point_total_match_count: 0
       render: false
     - order: 4
@@ -4302,9 +2598,9 @@ professional_experience:
         - HIPAA compliance
         - next-generation endpoint security
         jod_match_count: 0
-      text: Deployed administration tools, vulnerability scanning, AlienVault SIEM, firewalls,
-        and endpoint-security tooling; helped reach HIPAA compliance within 6 months and pass
-        later audits through security and compliance work.
+      text: Deployed administration tools, vulnerability scanning, AlienVault SIEM,
+        firewalls, and endpoint-security tooling; helped reach HIPAA compliance within
+        6 months and pass later audits through security and compliance work.
       bullet_point_total_match_count: 0
       render: false
     - order: 5
@@ -4320,8 +2616,8 @@ professional_experience:
         - disaster recovery planning
         - business continuity planning
         jod_match_count: 0
-      text: Implemented change/incident management, disaster-recovery planning, and business-continuity
-        practices for mission-critical systems as continuity planning.
+      text: Implemented change/incident management, disaster-recovery planning, and
+        business-continuity practices for mission-critical systems as continuity planning.
       bullet_point_total_match_count: 0
       render: false
     - order: 6
@@ -4357,9 +2653,9 @@ professional_experience:
         - infrastructure platform engineering
         - service orchestration
         jod_match_count: 0
-      text: Migrated applicable infrastructure to Azure, extended Microsoft Active Directory
-        to cloud services, migrated Exchange to Office 365, and built Azure SharePoint document/version-control
-        workflows as cloud and identity modernization.
+      text: Migrated applicable infrastructure to Azure, extended Microsoft Active
+        Directory to cloud services, migrated Exchange to Office 365, and built Azure
+        SharePoint document/version-control workflows as cloud and identity modernization.
       bullet_point_total_match_count: 0
       render: false
     - order: 8
@@ -4386,7 +2682,8 @@ professional_experience:
         matched:
         - stakeholder enablement
         jod_match_count: 0
-      text: Oversaw budget, supervised IT work, and mentored/trained IT staff through leadership.
+      text: Oversaw budget, supervised IT work, and mentored/trained IT staff through
+        leadership.
       bullet_point_total_match_count: 0
       render: false
     - order: 10
@@ -4404,8 +2701,8 @@ professional_experience:
         matched:
         - Dell SAN/NAS systems
         jod_match_count: 0
-      text: Automated transfer of large CT image data caches between Linux backup servers
-        and Dell SAN/NAS storage arrays for medical imaging data.
+      text: Automated transfer of large CT image data caches between Linux backup
+        servers and Dell SAN/NAS storage arrays for medical imaging data.
       bullet_point_total_match_count: 0
       render: false
   - order: 6
@@ -4437,9 +2734,9 @@ professional_experience:
         - CT/MR image data processing
         - statistical image analysis
         jod_match_count: 0
-      text: Developed Python, MATLAB, and R software tools for automated CT/MR image preprocessing,
-        segmentation, intensity analysis, and 3D visualization of organs and anatomical structures
-        as research software engineering.
+      text: Developed Python, MATLAB, and R software tools for automated CT/MR image
+        preprocessing, segmentation, intensity analysis, and 3D visualization of organs
+        and anatomical structures as research software engineering.
       bullet_point_total_match_count: 0
       render: false
     - order: 2
@@ -4457,9 +2754,9 @@ professional_experience:
         matched:
         - statistical image analysis
         jod_match_count: 0
-      text: Ran statistical analysis to evaluate nanoparticle drug-delivery efficacy in pre-clinical
-        cancer models; results were used in successful NIH/SBIR grant proposals as quantitative
-        analysis.
+      text: Ran statistical analysis to evaluate nanoparticle drug-delivery efficacy
+        in pre-clinical cancer models; results were used in successful NIH/SBIR grant
+        proposals as quantitative analysis.
       bullet_point_total_match_count: 0
       render: false
     - order: 3
@@ -4487,8 +2784,8 @@ professional_experience:
         matched:
         - CT/MR image data processing
         jod_match_count: 0
-      text: Used MIPAV, ImageJ, Slicer 3D, ITK, and SimpleITK/Python workflows for medical-image
-        processing across imaging platforms.
+      text: Used MIPAV, ImageJ, Slicer 3D, ITK, and SimpleITK/Python workflows for
+        medical-image processing across imaging platforms.
       bullet_point_total_match_count: 0
       render: false
     - order: 4
@@ -4501,8 +2798,8 @@ professional_experience:
         matched:
         - healthcare application support
         jod_match_count: 0
-      text: Assisted with experimental design, data collection, analysis, and report preparation
-        for pre-clinical studies across research operations.
+      text: Assisted with experimental design, data collection, analysis, and report
+        preparation for pre-clinical studies across research operations.
       bullet_point_total_match_count: 0
       render: false
     - order: 5
@@ -4516,8 +2813,8 @@ professional_experience:
         - Ruby
         - Ruby on Rails
         jod_match_count: 0
-      text: Assisted in building and maintaining the company website using Ruby on Rails through
-        web development.
+      text: Assisted in building and maintaining the company website using Ruby on
+        Rails through web development.
       bullet_point_total_match_count: 0
       render: false
     - order: 6
@@ -4530,8 +2827,8 @@ professional_experience:
         matched:
         - production troubleshooting
         jod_match_count: 0
-      text: Supported network security, storage, network, and Windows administration responsibilities
-        through IT administration.
+      text: Supported network security, storage, network, and Windows administration
+        responsibilities through IT administration.
       bullet_point_total_match_count: 0
       render: false
     - order: 7
@@ -4578,8 +2875,9 @@ professional_experience:
         matched:
         - JSON/XML
         jod_match_count: 0
-      text: Revised and maintained an intranet site, frequently adding pages and GUI features
-        with HTML, CSS, JavaScript/jQuery, XML, and Adobe Photoshop through web support.
+      text: Revised and maintained an intranet site, frequently adding pages and GUI
+        features with HTML, CSS, JavaScript/jQuery, XML, and Adobe Photoshop through
+        web support.
       bullet_point_total_match_count: 0
       render: false
     - order: 2
@@ -4593,8 +2891,8 @@ professional_experience:
         - technical documentation
         - stakeholder enablement
         jod_match_count: 0
-      text: Worked with users and administrators to update pages and improve intranet content
-        through user collaboration.
+      text: Worked with users and administrators to update pages and improve intranet
+        content through user collaboration.
       bullet_point_total_match_count: 0
       render: false
     - order: 3
@@ -4613,8 +2911,8 @@ professional_experience:
         matched:
         - Data Pipelines
         jod_match_count: 0
-      text: Optimized file categorization and retrieval methods and wrote a custom search
-        engine for search and retrieval.
+      text: Optimized file categorization and retrieval methods and wrote a custom
+        search engine for search and retrieval.
       bullet_point_total_match_count: 0
       render: false
 education:
@@ -4629,7 +2927,8 @@ education:
       degree_dates_text: 2009 - 2013
     bullet_points:
     - order: 1
-      text: Emphasis on graduate-level mathematics, applied statistics, and algorithmic logic.
+      text: Emphasis on graduate-level mathematics, applied statistics, and algorithmic
+        logic.
     - order: 2
       text: University Chess Club President (2009-2012).
 certifications:
@@ -4637,11 +2936,13 @@ certifications:
   header_text: Certifications
   bullet_points:
   - order: 1
-    text: AlienVault Certified Security Engineer (AVCSE) | Certification (September, 2015)
+    text: AlienVault Certified Security Engineer (AVCSE) | Certification (September,
+      2015)
   - order: 2
     text: Oracle Cloud Infrastructure (OCI) Engineer | Certification (August, 2024)
   - order: 3
-    text: Oracle Cloud Infrastructure AI Foundations Associate | Certification (May, 2026)
+    text: Oracle Cloud Infrastructure AI Foundations Associate | Certification (May,
+      2026)
 portfolio:
   render: true
   header_text: Portfolio
@@ -4649,8 +2950,8 @@ portfolio:
   - order: 1
     title_text: LinkedIn Career MCP
     url: https://github.com/mperkhou/linkedin-career-mcp
-    description_text: a local MCP workflow that turns a candidate profile into efficient LinkedIn
-      searches, fetches high-fit postings, and tracks each opportunity through a SQLite/workbook-backed
-      local UI. For each role, it cleans the job description, generates tailored resumes and
-      cover letters, then uses ATS scoring and repair loops to iteratively improve the resume
-      against the posting.
+    description_text: a local MCP workflow that turns a candidate profile into efficient
+      LinkedIn searches, fetches high-fit postings, and tracks each opportunity through
+      a SQLite/workbook-backed local UI. For each role, it cleans the job description,
+      generates tailored resumes and cover letters, then uses ATS scoring and repair
+      loops to iteratively improve the resume against the posting.

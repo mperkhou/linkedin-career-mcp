@@ -1,5 +1,20 @@
 # linkedin-career-mcp CHANGELOG
 
+## 2.1.3 - Finalize JOD-target ARO resume generation
+
+* Promote the Oracle paragraph-evidence resume source into the canonical master
+  resume text and YAML so ARO generation no longer depends on
+  `tmp/master-paragraphs.md`.
+* Make JOD-target bullet rewriting the primary draft-generation workflow,
+  including Oracle Method 2 generation from ARO paragraph evidence and rendered
+  non-Oracle job rewrites.
+* Remove legacy local experience-bullet scoring and score-bucket selection from
+  the production draft-generation and ARO-regeneration paths while preserving
+  Core Technical Skills JOD matching for the rendered skills section.
+* Keep `MASTER_RESUME=<path>` workflow flexibility and replace the experimental
+  JOD rewrite Makefile toggle with the final `JOD_MODEL=<model-id>` override.
+* Bump the package version to `2.1.3`.
+
 ## 2.0.3 - Local checkpoint: Experimental JOD rewrite and senior resume layout
 
 * Add an opt-in experimental JOD-target ARO workflow that generates compact JOD

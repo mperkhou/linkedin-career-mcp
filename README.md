@@ -8,13 +8,13 @@ The project is intentionally local-first. It does not authenticate to LinkedIn, 
 
 The workflow now centers on explicit objects instead of large freeform context bundles. `profile/MASTER-RESUME.yml` is the canonical Master Resume Object (MRO); each job gets an Application Resume Object (ARO) deep-copied from that master; cover letters are manual Cover Letter Objects (CLOs); and the Flask database stores the ARO, rendered HTML, rendered PDF, ATS fields, and user edits.
 
-That object-oriented design is more straightforward than the previous artifact pipeline: each step has a clear input and output, local algorithms handle deterministic scoring and bullet selection, and expensive LLM calls are limited to the parts that need semantic matching. The result is easier to modify, easier to debug, and more reproducible across runs.
+That object-oriented design is more straightforward than the previous artifact pipeline: each step has a clear input and output, the master resume carries structured source evidence, and expensive LLM calls are limited to the parts that need semantic matching. The result is easier to modify, easier to debug, and more reproducible across runs.
 
 ## Terms
 
 - **JOD**: Job Opening Description. This is the parsed posting text after trimming low-signal boilerplate such as benefits, compensation, legal notices, and generic company copy.
 - **MRO**: Master Resume Object. This is the canonical `MASTER-RESUME.yml` resume source with neutral render flags, skill categories, and experience bullet linkages.
-- **ARO**: Application Resume Object. This is a per-job deep copy of the MRO with JOD match lists, bullet scores, render flags, and manual edits.
+- **ARO**: Application Resume Object. This is a per-job deep copy of the MRO with JOD match lists, generated experience bullets, render flags, and manual edits.
 - **CLO**: Cover Letter Object. This is a manually pasted/edited rich-text cover letter stored in the database and rendered to PDF.
 - **ATS score**: A local proxy score that combines parsing, keyword, semantic, and formatting signals from the rendered resume and the selected JOD.
 
@@ -24,7 +24,7 @@ The master resume build is a separate initialization workflow. It happens before
 
 ![Master resume object build](docs/assets/master-resume-object-build.svg)
 
-The source text in `profile/MP-MASTER-RESUME.txt` is converted into `profile/MASTER-RESUME.yml` with Codex skills and project guidelines. The important part is the linkage work: professional-experience bullets are mapped to Core Technical Skills categories and terms, using both direct skill matches and broader category matches. Those links become the deterministic scoring surface later.
+The source text in `profile/MP-MASTER-RESUME.txt` is converted into `profile/MASTER-RESUME.yml` with Codex skills and project guidelines. The important part is the linkage work: professional-experience source evidence is mapped to Core Technical Skills categories and terms, using both direct skill matches and broader category matches. The Oracle role stores paragraph-level source evidence in the MRO so per-job ARO generation can tailor final bullets without reading a separate `tmp/master-paragraphs.md` file.
 
 ## Application Workflow
 
@@ -38,8 +38,8 @@ Once the master resume exists, the job workflow is:
 4. Seed the Flask SQLite database with raw JOD and prompt JOD.
 5. Deep-copy the MRO into an ARO for the job.
 6. Ask the configured LLM through OpenRouter to match Core Technical Skills to the JOD.
-7. Locally count JOD matches for every linked job bullet.
-8. Locally select renderable bullets by score, min/max limits, and tie buckets.
+7. Ask the JOD-target model to distill the JOD into compact requirement targets.
+8. Rewrite the rendered experience jobs from their ARO source evidence, including the Oracle paragraph evidence stored in the MRO.
 9. Store the ARO in SQLite, render resume HTML through Jinja2, render PDF, and calculate ATS score.
 10. Review, edit, sync, download, and rescore from the Flask UI.
 
@@ -138,14 +138,15 @@ The default LLM provider is the API/OpenRouter path:
 - `LINKEDIN_CAREER_MCP_LLM_PLANNER_API_MODEL`: cheaper planner model for search-query generation
 - `LINKEDIN_CAREER_MCP_OLLAMA_MODEL`: local fallback model when provider is `ollama`
 
-Experimental ARO rewrite runs can opt into the JOD-target framework with:
+Draft generation uses the JOD-target rewrite framework by default. The JOD target and
+experience-bullet rewrite calls default to OpenRouter model `z-ai/glm-5.2`; override with:
 
 ```bash
-EXPERIMENTAL_JOD_WORKFLOW=1 make regenerate-draft-resumes JOB_IDS="4424184336"
+JOD_MODEL=<model-id> make regenerate-draft-resumes JOB_IDS="4424184336"
 ```
 
-The experimental JOD target and non-oracle bullet rewrite calls default to OpenRouter
-model `z-ai/glm-5.2`; override with `EXPERIMENTAL_JOD_MODEL=<model-id>`.
+Use `MASTER_RESUME=<path>` to run the same ARO workflow against
+an alternate master resume object without replacing the canonical MRO.
 
 The important local files are:
 
@@ -159,12 +160,12 @@ The important local files are:
 The active workflow modules are intentionally smaller than the retired artifact pipeline:
 
 - `src/linkedin_career_mcp/workflows/matching.py`: LinkedIn search planning, filtering, JOD trimming, and DB seeding.
-- `src/linkedin_career_mcp/application_resume.py`: ARO initialization, Core Technical Skills matching prompt, scoring, and bullet selection.
+- `src/linkedin_career_mcp/application_resume.py`: ARO initialization, Core Technical Skills matching prompt, JOD target creation, and evidence-backed bullet rewriting.
 - `src/linkedin_career_mcp/jod.py`: JOD cleaning and prompt trimming.
 - `src/linkedin_career_mcp/resume_rendering.py`: HTML/PDF rendering.
 - `src/linkedin_career_mcp/webapp.py`: database-backed review, edit, download, rescore, and background actions.
 
-Keep the MRO neutral: empty `jod_matched_items`, zero match counts, and no job-specific pruning. Job-specific decisions belong in the ARO stored on the application row.
+Keep the MRO neutral: empty `jod_matched_items`, zero match counts, source-evidence bullets, and no job-specific pruning. Job-specific generated bullets belong in the ARO stored on the application row.
 
 The resume template treats Education, Certifications, and Portfolio as supporting sections
 after Professional Experience. By default, they are grouped together so senior-engineer
