@@ -1,90 +1,141 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="560" viewBox="0 0 1280 560" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="620" viewBox="0 0 1280 620" role="img" aria-labelledby="title desc">
   <title id="title">ARO application workflow</title>
-  <desc id="desc">Search planning, LinkedIn retrieval, JOD trimming, ARO creation, skill matching, bullet selection, database storage, rendering, and editing workflow.</desc>
+  <desc id="desc">A card-based map of the application resume workflow, from discovery and JOD preparation through ARO generation, rendering, ATS scoring, and Flask review.</desc>
   <defs>
     <style>
       .bg { fill: #f8fafc; }
-      .lane { fill: #ffffff; stroke: #cbd5e1; stroke-width: 1.5; rx: 14; }
-      .box { fill: #ffffff; stroke: #0f766e; stroke-width: 2; rx: 10; }
-      .ai { fill: #eef2ff; stroke: #4f46e5; stroke-width: 2; rx: 10; }
-      .local { fill: #ecfdf5; stroke: #15803d; stroke-width: 2; rx: 10; }
-      .db { fill: #fffbeb; stroke: #b45309; stroke-width: 2; rx: 10; }
-      .title { font: 700 20px Arial, sans-serif; fill: #0f172a; }
-      .laneTitle { font: 700 16px Arial, sans-serif; fill: #334155; }
-      .text { font: 14px Arial, sans-serif; fill: #334155; }
-      .small { font: 12px Arial, sans-serif; fill: #64748b; }
-      .arrow { stroke: #0f766e; stroke-width: 3; marker-end: url(#arrow); fill: none; }
-      .feedback { stroke: #b45309; stroke-width: 3; marker-end: url(#amberArrow); fill: none; stroke-dasharray: 8 6; }
+      .lane { fill: #ffffff; stroke: #cbd5e1; stroke-width: 1.5; }
+      .step1 { fill: #ccfbf1; stroke: #0f766e; stroke-width: 2; }
+      .step2 { fill: #dbeafe; stroke: #2563eb; stroke-width: 2; }
+      .step3 { fill: #ede9fe; stroke: #7c3aed; stroke-width: 2; }
+      .step4 { fill: #fce7f3; stroke: #be185d; stroke-width: 2; }
+      .step5 { fill: #fef3c7; stroke: #b45309; stroke-width: 2; }
+      .step6 { fill: #dcfce7; stroke: #166534; stroke-width: 2; }
+      .step7 { fill: #e0f2fe; stroke: #0284c7; stroke-width: 2; }
+      .step8 { fill: #e0e7ff; stroke: #4338ca; stroke-width: 2; }
+      .step9 { fill: #ffedd5; stroke: #c2410c; stroke-width: 2; }
+      .step10 { fill: #cffafe; stroke: #0891b2; stroke-width: 2; }
+      .step11 { fill: #ecfccb; stroke: #4d7c0f; stroke-width: 2; }
+      .step12 { fill: #fae8ff; stroke: #a21caf; stroke-width: 2; }
+      .step13 { fill: #fee2e2; stroke: #b91c1c; stroke-width: 2; }
+      .num1 { fill: #0f766e; }
+      .num2 { fill: #2563eb; }
+      .num3 { fill: #7c3aed; }
+      .num4 { fill: #be185d; }
+      .num5 { fill: #b45309; }
+      .num6 { fill: #166534; }
+      .num7 { fill: #0284c7; }
+      .num8 { fill: #4338ca; }
+      .num9 { fill: #c2410c; }
+      .num10 { fill: #0891b2; }
+      .num11 { fill: #4d7c0f; }
+      .num12 { fill: #a21caf; }
+      .num13 { fill: #b91c1c; }
+      .numText { font: 700 14px Arial, sans-serif; fill: #ffffff; dominant-baseline: central; text-anchor: middle; }
+      .title { font: 700 22px Arial, sans-serif; fill: #0f172a; }
+      .subtitle { font: 15px Arial, sans-serif; fill: #475569; }
+      .laneTitle { font: 700 16px Arial, sans-serif; fill: #334155; letter-spacing: .2px; }
+      .cardTitle { font: 700 15px Arial, sans-serif; fill: #0f172a; }
+      .body { font: 13px Arial, sans-serif; fill: #475569; }
+      .note { font: 13px Arial, sans-serif; fill: #64748b; }
     </style>
-    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0f766e" />
-    </marker>
-    <marker id="amberArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#b45309" />
-    </marker>
   </defs>
-  <rect class="bg" x="0" y="0" width="1280" height="560" />
-  <text class="title" x="34" y="42">Database-Backed ARO Workflow</text>
-  <text class="text" x="34" y="68">The per-job resume is now an object transformation pipeline. The database stores the object, rendered HTML, PDF, ATS fields, and user edits.</text>
 
-  <rect class="lane" x="30" y="98" width="1220" height="142" />
-  <text class="laneTitle" x="54" y="128">Discovery And JOD Preparation</text>
-  <rect class="ai" x="54" y="150" width="170" height="58" />
-  <text class="text" x="72" y="174">LLM search terms</text>
-  <text class="small" x="72" y="194">OpenRouter planner</text>
-  <path class="arrow" d="M 226 179 L 276 179" />
-  <rect class="box" x="290" y="150" width="145" height="58" />
-  <text class="text" x="312" y="174">LinkedIn</text>
-  <text class="small" x="312" y="194">public search/results</text>
-  <path class="arrow" d="M 438 179 L 488 179" />
-  <rect class="box" x="502" y="150" width="160" height="58" />
-  <text class="text" x="522" y="174">Fetch details</text>
-  <text class="small" x="522" y="194">raw posting text</text>
-  <path class="arrow" d="M 665 179 L 715 179" />
-  <rect class="local" x="730" y="150" width="220" height="58" />
-  <text class="text" x="750" y="174">ML multi-pass JOD trim</text>
-  <text class="small" x="750" y="194">JOD = Job Opening Description</text>
-  <path class="arrow" d="M 953 179 L 1003 179" />
-  <rect class="db" x="1018" y="150" width="190" height="58" />
-  <text class="text" x="1038" y="174">Seed database row</text>
-  <text class="small" x="1038" y="194">raw + prompt JOD</text>
+  <rect class="bg" x="0" y="0" width="1280" height="620" />
+  <text class="title" x="36" y="42">Database-Backed ARO Workflow</text>
+  <text class="subtitle" x="36" y="68">A job becomes structured data first, then an ARO, then rendered artifacts that stay editable in the Flask tracker.</text>
 
-  <rect class="lane" x="30" y="260" width="1220" height="178" />
-  <text class="laneTitle" x="54" y="290">ARO Creation And First Draft Rendering</text>
-  <rect class="box" x="54" y="315" width="170" height="74" />
-  <text class="text" x="72" y="340">Clone MASTER-</text>
-  <text class="text" x="72" y="360">RESUME.yml</text>
-  <text class="small" x="72" y="378">Creates ARO</text>
-  <path class="arrow" d="M 226 352 L 276 352" />
-  <rect class="ai" x="290" y="315" width="210" height="74" />
-  <text class="text" x="310" y="340">Core skills match</text>
-  <text class="small" x="310" y="360">LLM sees compact</text>
-  <text class="small" x="310" y="377">skills + trimmed JOD</text>
-  <path class="arrow" d="M 502 352 L 552 352" />
-  <rect class="local" x="566" y="315" width="210" height="74" />
-  <text class="text" x="586" y="340">Score bullets locally</text>
-  <text class="small" x="586" y="360">matched skills -> counts</text>
-  <text class="small" x="586" y="377">per job and bullet</text>
-  <path class="arrow" d="M 778 352 L 828 352" />
-  <rect class="local" x="842" y="315" width="190" height="74" />
-  <text class="text" x="862" y="340">Select render flags</text>
-  <text class="small" x="862" y="360">min/max bullet limits</text>
-  <text class="small" x="862" y="377">tie buckets preserved</text>
-  <path class="arrow" d="M 1035 352 L 1085 352" />
-  <rect class="db" x="1100" y="315" width="120" height="74" />
-  <text class="text" x="1118" y="340">Store ARO</text>
-  <text class="small" x="1118" y="360">YAML + timestamps</text>
+  <rect class="lane" x="34" y="102" width="1212" height="132" rx="18" />
+  <text class="laneTitle" x="58" y="132">1. Discovery And JOD Preparation</text>
 
-  <rect class="lane" x="30" y="458" width="1220" height="78" />
-  <text class="laneTitle" x="54" y="488">Review, Edit, Render, Score</text>
-  <rect class="db" x="290" y="476" width="165" height="42" />
-  <text class="text" x="308" y="502">Jinja2 HTML render</text>
-  <path class="arrow" d="M 458 497 L 505 497" />
-  <rect class="db" x="520" y="476" width="145" height="42" />
-  <text class="text" x="538" y="502">PDF + ATS score</text>
-  <path class="arrow" d="M 668 497 L 715 497" />
-  <rect class="box" x="730" y="476" width="190" height="42" />
-  <text class="text" x="748" y="502">Flask view/edit/download</text>
-  <path class="feedback" d="M 825 474 C 900 420 1010 405 1120 390" />
-  <text class="small" x="935" y="456">User edits update the ARO, then re-render/rescore</text>
+  <rect class="step1" x="58" y="154" width="260" height="56" rx="12" />
+  <circle class="num1" cx="84" cy="182" r="15" />
+  <text class="numText" x="84" y="183">1</text>
+  <text class="cardTitle" x="108" y="176">Search plan</text>
+  <text class="body" x="108" y="194">OpenRouter planner</text>
+  <text class="body" x="108" y="207">proposes searches</text>
+
+  <rect class="step2" x="338" y="154" width="260" height="56" rx="12" />
+  <circle class="num2" cx="364" cy="182" r="15" />
+  <text class="numText" x="364" y="183">2</text>
+  <text class="cardTitle" x="388" y="176">Fetch posting</text>
+  <text class="body" x="388" y="194">LinkedIn or job URL</text>
+  <text class="body" x="388" y="207">source text</text>
+
+  <rect class="step3" x="618" y="154" width="260" height="56" rx="12" />
+  <circle class="num3" cx="644" cy="182" r="15" />
+  <text class="numText" x="644" y="183">3</text>
+  <text class="cardTitle" x="668" y="176">Trim JOD</text>
+  <text class="body" x="668" y="194">Keep requirements;</text>
+  <text class="body" x="668" y="207">drop boilerplate</text>
+
+  <rect class="step4" x="898" y="154" width="300" height="56" rx="12" />
+  <circle class="num4" cx="924" cy="182" r="15" />
+  <text class="numText" x="924" y="183">4</text>
+  <text class="cardTitle" x="948" y="176">Seed tracker row</text>
+  <text class="body" x="948" y="194">Store raw/prompt JOD,</text>
+  <text class="body" x="948" y="207">URL, and status</text>
+
+  <rect class="lane" x="34" y="260" width="1212" height="174" rx="18" />
+  <text class="laneTitle" x="58" y="290">2. ARO Creation And Draft Writing</text>
+
+  <rect class="step5" x="58" y="314" width="210" height="76" rx="12" />
+  <circle class="num5" cx="84" cy="343" r="15" />
+  <text class="numText" x="84" y="344">5</text>
+  <text class="cardTitle" x="108" y="337">Clone MRO</text>
+  <text class="body" x="108" y="357">Copy MASTER-</text>
+  <text class="body" x="108" y="374">RESUME.yml into ARO</text>
+
+  <rect class="step6" x="292" y="314" width="210" height="76" rx="12" />
+  <circle class="num6" cx="318" cy="343" r="15" />
+  <text class="numText" x="318" y="344">6</text>
+  <text class="cardTitle" x="342" y="337">Match skills</text>
+  <text class="body" x="342" y="357">GLM 5.2 matches</text>
+  <text class="body" x="342" y="374">skills to prompt JOD</text>
+
+  <rect class="step7" x="526" y="314" width="210" height="76" rx="12" />
+  <circle class="num7" cx="552" cy="343" r="15" />
+  <text class="numText" x="552" y="344">7</text>
+  <text class="cardTitle" x="576" y="337">Build targets</text>
+  <text class="body" x="576" y="357">Distill JOD into</text>
+  <text class="body" x="576" y="374">requirement targets</text>
+
+  <rect class="step8" x="760" y="314" width="210" height="76" rx="12" />
+  <circle class="num8" cx="786" cy="343" r="15" />
+  <text class="numText" x="786" y="344">8</text>
+  <text class="cardTitle" x="810" y="337">Rewrite experience</text>
+  <text class="body" x="810" y="357">Use ARO evidence</text>
+  <text class="body" x="810" y="374">plus JOD targets</text>
+
+  <rect class="step9" x="994" y="314" width="204" height="76" rx="12" />
+  <circle class="num9" cx="1020" cy="343" r="15" />
+  <text class="numText" x="1020" y="344">9</text>
+  <text class="cardTitle" x="1044" y="337">Store ARO</text>
+  <text class="body" x="1044" y="357">Persist YAML, bullets,</text>
+  <text class="body" x="1044" y="374">and timestamps</text>
+
+  <text class="note" x="58" y="414">Prompts and responses are cached during generation so JOD targets, raw experience, and generated bullets remain inspectable.</text>
+
+  <rect class="lane" x="34" y="460" width="1212" height="118" rx="18" />
+  <text class="laneTitle" x="58" y="490">3. Render, Score, Review, Edit</text>
+
+  <rect class="step10" x="58" y="512" width="250" height="42" rx="12" />
+  <circle class="num10" cx="84" cy="533" r="15" />
+  <text class="numText" x="84" y="534">10</text>
+  <text class="cardTitle" x="112" y="538">Render HTML and PDF</text>
+
+  <rect class="step11" x="334" y="512" width="250" height="42" rx="12" />
+  <circle class="num11" cx="360" cy="533" r="15" />
+  <text class="numText" x="360" y="534">11</text>
+  <text class="cardTitle" x="388" y="538">Refresh ATS fields</text>
+
+  <rect class="step12" x="610" y="512" width="250" height="42" rx="12" />
+  <circle class="num12" cx="636" cy="533" r="15" />
+  <text class="numText" x="636" y="534">12</text>
+  <text class="cardTitle" x="664" y="538">Review in Flask</text>
+
+  <rect class="step13" x="886" y="512" width="312" height="42" rx="12" />
+  <circle class="num13" cx="912" cy="533" r="15" />
+  <text class="numText" x="912" y="534">13</text>
+  <text class="cardTitle" x="940" y="538">Manual edits update the ARO</text>
 </svg>

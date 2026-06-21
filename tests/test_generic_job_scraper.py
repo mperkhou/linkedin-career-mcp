@@ -103,6 +103,37 @@ def test_extract_generic_job_details_falls_back_to_main_text():
     assert "deployment automation" in details.description
 
 
+def test_extract_generic_job_details_infers_greenhouse_company_from_page_title():
+    description = (
+        "LTS is seeking a principal platform engineer to build AI-native platform "
+        "systems on commercial AWS, design distributed services, improve observability, "
+        "and operate high-leverage production workflows with a small senior team."
+    )
+    html = f"""
+    <html>
+      <head>
+        <title>Job Application for Principal Platform Engineer at LTS</title>
+        <meta property="og:title" content="Principal Platform Engineer">
+      </head>
+      <body>
+        <main>
+          <h1>Principal Platform Engineer</h1>
+          <p>{description}</p>
+        </main>
+      </body>
+    </html>
+    """
+
+    details = extract_generic_job_details_from_html(
+        html=html,
+        url="https://job-boards.greenhouse.io/lts/jobs/4284753009",
+    )
+
+    assert details.title == "Principal Platform Engineer"
+    assert details.company == "LTS"
+    assert "commercial AWS" in details.description
+
+
 def test_extract_generic_job_details_rejects_pages_without_usable_description():
     with pytest.raises(ProviderError, match="No usable job description"):
         extract_generic_job_details_from_html(

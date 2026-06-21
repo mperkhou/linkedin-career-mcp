@@ -1,5 +1,52 @@
 # linkedin-career-mcp CHANGELOG
 
+## 3.0.0 - Finalize JOD-target ARO resume generation
+
+* Promote current-role paragraph-evidence resume source into the canonical master
+  resume text and YAML so ARO generation no longer depends on
+  `tmp/master-paragraphs.md`.
+* Make JOD-target bullet rewriting the primary draft-generation workflow,
+  including Method 2 generation from ARO paragraph evidence and rendered
+  prior-role job rewrites.
+* Remove legacy local experience-bullet scoring and score-bucket selection from
+  the production draft-generation and ARO-regeneration paths while preserving
+  Core Technical Skills JOD matching for the rendered skills section.
+* Keep `MASTER_RESUME=<path>` workflow flexibility and replace the experimental
+  JOD rewrite Makefile toggle with the final `JOD_MODEL=<model-id>` override.
+* Route Core Technical Skills matching through the same GLM 5.2 draft-generation
+  default as JOD target creation and experience bullet rewrites.
+* Document SemVer release guardrails and add a metadata test that keeps the
+  package version aligned with the top changelog entry.
+* Refresh README workflow diagrams and add a cached end-to-end JOD target rewrite
+  example showing database fields, GLM prompts, and generated prior-role bullets.
+* Replace cluttered README screenshot overlays with external legends and a shared
+  numbered color palette across screenshots and workflow diagrams.
+* Add a companion README JOD editor screenshot showing the same page scrolled to
+  the removed-text and line-level diff panels.
+* Tweak README progress-panel callout placement so labels and status controls
+  remain unobstructed.
+* Add v3.0.0 release notes, an experiment log, and an ADR documenting why the
+  architecture moved from bullet/paragraph selection to JOD-targeted generation.
+* Remove the retired `profile/algorithm.txt` placeholder now that experiment
+  history and workflow decisions live under `docs/`.
+* Fix generic Greenhouse URL imports so company names can be inferred from page
+  titles instead of falling back to the job-board hostname.
+* Bump the package version to `3.0.0` because the default resume-generation
+  architecture changed in a breaking way.
+
+## 2.0.3 - Local checkpoint: Experimental JOD rewrite and senior resume layout
+
+* Add an opt-in experimental JOD-target ARO workflow that generates compact JOD
+  requirements, rewrites rendered non-Oracle experience bullets with GLM 5.2,
+  and caches prompts/responses alongside rendered artifacts.
+* Preserve the existing Core Technical Skills JOD matching, local bullet scoring,
+  and first-draft render flag selection before running the experimental rewrite.
+* Update the resume template for senior-engineer two-page layouts by grouping
+  Education, Certifications, and Portfolio after Professional Experience while
+  keeping an explicit page-break override available.
+* Document the experimental workflow flags and supporting-section layout behavior.
+* Bump the package version to `1.0.3`.
+
 ## 2.0.2 - PR #32: Refresh MRO data and active status handling
 
 * Refresh the master resume source text and YAML with expanded Oracle platform

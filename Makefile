@@ -13,6 +13,9 @@ DATE_POSTED ?= past_week
 LIMIT_PER_QUERY ?= 10
 MAX_QUERIES ?= 6
 MAX_JOBS ?= 10
+MASTER_RESUME ?= profile/MASTER-RESUME.yml
+JOD_MODEL ?= z-ai/glm-5.2
+CORE_SKILL_MODEL ?= $(JOD_MODEL)
 
 .PHONY: install install-python install-browser install-ollama ollama-model venv skill-link seed-jobs regenerate-draft-resumes regenerate-aro-objects sync-draft-to-aro launch-website stop-website restart-website test lint clean
 
@@ -74,7 +77,7 @@ regenerate-draft-resumes: venv
 	if [ "$(FIRST_DRAFT_FORCE)" = "1" ] || [ "$(FIRST_DRAFT_FORCE)" = "true" ]; then \
 		force_arg="--force"; \
 	fi; \
-	$(VENV_PYTHON) scripts/application_resume_generate_drafts.py $$job_args $$force_arg
+	$(VENV_PYTHON) scripts/application_resume_generate_drafts.py --master-resume "$(MASTER_RESUME)" --api-model "$(CORE_SKILL_MODEL)" --jod-model "$(JOD_MODEL)" $$job_args $$force_arg
 
 regenerate-aro-objects: venv
 	@job_args=""; \
@@ -83,7 +86,7 @@ regenerate-aro-objects: venv
 			job_args="$$job_args --job-id $$job_id"; \
 		done; \
 	fi; \
-	$(VENV_PYTHON) scripts/application_resume_regenerate_aros.py $$job_args
+	$(VENV_PYTHON) scripts/application_resume_regenerate_aros.py --master-resume "$(MASTER_RESUME)" $$job_args
 
 sync-draft-to-aro: venv
 	@job_args=""; \

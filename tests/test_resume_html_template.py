@@ -188,6 +188,66 @@ def test_resume_html_template_honors_section_render_flags(tmp_path: Path) -> Non
     assert "Hidden Project" not in html
 
 
+def test_resume_html_template_groups_supporting_sections_with_optional_page_break(
+    tmp_path: Path,
+) -> None:
+    yaml_path = tmp_path / "supporting-sections-page-two.yaml"
+    resume = {
+        "header_top": {
+            "line_1_name_header_text": "Max Perkhounkov",
+            "contact_items": ["Iowa City, IA"],
+        },
+        "professional_summary": {"paragraph": "Senior platform engineer."},
+        "professional_experience": {
+            "jobs": [
+                {
+                    "line_1": {"company_name_text": "Oracle"},
+                    "bullet_points": ["Built cloud automation."],
+                }
+            ]
+        },
+        "education": {
+            "entries": [
+                {
+                    "line_1": {"institution_name_text": "University of Iowa"},
+                    "line_2": {"degree_name_text": "Bachelor of Science"},
+                }
+            ]
+        },
+        "certifications": {"bullet_points": ["AWS Certified Cloud Practitioner"]},
+        "portfolio": {
+            "projects": [
+                {
+                    "title_text": "linkedin-career-mcp",
+                    "url": "https://github.com/mperkhou/linkedin-career-mcp",
+                }
+            ]
+        },
+    }
+    yaml_path.write_text(yaml.safe_dump(resume, sort_keys=False), encoding="utf-8")
+
+    html = render_resume_html(
+        yaml_path=yaml_path,
+        template_path=Path("templates/resume/master_resume.html.j2"),
+    )
+
+    assert 'class="resume-supporting-sections"' in html
+    assert "resume-supporting-sections resume-supporting-page" not in html
+    assert html.index("Professional Experience") < html.index("Education")
+    assert "break-inside: avoid" in html
+
+    resume["resume_layout"] = {"supporting_sections_start_on_page_2": True}
+    yaml_path.write_text(yaml.safe_dump(resume, sort_keys=False), encoding="utf-8")
+
+    page_break_html = render_resume_html(
+        yaml_path=yaml_path,
+        template_path=Path("templates/resume/master_resume.html.j2"),
+    )
+
+    assert 'class="resume-supporting-sections resume-supporting-page"' in page_break_html
+    assert "break-before: page" in page_break_html
+
+
 def test_resume_html_template_decodes_escaped_streamdown_header(tmp_path: Path) -> None:
     yaml_path = tmp_path / "escaped-header.yaml"
     yaml_path.write_text(

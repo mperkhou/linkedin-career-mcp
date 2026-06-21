@@ -12,9 +12,8 @@ import yaml
 
 from linkedin_career_mcp.application_resume import (
     DEFAULT_MASTER_RESUME_PATH,
-    apply_core_skill_matches_and_score_experience,
+    apply_core_skill_jod_matches,
     initialize_application_resume_object,
-    select_first_draft_experience_bullets,
 )
 from linkedin_career_mcp.webapp import (
     DEFAULT_DATABASE,
@@ -66,16 +65,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             row["application_resume_object"]
         )
         fresh_aro = initialize_application_resume_object(args.master_resume)
-        scored_aro = apply_core_skill_matches_and_score_experience(
+        matched_aro = apply_core_skill_jod_matches(
             application_resume=fresh_aro,
             core_skill_response=existing_response,
         )
-        selected_aro = select_first_draft_experience_bullets(scored_aro)
         store_application_resume_object(
             database_path=args.database,
             job_id=job_id,
             application_resume_object=yaml.safe_dump(
-                selected_aro,
+                matched_aro,
                 sort_keys=False,
                 allow_unicode=False,
             ),
