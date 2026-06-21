@@ -27,6 +27,8 @@
   remain unobstructed.
 * Add v3.0.0 release notes, an experiment log, and an ADR documenting why the
   architecture moved from bullet/paragraph selection to JOD-targeted generation.
+* Remove the retired `profile/algorithm.txt` placeholder now that experiment
+  history and workflow decisions live under `docs/`.
 * Fix generic Greenhouse URL imports so company names can be inferred from page
   titles instead of falling back to the job-board hostname.
 * Bump the package version to `3.0.0` because the default resume-generation
