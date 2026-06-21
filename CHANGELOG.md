@@ -2,12 +2,12 @@
 
 ## 3.0.0 - Finalize JOD-target ARO resume generation
 
-* Promote the Oracle paragraph-evidence resume source into the canonical master
+* Promote current-role paragraph-evidence resume source into the canonical master
   resume text and YAML so ARO generation no longer depends on
   `tmp/master-paragraphs.md`.
 * Make JOD-target bullet rewriting the primary draft-generation workflow,
-  including Oracle Method 2 generation from ARO paragraph evidence and rendered
-  non-Oracle job rewrites.
+  including Method 2 generation from ARO paragraph evidence and rendered
+  prior-role job rewrites.
 * Remove legacy local experience-bullet scoring and score-bucket selection from
   the production draft-generation and ARO-regeneration paths while preserving
   Core Technical Skills JOD matching for the rendered skills section.
@@ -18,7 +18,7 @@
 * Document SemVer release guardrails and add a metadata test that keeps the
   package version aligned with the top changelog entry.
 * Refresh README workflow diagrams and add a cached end-to-end JOD target rewrite
-  example showing database fields, GLM prompts, and generated non-Oracle bullets.
+  example showing database fields, GLM prompts, and generated prior-role bullets.
 * Fix generic Greenhouse URL imports so company names can be inferred from page
   titles instead of falling back to the job-board hostname.
 * Bump the package version to `3.0.0` because the default resume-generation
