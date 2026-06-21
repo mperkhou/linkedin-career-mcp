@@ -23,6 +23,8 @@
   numbered color palette across screenshots and workflow diagrams.
 * Add a companion README JOD editor screenshot showing the same page scrolled to
   the removed-text and line-level diff panels.
+* Tweak README progress-panel callout placement so labels and status controls
+  remain unobstructed.
 * Fix generic Greenhouse URL imports so company names can be inferred from page
   titles instead of falling back to the job-board hostname.
 * Bump the package version to `3.0.0` because the default resume-generation

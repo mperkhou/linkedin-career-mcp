@@ -244,7 +244,8 @@ def draw_progress_panel(target: str) -> None:
     callouts = [
         Callout("Live command output", console),
         Callout(
-            "Current action summary", (panel[0] + 24, panel[1] + 20, panel[0] + 340, panel[1] + 66)
+            "Current action summary",
+            (panel[0] + 24, panel[1] + 18, panel[0] + 340, panel[1] + 50),
         ),
         Callout(
             "Running/completed state",
@@ -263,7 +264,8 @@ def draw_progress_panel(target: str) -> None:
         badge_y = y1 - 14
         if y1 < 76:
             badge_y = y1 + (y2 - y1) // 2
-        draw_badge(overlay_draw, (x1 + 12, max(18, badge_y)), index)
+        badge_x = x1 - 14 if index in {3, 4} else x1 + 12
+        draw_badge(overlay_draw, (badge_x, max(18, badge_y)), index)
     image = Image.alpha_composite(image, overlay)
     draw = ImageDraw.Draw(image)
 
