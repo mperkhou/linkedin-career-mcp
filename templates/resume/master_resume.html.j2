@@ -95,6 +95,14 @@
       margin-top: 14pt;
     }
 
+    .resume-supporting-sections {
+      margin-top: 14pt;
+    }
+
+    .resume-supporting-sections .resume-section:first-child {
+      margin-top: 0;
+    }
+
     .section-rule {
       width: 100%;
       height: 1.35pt;
@@ -217,10 +225,21 @@
       .education-item {
         break-inside: avoid;
       }
+
+      .resume-supporting-sections {
+        break-inside: avoid;
+      }
+
+      .resume-supporting-page {
+        break-before: page;
+        page-break-before: always;
+        margin-top: 0;
+      }
     }
   </style>
 </head>
 <body>
+  {% set layout = data.resume_layout | default({}) %}
   {% set header = data.header_top | default({}) %}
   {% set summary = data.professional_summary | default({}) %}
   {% set skills = data.core_technical_skills | default({}) %}
@@ -288,7 +307,8 @@
       </header>
     {% endif %}
 
-    {% if summary.render | default(true) and (summary.paragraph | default("", true) or summary.summary_note | default("", true)) %}
+    {% set summary_rendered = summary.render | default(true) and (summary.paragraph | default("", true) or summary.summary_note | default("", true)) %}
+    {% if summary_rendered %}
       <section class="resume-section">
         <h2 class="section-heading">{{ summary.header_text | default("Professional Summary", true) }}</h2>
         {% if summary.paragraph | default("", true) %}
@@ -301,7 +321,8 @@
     {% endif %}
 
     {% set skill_bullets = skills.bullet_points | default([]) %}
-    {% if skills.render | default(true) and skill_bullets %}
+    {% set skills_rendered = skills.render | default(true) and skill_bullets %}
+    {% if skills_rendered %}
       <section class="resume-section">
         <h2 class="section-heading">{{ skills.header_text | default("Core Technical Skills", true) }}</h2>
         <ul class="bullet-list">
@@ -313,7 +334,8 @@
     {% endif %}
 
     {% set jobs = experience.jobs | default([]) %}
-    {% if experience.render | default(true) and jobs %}
+    {% set experience_rendered = experience.render | default(true) and jobs %}
+    {% if experience_rendered %}
       <section class="resume-section with-rule">
         <div class="section-rule"></div>
         <h2 class="section-heading">{{ experience.header_text | default("Professional Experience", true) }}</h2>
@@ -349,88 +371,98 @@
     {% endif %}
 
     {% set education_items = education.entries | default(education.get("items", []) if education.get is defined else []) %}
-    {% if education.render | default(true) and education_items %}
-      <section class="resume-section with-rule">
-        <div class="section-rule"></div>
-        <h2 class="section-heading">{{ education.header_text | default("Education", true) }}</h2>
-        <ul class="bullet-list">
-          {% for item in education_items if item is string or (item.render | default(true)) %}
-            {% set details = item.details | default([]) %}
-            {% set sub_items = item.sub_items | default([]) %}
-            {% set entry_bullets = item.bullet_points | default([]) %}
-            {% set line_1 = item.line_1 | default({}) %}
-            {% set line_2 = item.line_2 | default({}) %}
-            <li class="education-item">
-              {% if item is string %}
-                {{ item | rich_text }}
-              {% elif details %}
-                <strong>{{ item.title }}:</strong> {{ details[0] | rich_text }}
-              {% elif line_1.institution_name_text | default("", true) or line_2.degree_name_text | default("", true) %}
-                <strong>{{ line_1.institution_name_text | default("", true) }}:</strong>
-                {{ line_2.degree_name_text | default("", true) }}
-                {% if line_2.degree_dates_text | default("", true) %}
-                  | <span class="job-dates">{{ line_2.degree_dates_text }}</span>
-                {% endif %}
-              {% else %}
-                {{ item.title | default(item.rendered_text | default("", true), true) | rich_text }}
-              {% endif %}
-              {% if entry_bullets %}
-                <ul class="nested-list">
-                  {% for entry_bullet in entry_bullets if entry_bullet is string or (entry_bullet.render | default(true)) %}
-                    <li>{{ bullet_text(entry_bullet) }}</li>
-                  {% endfor %}
-                </ul>
-              {% elif sub_items %}
-                <ul class="nested-list">
-                  {% for sub_item in sub_items %}
-                    <li>
-                      {% if sub_item.label | default("", true) %}
-                        <em>{{ sub_item.label }}:</em>
-                      {% endif %}
-                      {{ sub_item.text | default(sub_item, true) | rich_text }}
-                    </li>
-                  {% endfor %}
-                </ul>
-              {% endif %}
-            </li>
-          {% endfor %}
-        </ul>
-      </section>
-    {% endif %}
-
+    {% set education_rendered = education.render | default(true) and education_items %}
     {% set certification_bullets = certifications.bullet_points | default([]) %}
-    {% if certifications.render | default(true) and certification_bullets %}
-      <section class="resume-section">
-        <h2 class="section-heading">{{ certifications.header_text | default("Certifications", true) }}</h2>
-        <ul class="bullet-list">
-          {% for bullet in certification_bullets if bullet is string or (bullet.render | default(true)) %}
-            <li>{{ bullet_text(bullet) }}</li>
-          {% endfor %}
-        </ul>
-      </section>
-    {% endif %}
-
+    {% set certifications_rendered = certifications.render | default(true) and certification_bullets %}
     {% set projects = portfolio.projects | default([]) %}
-    {% if portfolio.render | default(true) and projects %}
-      <section class="resume-section">
-        <h2 class="section-heading">{{ portfolio.header_text | default("Portfolio", true) }}</h2>
-        <ul class="bullet-list">
-          {% for project in projects if project is string or (project.render | default(true)) %}
-            <li>
-              {% if project is string %}
-                {{ project | rich_text }}
-              {% else %}
-                {% set title = project.title_text | default(project.title | default("", true), true) %}
-                {% set url = project.url | default("", true) %}
-                {% set description = project.description_text | default(project.description | default("", true), true) %}
-                {% if title %}<strong>{{ title }}:</strong>{% endif %}
-                {% if url %} {{ linked(url) }}{% endif %}
-                {% if description %} - {{ description | rich_text }}{% endif %}
-              {% endif %}
-            </li>
-          {% endfor %}
-        </ul>
-      </section>
+    {% set portfolio_rendered = portfolio.render | default(true) and projects %}
+    {% set support_sections_rendered = education_rendered or certifications_rendered or portfolio_rendered %}
+    {% set support_page_break = layout.supporting_sections_start_on_page_2 | default(false) %}
+
+    {% if support_sections_rendered %}
+      <div class="resume-supporting-sections{% if support_page_break %} resume-supporting-page{% endif %}">
+        {% if education_rendered %}
+          <section class="resume-section with-rule">
+            <div class="section-rule"></div>
+            <h2 class="section-heading">{{ education.header_text | default("Education", true) }}</h2>
+            <ul class="bullet-list">
+              {% for item in education_items if item is string or (item.render | default(true)) %}
+                {% set details = item.details | default([]) %}
+                {% set sub_items = item.sub_items | default([]) %}
+                {% set entry_bullets = item.bullet_points | default([]) %}
+                {% set line_1 = item.line_1 | default({}) %}
+                {% set line_2 = item.line_2 | default({}) %}
+                <li class="education-item">
+                  {% if item is string %}
+                    {{ item | rich_text }}
+                  {% elif details %}
+                    <strong>{{ item.title }}:</strong> {{ details[0] | rich_text }}
+                  {% elif line_1.institution_name_text | default("", true) or line_2.degree_name_text | default("", true) %}
+                    <strong>{{ line_1.institution_name_text | default("", true) }}:</strong>
+                    {{ line_2.degree_name_text | default("", true) }}
+                    {% if line_2.degree_dates_text | default("", true) %}
+                      | <span class="job-dates">{{ line_2.degree_dates_text }}</span>
+                    {% endif %}
+                  {% else %}
+                    {{ item.title | default(item.rendered_text | default("", true), true) | rich_text }}
+                  {% endif %}
+                  {% if entry_bullets %}
+                    <ul class="nested-list">
+                      {% for entry_bullet in entry_bullets if entry_bullet is string or (entry_bullet.render | default(true)) %}
+                        <li>{{ bullet_text(entry_bullet) }}</li>
+                      {% endfor %}
+                    </ul>
+                  {% elif sub_items %}
+                    <ul class="nested-list">
+                      {% for sub_item in sub_items %}
+                        <li>
+                          {% if sub_item.label | default("", true) %}
+                            <em>{{ sub_item.label }}:</em>
+                          {% endif %}
+                          {{ sub_item.text | default(sub_item, true) | rich_text }}
+                        </li>
+                      {% endfor %}
+                    </ul>
+                  {% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          </section>
+        {% endif %}
+
+        {% if certifications_rendered %}
+          <section class="resume-section">
+            <h2 class="section-heading">{{ certifications.header_text | default("Certifications", true) }}</h2>
+            <ul class="bullet-list">
+              {% for bullet in certification_bullets if bullet is string or (bullet.render | default(true)) %}
+                <li>{{ bullet_text(bullet) }}</li>
+              {% endfor %}
+            </ul>
+          </section>
+        {% endif %}
+
+        {% if portfolio_rendered %}
+          <section class="resume-section">
+            <h2 class="section-heading">{{ portfolio.header_text | default("Portfolio", true) }}</h2>
+            <ul class="bullet-list">
+              {% for project in projects if project is string or (project.render | default(true)) %}
+                <li>
+                  {% if project is string %}
+                    {{ project | rich_text }}
+                  {% else %}
+                    {% set title = project.title_text | default(project.title | default("", true), true) %}
+                    {% set url = project.url | default("", true) %}
+                    {% set description = project.description_text | default(project.description | default("", true), true) %}
+                    {% if title %}<strong>{{ title }}:</strong>{% endif %}
+                    {% if url %} {{ linked(url) }}{% endif %}
+                    {% if description %} - {{ description | rich_text }}{% endif %}
+                  {% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          </section>
+        {% endif %}
+      </div>
     {% endif %}
   </main>
 </body>

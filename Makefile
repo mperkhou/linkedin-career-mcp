@@ -13,6 +13,8 @@ DATE_POSTED ?= past_week
 LIMIT_PER_QUERY ?= 10
 MAX_QUERIES ?= 6
 MAX_JOBS ?= 10
+EXPERIMENTAL_JOD_WORKFLOW ?= 0
+EXPERIMENTAL_JOD_MODEL ?= z-ai/glm-5.2
 
 .PHONY: install install-python install-browser install-ollama ollama-model venv skill-link seed-jobs regenerate-draft-resumes regenerate-aro-objects sync-draft-to-aro launch-website stop-website restart-website test lint clean
 
@@ -74,7 +76,11 @@ regenerate-draft-resumes: venv
 	if [ "$(FIRST_DRAFT_FORCE)" = "1" ] || [ "$(FIRST_DRAFT_FORCE)" = "true" ]; then \
 		force_arg="--force"; \
 	fi; \
-	$(VENV_PYTHON) scripts/application_resume_generate_drafts.py $$job_args $$force_arg
+	experimental_arg=""; \
+	if [ "$(EXPERIMENTAL_JOD_WORKFLOW)" = "1" ] || [ "$(EXPERIMENTAL_JOD_WORKFLOW)" = "true" ]; then \
+		experimental_arg="--experimental-jod-workflow --experimental-jod-model $(EXPERIMENTAL_JOD_MODEL)"; \
+	fi; \
+	$(VENV_PYTHON) scripts/application_resume_generate_drafts.py $$job_args $$force_arg $$experimental_arg
 
 regenerate-aro-objects: venv
 	@job_args=""; \

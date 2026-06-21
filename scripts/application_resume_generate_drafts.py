@@ -15,10 +15,17 @@ import yaml
 
 from linkedin_career_mcp.application_resume import (
     CORE_SKILLS_PROMPT_JOD_MAX_CHARS,
+    DEFAULT_JOD_LLM_API_MODEL,
     DEFAULT_MASTER_RESUME_PATH,
     apply_core_skill_matches_and_score_experience,
+    attach_job_opening_description_object,
     build_core_skills_jod_match_prompt,
+    build_experience_job_bullet_rewrite_prompt,
+    build_jod_requirements_target_prompt,
+    create_job_opening_description_object,
+    experience_jobs_for_jod_bullet_rewrite,
     initialize_application_resume_object,
+    replace_experience_job_bullets_from_text_response,
     select_first_draft_experience_bullets,
 )
 from linkedin_career_mcp.config import load_settings
@@ -93,6 +100,19 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Stop on the first failed row instead of continuing.",
     )
     parser.add_argument("--max-jod-chars", type=int, default=CORE_SKILLS_PROMPT_JOD_MAX_CHARS)
+    parser.add_argument(
+        "--experimental-jod-workflow",
+        action="store_true",
+        help=(
+            "After existing scoring/selection, use GLM 5.2 to create JOD targets and "
+            "rewrite rendered non-oracle experience jobs."
+        ),
+    )
+    parser.add_argument(
+        "--experimental-jod-model",
+        default=DEFAULT_JOD_LLM_API_MODEL,
+        help="OpenRouter model used for experimental JOD targets and bullet rewrites.",
+    )
     return parser
 
 
@@ -122,9 +142,23 @@ async def main_async(argv: Sequence[str] | None = None) -> int:
         return 0
 
     settings = load_settings()
+    if args.experimental_jod_workflow and settings.llm_provider.casefold().strip() != "api":
+        raise RuntimeError("--experimental-jod-workflow requires the API/OpenRouter LLM provider.")
     llm = build_llm_client(settings, api_model=args.api_model)
+    jod_llm = (
+        build_llm_client(settings, api_model=args.experimental_jod_model)
+        if args.experimental_jod_workflow
+        else None
+    )
     model = getattr(llm, "model", args.api_model or settings.llm_api_model)
     print(f"LLM: {settings.llm_provider}:{model}", file=sys.stderr, flush=True)
+    if jod_llm is not None:
+        jod_model = getattr(jod_llm, "model", args.experimental_jod_model)
+        print(
+            f"JOD LLM: {settings.llm_provider}:{jod_model}",
+            file=sys.stderr,
+            flush=True,
+        )
 
     processed = 0
     failures: list[dict[str, str]] = []
@@ -143,6 +177,10 @@ async def main_async(argv: Sequence[str] | None = None) -> int:
                     master_resume_path=args.master_resume,
                     template_path=args.template,
                     llm=llm,
+                    jod_llm=jod_llm,
+                    jod_model=args.experimental_jod_model
+                    if args.experimental_jod_workflow
+                    else "",
                     artifact_dir=args.artifact_dir,
                     max_jod_chars=args.max_jod_chars,
                 )
@@ -160,6 +198,8 @@ async def main_async(argv: Sequence[str] | None = None) -> int:
                 print(f"  stored: {candidate.job_id}", file=sys.stderr, flush=True)
     finally:
         await llm.aclose()
+        if jod_llm is not None:
+            await jod_llm.aclose()
 
     print(
         json.dumps(
@@ -226,6 +266,8 @@ async def backport_candidate(
     master_resume_path: Path,
     template_path: Path,
     llm: Any,
+    jod_llm: Any | None,
+    jod_model: str,
     artifact_dir: Path | None,
     max_jod_chars: int,
 ) -> None:
@@ -241,6 +283,52 @@ async def backport_candidate(
         core_skill_response=response,
     )
     first_draft_aro = select_first_draft_experience_bullets(scored_aro)
+    experimental_artifacts: list[tuple[str, str]] = []
+    if jod_llm is not None:
+        jod_prompt = build_jod_requirements_target_prompt(
+            trimmed_job_description=candidate.trimmed_jod,
+            max_jod_chars=max_jod_chars,
+        )
+        jod_response = await jod_llm.generate_json(jod_prompt)
+        jod_object = create_job_opening_description_object(
+            trimmed_job_description=candidate.trimmed_jod,
+            requirements_response=jod_response,
+            model=jod_model,
+        )
+        first_draft_aro = attach_job_opening_description_object(
+            application_resume=first_draft_aro,
+            job_opening_description=jod_object,
+        )
+        experimental_artifacts.extend(
+            [
+                ("jod_targets_prompt.txt", f"{jod_prompt}\n"),
+                (
+                    "jod_targets_response.json",
+                    f"{json.dumps(jod_response, indent=2, sort_keys=True)}\n",
+                ),
+            ]
+        )
+
+        for job in experience_jobs_for_jod_bullet_rewrite(first_draft_aro):
+            job_order = job.get("order")
+            rewrite_prompt = build_experience_job_bullet_rewrite_prompt(
+                job_opening_description=jod_object,
+                job=job,
+            )
+            rewrite_response = await jod_llm.generate_text(rewrite_prompt)
+            first_draft_aro = replace_experience_job_bullets_from_text_response(
+                application_resume=first_draft_aro,
+                job_order=job_order,
+                bullet_response=rewrite_response,
+            )
+            safe_job_order = _safe_filename(str(job_order or "unknown"))
+            experimental_artifacts.extend(
+                [
+                    (f"job_{safe_job_order}_rewrite_prompt.txt", f"{rewrite_prompt}\n"),
+                    (f"job_{safe_job_order}_rewrite_response.txt", f"{rewrite_response}\n"),
+                ]
+            )
+
     aro_yaml = yaml.safe_dump(first_draft_aro, sort_keys=False, allow_unicode=False)
     resume_html = render_resume_html_from_mapping(
         resume=first_draft_aro,
@@ -264,6 +352,8 @@ async def backport_candidate(
             f"{json.dumps(response, indent=2, sort_keys=True)}\n",
             encoding="utf-8",
         )
+        for suffix, content in experimental_artifacts:
+            (artifact_dir / f"{safe_job_id}_{suffix}").write_text(content, encoding="utf-8")
         aro_path.write_text(aro_yaml, encoding="utf-8")
         html_path.write_text(resume_html, encoding="utf-8")
         pdf_path.write_bytes(resume_pdf)

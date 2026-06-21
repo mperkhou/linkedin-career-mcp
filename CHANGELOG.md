@@ -1,5 +1,18 @@
 # linkedin-career-mcp CHANGELOG
 
+## 2.0.3 - Local checkpoint: Experimental JOD rewrite and senior resume layout
+
+* Add an opt-in experimental JOD-target ARO workflow that generates compact JOD
+  requirements, rewrites rendered non-Oracle experience bullets with GLM 5.2,
+  and caches prompts/responses alongside rendered artifacts.
+* Preserve the existing Core Technical Skills JOD matching, local bullet scoring,
+  and first-draft render flag selection before running the experimental rewrite.
+* Update the resume template for senior-engineer two-page layouts by grouping
+  Education, Certifications, and Portfolio after Professional Experience while
+  keeping an explicit page-break override available.
+* Document the experimental workflow flags and supporting-section layout behavior.
+* Bump the package version to `1.0.3`.
+
 ## 2.0.2 - PR #32: Refresh MRO data and active status handling
 
 * Refresh the master resume source text and YAML with expanded Oracle platform

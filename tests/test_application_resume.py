@@ -8,9 +8,15 @@ import yaml
 from linkedin_career_mcp.application_resume import (
     apply_core_skill_jod_matches,
     apply_core_skill_matches_and_score_experience,
+    attach_job_opening_description_object,
     build_core_skills_jod_match_prompt,
+    build_experience_job_bullet_rewrite_prompt,
+    build_jod_requirements_target_prompt,
     calculate_experience_jod_match_counts,
+    create_job_opening_description_object,
+    experience_jobs_for_jod_bullet_rewrite,
     initialize_application_resume_object,
+    replace_experience_job_bullets_from_text_response,
     select_first_draft_experience_bullets,
 )
 from scripts.application_resume_pass_one import main as application_resume_pass_one_main
@@ -213,6 +219,109 @@ def test_select_first_draft_experience_bullets_uses_score_buckets_without_splitt
     assert _selected_scores(aro["professional_experience"]["jobs"][0]) == []
 
 
+def test_jod_requirements_target_prompt_and_object_are_compact() -> None:
+    prompt = build_jod_requirements_target_prompt(
+        trimmed_job_description=(
+            "Responsibilities: Build Python automation and cloud observability. "
+            "Benefits include medical coverage."
+        )
+    )
+
+    assert "small, resume-targetable requirements" in prompt
+    assert "Python automation" in prompt
+    assert "requirements_targets" in prompt
+
+    jod_object = create_job_opening_description_object(
+        trimmed_job_description="Need Python and cloud observability.",
+        requirements_response={
+            "job_opening_description": {
+                "requirements_targets": [
+                    {"text": " Need Python automation. "},
+                    {"requirement": "Need cloud observability."},
+                    "Need Python automation.",
+                ]
+            }
+        },
+        model="z-ai/glm-5.2",
+    )
+
+    assert jod_object["schema_version"] == "job_opening_description.v0.1-experimental"
+    assert jod_object["llm"]["model"] == "z-ai/glm-5.2"
+    assert jod_object["requirements_targets"] == [
+        {"order": 1, "text": "Need Python automation."},
+        {"order": 2, "text": "Need cloud observability."},
+    ]
+
+
+def test_experimental_jod_bullet_rewrite_targets_rendered_non_oracle_jobs() -> None:
+    selected = select_first_draft_experience_bullets(_sample_selection_aro())
+    jod_object = create_job_opening_description_object(
+        trimmed_job_description="Need Python automation and cloud observability.",
+        requirements_response={
+            "requirements_targets": [
+                "Looking for Python automation experience.",
+                "Preferred cloud observability and incident response experience.",
+            ]
+        },
+        model="z-ai/glm-5.2",
+    )
+    attached = attach_job_opening_description_object(
+        application_resume=selected,
+        job_opening_description=jod_object,
+    )
+    jobs_to_rewrite = experience_jobs_for_jod_bullet_rewrite(attached)
+
+    assert [job["order"] for job in jobs_to_rewrite] == [2, 3]
+
+    prompt = build_experience_job_bullet_rewrite_prompt(
+        job_opening_description=jod_object,
+        job=jobs_to_rewrite[0],
+    )
+    assert "between 2 and 5 punchy bullet" in prompt
+    assert "Looking for Python automation experience." in prompt
+    assert "Bullet 1 score 0." in prompt
+    assert "Bullet 7 score 1." in prompt
+
+    rewritten = replace_experience_job_bullets_from_text_response(
+        application_resume=attached,
+        job_order=2,
+        bullet_response=(
+            "1. Accomplished a supported modernization outcome, as measured by the "
+            "available role scope, by doing Python automation.\n"
+            "- Accomplished operational reporting support, as measured by the available "
+            "role scope, by doing cloud observability work."
+        ),
+    )
+    jobs = rewritten["professional_experience"]["jobs"]
+
+    assert jobs[0]["order"] == 1
+    assert _selected_scores(jobs[0]) == [5, 4, 4, 4, 4, 3, 3, 3, 3]
+    assert jobs[1]["bullet_points"] == [
+        {
+            "order": 1,
+            "categories": {"assigned": [], "matched": []},
+            "skills": [],
+            "text": (
+                "Accomplished a supported modernization outcome, as measured by the "
+                "available role scope, by doing Python automation."
+            ),
+            "bullet_point_total_match_count": 0,
+            "render": True,
+        },
+        {
+            "order": 2,
+            "categories": {"assigned": [], "matched": []},
+            "skills": [],
+            "text": (
+                "Accomplished operational reporting support, as measured by the available "
+                "role scope, by doing cloud observability work."
+            ),
+            "bullet_point_total_match_count": 0,
+            "render": True,
+        },
+    ]
+
+
 def test_application_resume_select_bullets_script_writes_first_draft_aro(tmp_path: Path) -> None:
     aro_path = tmp_path / "scored-aro.yml"
     output_path = tmp_path / "first-draft-aro.yml"
@@ -293,6 +402,7 @@ def _sample_selection_aro() -> dict[str, object]:
         "professional_experience": {
             "jobs": [
                 _selection_job(
+                    1,
                     "Oracle | Remote / International Datacenters",
                     scores=[
                         4,
@@ -348,6 +458,7 @@ def _sample_selection_aro() -> dict[str, object]:
                     max_bullets=10,
                 ),
                 _selection_job(
+                    2,
                     "University of Iowa Hospitals and Clinics | Iowa City, IA",
                     scores=[0, 2, 1, 0, 0, 1, 1],
                     render=True,
@@ -355,6 +466,7 @@ def _sample_selection_aro() -> dict[str, object]:
                     max_bullets=5,
                 ),
                 _selection_job(
+                    3,
                     "Steindler Orthopedic Clinic | Iowa City, IA",
                     scores=[1, 2, 4, 0, 0, 0, 1, 0, 0],
                     render=True,
@@ -362,6 +474,7 @@ def _sample_selection_aro() -> dict[str, object]:
                     max_bullets=5,
                 ),
                 _selection_job(
+                    4,
                     "Stamats Communications | Cedar Rapids, IA",
                     scores=[1, 0, 0, 0, 0, 3, 0],
                     render=False,
@@ -369,6 +482,7 @@ def _sample_selection_aro() -> dict[str, object]:
                     max_bullets=2,
                 ),
                 _selection_job(
+                    5,
                     "VIDA Diagnostics | Coralville, IA",
                     scores=[1, 0, 1, 0, 1, 0, 0, 0, 0, 0],
                     render=False,
@@ -381,6 +495,7 @@ def _sample_selection_aro() -> dict[str, object]:
 
 
 def _selection_job(
+    order: int,
     company: str,
     *,
     scores: list[int],
@@ -389,6 +504,7 @@ def _selection_job(
     max_bullets: int,
 ) -> dict[str, object]:
     return {
+        "order": order,
         "render": render,
         "min_bullet_points": min_bullets,
         "max_bullet_points": max_bullets,

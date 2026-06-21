@@ -138,6 +138,15 @@ The default LLM provider is the API/OpenRouter path:
 - `LINKEDIN_CAREER_MCP_LLM_PLANNER_API_MODEL`: cheaper planner model for search-query generation
 - `LINKEDIN_CAREER_MCP_OLLAMA_MODEL`: local fallback model when provider is `ollama`
 
+Experimental ARO rewrite runs can opt into the JOD-target framework with:
+
+```bash
+EXPERIMENTAL_JOD_WORKFLOW=1 make regenerate-draft-resumes JOB_IDS="4424184336"
+```
+
+The experimental JOD target and non-oracle bullet rewrite calls default to OpenRouter
+model `z-ai/glm-5.2`; override with `EXPERIMENTAL_JOD_MODEL=<model-id>`.
+
 The important local files are:
 
 - `profile/MP-MASTER-RESUME.txt`
@@ -156,3 +165,10 @@ The active workflow modules are intentionally smaller than the retired artifact 
 - `src/linkedin_career_mcp/webapp.py`: database-backed review, edit, download, rescore, and background actions.
 
 Keep the MRO neutral: empty `jod_matched_items`, zero match counts, and no job-specific pruning. Job-specific decisions belong in the ARO stored on the application row.
+
+The resume template treats Education, Certifications, and Portfolio as supporting sections
+after Professional Experience. By default, they are grouped together so senior-engineer
+resumes can use page 1 for high-signal experience and flow supporting sections onto page 2
+without a forced break that could create a third page. Set
+`resume_layout.supporting_sections_start_on_page_2: true` in an ARO/MRO only when an
+explicit page break before supporting sections is desired.
