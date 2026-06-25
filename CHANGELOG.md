@@ -1,5 +1,15 @@
 # linkedin-career-mcp CHANGELOG
 
+## 3.1.0 - Add Flask tracker archiving
+
+* Add a non-destructive archive state for tracker application rows so stale job
+  postings and their generated artifacts can stay in SQLite for development
+  data without cluttering the default active view.
+* Add batch Archive and Restore controls to the Flask tracker, plus Active,
+  Archived, and All posting views that preserve the current search, status, and
+  sort state.
+* Bump the package version to `3.1.0` for the new tracker feature.
+
 ## 3.0.0 - Finalize JOD-target ARO resume generation
 
 * Promote current-role paragraph-evidence resume source into the canonical master

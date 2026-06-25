@@ -46,10 +46,12 @@ DEFAULT_DATABASE = Path("tracking/applications.sqlite3")
 DEFAULT_RESUME_TEMPLATE = Path("templates/resume/master_resume.html.j2")
 APPLICATION_STATUSES = {"No", "Yes", "N/A", "Rejected", "Accepted for interview"}
 APPLICATION_STATUS_FILTERS = {"all", *APPLICATION_STATUSES}
+APPLICATION_ARCHIVE_FILTERS = {"active", "archived", "all"}
 VIEW_STATE_SORTS = {"company", "matched", "ats", "resume", "cover_letter"}
 VIEW_STATE_DIRECTIONS = {"asc", "desc"}
-VIEW_STATE_QUERY_KEYS = {"q", "status", "sort", "direction"}
+VIEW_STATE_QUERY_KEYS = {"q", "status", "archive", "sort", "direction"}
 APPLICATION_EXTRA_COLUMNS = {
+    "archived_at": "TEXT",
     "job_description": "TEXT",
     "prompt_job_description": "TEXT",
     "application_resume_object": "TEXT",
@@ -185,6 +187,7 @@ def init_database(connection: sqlite3.Connection) -> None:
             applied_to TEXT NOT NULL DEFAULT 'No',
             date_applied TEXT,
             notes TEXT NOT NULL DEFAULT '',
+            archived_at TEXT,
             imported_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         )
@@ -1092,10 +1095,75 @@ def delete_applications(
     return deleted_count
 
 
-def refresh_missing_ats_scores(database_path: Path) -> int:
+def archive_applications(
+    *,
+    database_path: Path,
+    job_ids: list[str],
+) -> int:
+    normalized_job_ids = _selected_job_ids(job_ids)
+    if not normalized_job_ids:
+        return 0
+
+    placeholders = ", ".join("?" for _ in normalized_job_ids)
+    now = datetime.now(UTC).isoformat(timespec="seconds")
+    with connect_database(database_path) as connection:
+        cursor = connection.execute(
+            f"""
+            UPDATE applications
+            SET archived_at = ?,
+                updated_at = ?
+            WHERE job_id IN ({placeholders})
+              AND archived_at IS NULL
+            """,
+            [now, now, *normalized_job_ids],
+        )
+        archived_count = cursor.rowcount
+        connection.commit()
+
+    return archived_count
+
+
+def unarchive_applications(
+    *,
+    database_path: Path,
+    job_ids: list[str],
+) -> int:
+    normalized_job_ids = _selected_job_ids(job_ids)
+    if not normalized_job_ids:
+        return 0
+
+    placeholders = ", ".join("?" for _ in normalized_job_ids)
+    now = datetime.now(UTC).isoformat(timespec="seconds")
+    with connect_database(database_path) as connection:
+        cursor = connection.execute(
+            f"""
+            UPDATE applications
+            SET archived_at = NULL,
+                updated_at = ?
+            WHERE job_id IN ({placeholders})
+              AND archived_at IS NOT NULL
+            """,
+            [now, *normalized_job_ids],
+        )
+        restored_count = cursor.rowcount
+        connection.commit()
+
+    return restored_count
+
+
+def refresh_missing_ats_scores(
+    database_path: Path,
+    *,
+    archive_filter: str = "all",
+) -> int:
+    archive_clause = {
+        "active": "AND archived_at IS NULL",
+        "archived": "AND archived_at IS NOT NULL",
+        "all": "",
+    }.get(archive_filter, "")
     with connect_database(database_path) as connection:
         rows = connection.execute(
-            """
+            f"""
             SELECT job_id, resume_content, prompt_job_description, job_description
             FROM applications
             WHERE (ats_score IS NULL OR ats_missing_terms IS NULL)
@@ -1104,6 +1172,7 @@ def refresh_missing_ats_scores(database_path: Path) -> int:
                 prompt_job_description IS NOT NULL
                 OR job_description IS NOT NULL
               )
+              {archive_clause}
             """
         ).fetchall()
         updated_count = 0
@@ -1363,13 +1432,16 @@ def create_app(
 
     @app.get("/")
     def index():
-        refresh_missing_ats_scores(database_path)
-        rows = _fetch_applications(database_path)
         view_state = _view_state_from_args(request.args)
+        refresh_missing_ats_scores(database_path, archive_filter=view_state["archive"])
+        rows = _fetch_applications(database_path, archive_filter=view_state["archive"])
+        archive_counts = _application_archive_counts(database_path)
         current_query = request.query_string.decode("utf-8")
         current_path = f"/?{current_query}" if current_query else "/"
         stats = {
             "total": len(rows),
+            "active": archive_counts["active"],
+            "archived": archive_counts["archived"],
             "applied": sum(1 for row in rows if row["applied_to"] == "Yes"),
             "pending": sum(1 for row in rows if row["applied_to"] == "No"),
             "not_applicable": sum(1 for row in rows if row["applied_to"] == "N/A"),
@@ -1489,6 +1561,26 @@ def create_app(
             job_ids=job_ids,
         )
         flash(f"Deleted {deleted_count} application rows.")
+        return redirect_to_index_state()
+
+    @app.post("/applications/archive")
+    def bulk_archive_applications():
+        job_ids = request.form.getlist("job_id")
+        archived_count = archive_applications(
+            database_path=database_path,
+            job_ids=job_ids,
+        )
+        flash(f"Archived {archived_count} application rows.")
+        return redirect_to_index_state()
+
+    @app.post("/applications/unarchive")
+    def bulk_unarchive_applications():
+        job_ids = request.form.getlist("job_id")
+        restored_count = unarchive_applications(
+            database_path=database_path,
+            job_ids=job_ids,
+        )
+        flash(f"Restored {restored_count} application rows.")
         return redirect_to_index_state()
 
     @app.get("/linkedin/<job_id>")
@@ -1752,14 +1844,25 @@ def main(argv: list[str] | None = None) -> None:
     app.run(host=args.host, port=args.port, debug=args.debug)
 
 
-def _fetch_applications(database_path: Path) -> list[sqlite3.Row]:
+def _fetch_applications(
+    database_path: Path,
+    *,
+    archive_filter: str = "active",
+) -> list[sqlite3.Row]:
+    archive_clause = {
+        "active": "WHERE archived_at IS NULL",
+        "archived": "WHERE archived_at IS NOT NULL",
+        "all": "",
+    }.get(archive_filter, "WHERE archived_at IS NULL")
     with connect_database(database_path) as connection:
         return list(
             connection.execute(
                 f"""
                 SELECT {_application_select_columns()}
                 FROM applications
+                {archive_clause}
                 ORDER BY
+                    CASE WHEN archived_at IS NULL THEN 0 ELSE 1 END,
                     CASE applied_to
                         WHEN 'No' THEN 0
                         WHEN 'Accepted for interview' THEN 1
@@ -1773,6 +1876,22 @@ def _fetch_applications(database_path: Path) -> list[sqlite3.Row]:
                 """
             )
         )
+
+
+def _application_archive_counts(database_path: Path) -> dict[str, int]:
+    with connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT
+                SUM(CASE WHEN archived_at IS NULL THEN 1 ELSE 0 END) AS active_count,
+                SUM(CASE WHEN archived_at IS NOT NULL THEN 1 ELSE 0 END) AS archived_count
+            FROM applications
+            """
+        ).fetchone()
+    return {
+        "active": int(row["active_count"] or 0),
+        "archived": int(row["archived_count"] or 0),
+    }
 
 
 def _fetch_application(database_path: Path, job_id: str) -> sqlite3.Row | None:
@@ -2273,6 +2392,10 @@ def _view_state_from_args(args: Any) -> dict[str, str]:
     if status not in APPLICATION_STATUS_FILTERS:
         status = "all"
 
+    archive = str(args.get("archive") or "active").strip()
+    if archive not in APPLICATION_ARCHIVE_FILTERS:
+        archive = "active"
+
     sort = str(args.get("sort") or "").strip()
     if sort not in VIEW_STATE_SORTS:
         sort = ""
@@ -2288,6 +2411,7 @@ def _view_state_from_args(args: Any) -> dict[str, str]:
     return {
         "search": str(args.get("q") or "").strip(),
         "status": status,
+        "archive": archive,
         "sort": sort,
         "direction": direction,
     }
@@ -2585,6 +2709,10 @@ INDEX_TEMPLATE = """
       opacity: .45;
     }
     .toolbar form { margin: 0; }
+    .bulk-applications-form {
+      display: flex;
+      gap: 8px;
+    }
     .selected-count { color: var(--muted); white-space: nowrap; }
     .actions-menu {
       position: relative;
@@ -2938,6 +3066,8 @@ INDEX_TEMPLATE = """
     <h1>LinkedIn Applications</h1>
     <div class="stats">
       <span>Total: {{ stats.total }}</span>
+      <span>Active: {{ stats.active }}</span>
+      <span>Archived: {{ stats.archived }}</span>
       <span>Applied: {{ stats.applied }}</span>
       <span>Pending: {{ stats.pending }}</span>
       <span>Interview: {{ stats.interview }}</span>
@@ -2975,9 +3105,47 @@ INDEX_TEMPLATE = """
         N/A
       </option>
     </select>
-    <form id="bulk-delete-form" method="post" action="/applications/delete">
+    <select id="archive-filter" aria-label="Filter archive">
+      <option value="active" {{ 'selected' if view_state.archive == 'active' else '' }}>
+        Active postings
+      </option>
+      <option value="archived" {{ 'selected' if view_state.archive == 'archived' else '' }}>
+        Archived
+      </option>
+      <option value="all" {{ 'selected' if view_state.archive == 'all' else '' }}>
+        All postings
+      </option>
+    </select>
+    <form id="bulk-applications-form" class="bulk-applications-form" method="post">
       <input type="hidden" class="return-to-state" name="return_to" value="{{ current_path }}">
-      <button id="delete-selected" type="submit" class="danger" disabled>
+      {% if view_state.archive != 'archived' %}
+        <button
+          id="archive-selected"
+          type="submit"
+          formaction="/applications/archive"
+          disabled
+        >
+          Archive selected
+        </button>
+      {% endif %}
+      {% if view_state.archive != 'active' %}
+        <button
+          id="unarchive-selected"
+          type="submit"
+          formaction="/applications/unarchive"
+          class="ghost"
+          disabled
+        >
+          Restore selected
+        </button>
+      {% endif %}
+      <button
+        id="delete-selected"
+        type="submit"
+        formaction="/applications/delete"
+        class="danger"
+        disabled
+      >
         Delete selected
       </button>
     </form>
@@ -3156,7 +3324,7 @@ INDEX_TEMPLATE = """
                   type="checkbox"
                   name="job_id"
                   value="{{ row.job_id }}"
-                  form="bulk-delete-form"
+                  form="bulk-applications-form"
                   aria-label="Select {{ row.company }} {{ row.job_title }}"
                 >
               </td>
@@ -3363,11 +3531,14 @@ INDEX_TEMPLATE = """
   <script>
     const search = document.querySelector("#search");
     const statusFilter = document.querySelector("#status-filter");
+    const archiveFilter = document.querySelector("#archive-filter");
     const selectAll = document.querySelector("#select-all");
+    const archiveButton = document.querySelector("#archive-selected");
+    const unarchiveButton = document.querySelector("#unarchive-selected");
     const deleteButton = document.querySelector("#delete-selected");
     const addApplicationButton = document.querySelector("#add-application");
     const selectedCount = document.querySelector("#selected-count");
-    const bulkDeleteForm = document.querySelector("#bulk-delete-form");
+    const bulkApplicationsForm = document.querySelector("#bulk-applications-form");
     const companySortButton = document.querySelector("#company-sort");
     const companySortIndicator = document.querySelector("#company-sort-indicator");
     const companyHeader = document.querySelector("#company-header");
@@ -3451,6 +3622,9 @@ INDEX_TEMPLATE = """
       if (statusFilter.value && statusFilter.value !== "all") {
         params.set("status", statusFilter.value);
       }
+      if (archiveFilter && archiveFilter.value && archiveFilter.value !== "active") {
+        params.set("archive", archiveFilter.value);
+      }
       const sortState = activeSortState();
       if (sortState.sort && sortState.direction) {
         params.set("sort", sortState.sort);
@@ -3460,6 +3634,10 @@ INDEX_TEMPLATE = """
       const nextPath = query ? `${window.location.pathname}?${query}` : window.location.pathname;
       window.history.replaceState(null, "", nextPath);
       syncReturnState();
+    }
+    function navigateToArchiveView() {
+      updateViewStateUrl();
+      window.location.assign(currentReturnPath());
     }
     function applyFilters() {
       const term = search.value.trim().toLowerCase();
@@ -3843,7 +4021,15 @@ INDEX_TEMPLATE = """
     function updateSelectionState() {
       const selected = rowSelectors.filter((checkbox) => checkbox.checked);
       const visible = visibleSelectors();
-      deleteButton.disabled = selected.length === 0;
+      if (archiveButton) {
+        archiveButton.disabled = selected.length === 0;
+      }
+      if (unarchiveButton) {
+        unarchiveButton.disabled = selected.length === 0;
+      }
+      if (deleteButton) {
+        deleteButton.disabled = selected.length === 0;
+      }
       selectedCount.textContent = `${selected.length} selected`;
       updateActionsState();
       if (!selectAll) {
@@ -3855,6 +4041,9 @@ INDEX_TEMPLATE = """
     }
     search.addEventListener("input", applyFilters);
     statusFilter.addEventListener("change", applyFilters);
+    if (archiveFilter) {
+      archiveFilter.addEventListener("change", navigateToArchiveView);
+    }
     if (companySortButton) {
       companySortButton.addEventListener("click", () => sortRowsByCompany());
     }
@@ -3930,16 +4119,22 @@ INDEX_TEMPLATE = """
         checkbox.addEventListener("change", updateSelectionState);
       });
     }
-    bulkDeleteForm.addEventListener("submit", (event) => {
-      const selected = rowSelectors.filter((checkbox) => checkbox.checked);
-      if (selected.length === 0) {
-        event.preventDefault();
-        return;
-      }
-      if (!confirm(`Delete ${selected.length} selected application row(s)?`)) {
-        event.preventDefault();
-      }
-    });
+    if (bulkApplicationsForm) {
+      bulkApplicationsForm.addEventListener("submit", (event) => {
+        const selected = rowSelectors.filter((checkbox) => checkbox.checked);
+        if (selected.length === 0) {
+          event.preventDefault();
+          return;
+        }
+        if (
+          event.submitter
+          && event.submitter.id === "delete-selected"
+          && !confirm(`Delete ${selected.length} selected application row(s)?`)
+        ) {
+          event.preventDefault();
+        }
+      });
+    }
     if (initialSort === "company") {
       sortRowsByCompany(initialDirection === "desc" ? "desc" : "asc");
     } else if (initialSort === "matched") {
