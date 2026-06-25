@@ -60,6 +60,7 @@ def test_connect_database_migrates_job_description_columns(tmp_path: Path):
     columns = {row["name"] for row in rows}
     assert "job_description" in columns
     assert "prompt_job_description" in columns
+    assert "archived_at" in columns
     assert "application_resume_object" in columns
     assert "application_resume_updated_at" in columns
     assert "application_resume_backup_object" in columns
@@ -88,13 +89,14 @@ def test_connect_database_migrates_job_description_columns(tmp_path: Path):
     with webapp.connect_database(database_path) as connection:
         row = connection.execute(
             """
-            SELECT date_matched, date_posted
+            SELECT date_matched, date_posted, archived_at
             FROM applications
             WHERE job_id = '123'
             """
         ).fetchone()
     assert row["date_matched"] == "2026-06-08T10:00:00+00:00"
     assert row["date_posted"] is None
+    assert row["archived_at"] is None
 
 
 def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypatch):
@@ -163,6 +165,15 @@ def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypat
     assert 'action="/cover-letters/123/copy-to-downloads"' not in html
     assert 'id="actions-form"' in html
     assert 'action="/actions/run"' in html
+    assert 'id="archive-filter"' in html
+    assert 'id="archive-selected"' in html
+    assert 'id="unarchive-selected"' not in html
+    assert 'formaction="/applications/archive"' in html
+    assert 'formaction="/applications/delete"' in html
+    assert 'form="bulk-applications-form"' in html
+    assert "Archive selected" in html
+    assert b"Active: 1" in index.data
+    assert b"Archived: 0" in index.data
     assert 'id="add-application"' in html
     assert "Add" in html
     assert html.index('id="delete-selected"') < html.index('id="add-application"')
@@ -249,6 +260,16 @@ def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypat
     assert 'const initialDirection = "desc";' in filtered_html
     assert "preserve-state-link" in filtered_html
     assert "return-to-state" in filtered_html
+
+    archived_filtered_index = client.get(
+        "/?archive=archived&q=Example&sort=ats&direction=desc"
+    )
+    archived_filtered_html = archived_filtered_index.data.decode()
+    assert (
+        'value="/?archive=archived&amp;q=Example&amp;sort=ats&amp;direction=desc"'
+        in archived_filtered_html
+    )
+    assert 'value="archived" selected' in archived_filtered_html
 
     artifact_sorted_index = client.get("/?sort=resume&direction=desc")
     artifact_sorted_html = artifact_sorted_index.data.decode()
@@ -387,6 +408,72 @@ def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypat
         "/?status=Rejected&sort=company&direction=asc"
     )
     assert opened_urls == ["https://www.linkedin.com/jobs/view/123"]
+
+    archive_response = client.post(
+        "/applications/archive",
+        data={
+            "job_id": "123",
+            "return_to": "/?status=Rejected&archive=all&sort=company&direction=asc",
+        },
+    )
+    assert archive_response.status_code == 302
+    assert archive_response.headers["Location"] == (
+        "/?status=Rejected&archive=all&sort=company&direction=asc"
+    )
+    with webapp.connect_database(database_path) as connection:
+        archived_row = connection.execute(
+            """
+            SELECT archived_at, resume_content, job_description, prompt_job_description
+            FROM applications
+            WHERE job_id = '123'
+            """
+        ).fetchone()
+    assert archived_row["archived_at"] is not None
+    assert archived_row["resume_content"] == resume_pdf
+    assert archived_row["job_description"] == (
+        "Full edited JOD with Java, auth, and platform work."
+    )
+    assert archived_row["prompt_job_description"] == "Prompt edited JOD with Java and auth."
+
+    active_index = client.get("/")
+    assert b"Archived 1 application rows." in active_index.data
+    assert b"Active: 0" in active_index.data
+    assert b"Archived: 1" in active_index.data
+    assert b"Example Co" not in active_index.data
+    assert client.get("/resumes/123").data == resume_pdf
+
+    archived_index = client.get("/?archive=archived")
+    archived_html = archived_index.data.decode()
+    assert b"Example Co" in archived_index.data
+    assert 'id="unarchive-selected"' in archived_html
+    assert 'id="archive-selected"' not in archived_html
+    assert 'formaction="/applications/unarchive"' in archived_html
+    assert 'value="archived" selected' in archived_html
+
+    all_index = client.get("/?archive=all")
+    all_html = all_index.data.decode()
+    assert b"Example Co" in all_index.data
+    assert 'id="archive-selected"' in all_html
+    assert 'id="unarchive-selected"' in all_html
+
+    restore_response = client.post(
+        "/applications/unarchive",
+        data={"job_id": "123", "return_to": "/?archive=archived"},
+    )
+    assert restore_response.status_code == 302
+    assert restore_response.headers["Location"] == "/?archive=archived"
+    with webapp.connect_database(database_path) as connection:
+        restored_row = connection.execute(
+            "SELECT archived_at, resume_content FROM applications WHERE job_id = '123'"
+        ).fetchone()
+    assert restored_row["archived_at"] is None
+    assert restored_row["resume_content"] == resume_pdf
+
+    restored_index = client.get("/")
+    assert b"Restored 1 application rows." in restored_index.data
+    assert b"Active: 1" in restored_index.data
+    assert b"Archived: 0" in restored_index.data
+    assert b"Example Co" in restored_index.data
 
     response = client.post("/applications/delete", data={"job_id": "123"})
     assert response.status_code == 302
