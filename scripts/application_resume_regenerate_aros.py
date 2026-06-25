@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import sqlite3
 import sys
 from collections.abc import Sequence
@@ -61,6 +62,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     for index, row in enumerate(rows, start=1):
         job_id = str(row["job_id"])
         print(f"[{index}/{len(rows)}] regenerating ARO: {job_id}", file=sys.stderr, flush=True)
+        existing_aro = _yaml_mapping(row["application_resume_object"])
         existing_response = _core_skill_response_from_existing_aro(
             row["application_resume_object"]
         )
@@ -69,11 +71,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             application_resume=fresh_aro,
             core_skill_response=existing_response,
         )
+        refreshed_aro = _preserve_job_specific_aro_sections(
+            fresh_aro=matched_aro,
+            existing_aro=existing_aro,
+        )
         store_application_resume_object(
             database_path=args.database,
             job_id=job_id,
             application_resume_object=yaml.safe_dump(
-                matched_aro,
+                refreshed_aro,
                 sort_keys=False,
                 allow_unicode=False,
             ),
@@ -137,6 +143,21 @@ def _yaml_mapping(value: Any) -> dict[str, Any]:
         return {}
     parsed = yaml.safe_load(text)
     return parsed if isinstance(parsed, dict) else {}
+
+
+def _preserve_job_specific_aro_sections(
+    *,
+    fresh_aro: dict[str, Any],
+    existing_aro: dict[str, Any],
+) -> dict[str, Any]:
+    """Keep already-tailored ARO content while refreshing master-derived sections."""
+
+    refreshed = copy.deepcopy(fresh_aro)
+    for key in ("job_opening_description", "professional_experience"):
+        value = existing_aro.get(key)
+        if isinstance(value, dict):
+            refreshed[key] = copy.deepcopy(value)
+    return refreshed
 
 
 def _string_list(value: Any) -> list[str]:

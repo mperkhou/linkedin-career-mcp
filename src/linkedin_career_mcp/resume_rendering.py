@@ -20,18 +20,24 @@ _RESUME_RICH_TAG_RE = re.compile(
     r"</?\s*(a|b|br|div|em|i|p|span|strong)\b",
     re.IGNORECASE,
 )
+_RESUME_LINK_RE = re.compile(r"https?://[^\s<>)]*|mperkhou/linkedin-career-mcp")
+_RESUME_TEXT_LINKS = {
+    "mperkhou/linkedin-career-mcp": "https://github.com/mperkhou/linkedin-career-mcp",
+}
 
 
 def linkify(value: object) -> Markup:
     text = "" if value is None else str(value)
     parts: list[str | Markup] = []
     cursor = 0
-    for match in re.finditer(r"https?://[^\s<>)]*", text):
-        url = match.group(0).rstrip(".,")
-        trailing = match.group(0)[len(url) :]
+    for match in _RESUME_LINK_RE.finditer(text):
+        label = match.group(0)
+        url = _RESUME_TEXT_LINKS.get(label, label).rstrip(".,")
+        trailing = label[len(label.rstrip(".,")) :]
         parts.append(escape(text[cursor : match.start()]))
         escaped_url = escape(url)
-        parts.append(Markup(f'<a href="{escaped_url}">{escaped_url}</a>'))
+        escaped_label = escape(label.rstrip(".,"))
+        parts.append(Markup(f'<a href="{escaped_url}">{escaped_label}</a>'))
         if trailing:
             parts.append(escape(trailing))
         cursor = match.end()
@@ -99,30 +105,101 @@ def _span_is_semantic_strong(node: object) -> bool:
 
 
 def render_skill_items(value: object) -> str:
+    return ", ".join(_rendered_skill_items(value, seen=set()))
+
+
+def render_core_skill_rows(value: object) -> list[dict[str, str]]:
     if not isinstance(value, dict):
-        return ""
+        return []
+
+    raw_bullets = value.get("bullet_points")
+    if not isinstance(raw_bullets, list):
+        return []
+
+    rows: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for bullet in raw_bullets:
+        if isinstance(bullet, str):
+            text = bullet.strip()
+            if text:
+                rows.append({"category": "", "text": text})
+            continue
+        if not isinstance(bullet, dict):
+            continue
+        items = _rendered_skill_items(bullet, seen=seen)
+        if not items:
+            continue
+        rows.append(
+            {
+                "category": str(bullet.get("category") or "").strip(),
+                "text": ", ".join(items),
+            }
+        )
+    return rows
+
+
+def _rendered_skill_items(value: object, *, seen: set[str]) -> list[str]:
+    if not isinstance(value, dict):
+        return []
 
     items = value.get("items")
     if isinstance(items, dict):
         primary = _string_list(items.get("primary"))
         additional = _string_list(items.get("additional"))
+        display_items = primary + additional
+        display_by_key = {
+            _skill_key(item): item
+            for item in display_items
+        }
+        alias_by_key = _skill_aliases(items, display_by_key)
         additional_items = set(additional)
-        jod_matched_items = [
-            item
-            for item in _string_list(value.get("jod_matched_items"))
-            if item in additional_items
-        ]
+        jod_matched_items: list[str] = []
+        for item in _string_list(value.get("jod_matched_items")):
+            canonical = alias_by_key.get(_skill_key(item), item)
+            if canonical in additional_items:
+                jod_matched_items.append(canonical)
         candidates = primary + jod_matched_items
     else:
         candidates = _string_list(items)
 
     rendered: list[str] = []
-    seen: set[str] = set()
     for item in candidates:
-        if item not in seen:
+        key = _skill_key(item)
+        if key and key not in seen:
             rendered.append(item)
-            seen.add(item)
-    return ", ".join(rendered)
+            seen.add(key)
+    return rendered
+
+
+def _skill_aliases(
+    items: dict[str, object],
+    display_by_key: dict[str, str],
+) -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    raw_match_terms = items.get("match_terms")
+    if not isinstance(raw_match_terms, dict):
+        return aliases
+    for raw_skill, raw_terms in raw_match_terms.items():
+        skill = display_by_key.get(_skill_key(raw_skill))
+        if skill is None:
+            continue
+        for term in _string_list(raw_terms):
+            aliases[_skill_key(term)] = skill
+    return aliases
+
+
+def _skill_key(value: object) -> str:
+    text = str(value or "").strip().lower()
+    replacements = {
+        "python 3": "python",
+        "rest api": "restful api",
+        "rest apis": "restful apis",
+        "managed postgresql": "postgresql",
+        "linux environments": "linux",
+        "cloud monitoring": "observability",
+    }
+    text = replacements.get(text, text)
+    return "".join(character for character in text if character.isalnum())
 
 
 def load_resume(path: Path) -> dict[str, Any]:
@@ -155,6 +232,7 @@ def render_resume_html_from_mapping(
     )
     environment.filters["linkify"] = linkify
     environment.filters["rich_text"] = rich_text
+    environment.filters["render_core_skill_rows"] = render_core_skill_rows
     environment.filters["render_skill_items"] = render_skill_items
     template = environment.get_template(template_path.name)
     return template.render(data=resume)
@@ -205,8 +283,8 @@ def _render_text_pdf_from_html(html: str) -> bytes:
         "ResumeHtmlFallbackBody",
         parent=styles["BodyText"],
         fontName="Helvetica",
-        fontSize=8.8,
-        leading=10.6,
+        fontSize=9.4,
+        leading=11.2,
         spaceAfter=2,
     )
     story: list[Any] = []

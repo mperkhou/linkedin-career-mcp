@@ -18,6 +18,7 @@ from linkedin_career_mcp.application_resume import (
     replace_experience_job_bullets_from_text_response,
 )
 from scripts.application_resume_pass_one import main as application_resume_pass_one_main
+from scripts.application_resume_regenerate_aros import _preserve_job_specific_aro_sections
 
 
 def test_initialize_application_resume_object_resets_job_specific_fields(
@@ -77,6 +78,37 @@ def test_apply_core_skill_jod_matches_filters_to_existing_inventory() -> None:
     ]
     assert updated["core_technical_skills"]["bullet_points"][1]["jod_matched_items"] == [
         "Terraform"
+    ]
+
+
+def test_apply_core_skill_jod_matches_canonicalizes_match_terms() -> None:
+    aro = _sample_aro(jod_items=[], count=0)
+    bucket = aro["core_technical_skills"]["bullet_points"][1]
+    bucket["items"]["additional"].extend(["PostgreSQL", "Linux"])
+    bucket["items"]["match_terms"] = {
+        "PostgreSQL": ["managed PostgreSQL"],
+        "Linux": ["Linux environments"],
+    }
+
+    updated = apply_core_skill_jod_matches(
+        application_resume=aro,
+        core_skill_response={
+            "core_technical_skills": [
+                {
+                    "category": "Automation & IaC",
+                    "jod_matched_items": [
+                        "managed PostgreSQL",
+                        "Linux environments",
+                        "incident response lifecycle",
+                    ],
+                },
+            ]
+        },
+    )
+
+    assert updated["core_technical_skills"]["bullet_points"][1]["jod_matched_items"] == [
+        "PostgreSQL",
+        "Linux",
     ]
 
 
@@ -160,6 +192,34 @@ def test_application_resume_pass_one_script_writes_prompt_and_matched_aro(
     assert bullet["skills"][0]["jod_match_count"] == 0
     assert bullet["skills"][1]["jod_match_count"] == 0
     assert bullet["bullet_point_total_match_count"] == 0
+
+
+def test_regenerate_aro_preserves_tailored_job_specific_sections() -> None:
+    fresh_aro = _sample_aro(jod_items=["Python"], count=0)
+    fresh_aro["professional_experience"]["jobs"][0]["bullet_points"][0]["text"] = (
+        "Raw master-resume Oracle evidence."
+    )
+
+    existing_aro = _sample_aro(jod_items=["Django"], count=3)
+    existing_aro["job_opening_description"] = {
+        "schema_version": "job_opening_description.v1",
+        "requirements_targets": [{"order": 1, "text": "Need Django."}],
+    }
+    existing_aro["professional_experience"]["jobs"][0]["bullet_points"][0]["text"] = (
+        "Tailored job-specific Oracle bullet."
+    )
+
+    refreshed = _preserve_job_specific_aro_sections(
+        fresh_aro=fresh_aro,
+        existing_aro=existing_aro,
+    )
+
+    assert refreshed["core_technical_skills"]["bullet_points"][0][
+        "jod_matched_items"
+    ] == ["Python"]
+    assert refreshed["job_opening_description"] == existing_aro["job_opening_description"]
+    bullet = refreshed["professional_experience"]["jobs"][0]["bullet_points"][0]
+    assert bullet["text"] == "Tailored job-specific Oracle bullet."
 
 
 def test_jod_requirements_target_prompt_and_object_are_compact() -> None:
