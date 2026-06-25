@@ -33,8 +33,8 @@
       background: var(--screen-bg);
       color: var(--body);
       font-family: Helvetica, Arial, sans-serif;
-      font-size: 8.8pt;
-      line-height: 10.6pt;
+      font-size: 9.4pt;
+      line-height: 11.2pt;
     }
 
     a {
@@ -69,17 +69,17 @@
     .resume-contact {
       margin: 0 0 8pt;
       color: var(--muted);
-      font-size: 7.2pt;
+      font-size: 9pt;
       font-weight: 700;
-      line-height: 8.6pt;
+      line-height: 10.4pt;
     }
 
     .resume-headline {
       margin: -2pt 0 5pt;
       color: var(--muted);
-      font-size: 8.2pt;
+      font-size: 9.2pt;
       font-weight: 700;
-      line-height: 9.8pt;
+      line-height: 10.8pt;
     }
 
     .contact-separator {
@@ -125,9 +125,9 @@
     .summary-note {
       margin-top: 2pt;
       color: var(--muted);
-      font-size: 8pt;
+      font-size: 9pt;
       font-style: italic;
-      line-height: 9.6pt;
+      line-height: 10.6pt;
     }
 
     .bullet-list {
@@ -168,7 +168,7 @@
       left: 0.06in;
       top: 0;
       color: var(--body);
-      font-size: 8pt;
+      font-size: 9pt;
     }
 
     .job {
@@ -189,9 +189,9 @@
     .job-title {
       margin: 0 0 8pt;
       color: var(--muted);
-      font-size: 8.6pt;
+      font-size: 9.2pt;
       font-weight: 700;
-      line-height: 10.3pt;
+      line-height: 10.8pt;
     }
 
     .job-dates {
@@ -221,12 +221,7 @@
         box-shadow: none;
       }
 
-      .job,
       .education-item {
-        break-inside: avoid;
-      }
-
-      .resume-supporting-sections {
         break-inside: avoid;
       }
 
@@ -320,14 +315,14 @@
       </section>
     {% endif %}
 
-    {% set skill_bullets = skills.bullet_points | default([]) %}
-    {% set skills_rendered = skills.render | default(true) and skill_bullets %}
+    {% set skill_rows = skills | render_core_skill_rows %}
+    {% set skills_rendered = skills.render | default(true) and skill_rows %}
     {% if skills_rendered %}
       <section class="resume-section">
         <h2 class="section-heading">{{ skills.header_text | default("Core Technical Skills", true) }}</h2>
         <ul class="bullet-list">
-          {% for bullet in skill_bullets %}
-            <li>{{ bullet_text(bullet) }}</li>
+          {% for row in skill_rows %}
+            <li>{% if row.category %}<strong>{{ row.category }}:</strong>{% endif %}{% if row.text %} {{ row.text | rich_text }}{% endif %}</li>
           {% endfor %}
         </ul>
       </section>

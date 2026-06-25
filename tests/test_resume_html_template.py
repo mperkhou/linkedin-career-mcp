@@ -25,9 +25,17 @@ def test_resume_html_template_renders_trimmed_application_object(tmp_path: Path)
                             "category": "Languages & Frameworks",
                             "items": {
                                 "primary": ["Python", "Ruby"],
-                                "additional": ["R", "MATLAB", "AutoIT"],
+                                "additional": ["R", "MATLAB", "AutoIT", "RESTful APIs"],
+                                "match_terms": {
+                                    "RESTful APIs": ["REST APIs"],
+                                },
                             },
-                            "jod_matched_items": ["MATLAB", "Not in inventory", "Python"],
+                            "jod_matched_items": [
+                                "MATLAB",
+                                "Not in inventory",
+                                "Python",
+                                "REST APIs",
+                            ],
                         },
                         "Plain fallback skill row",
                     ]
@@ -81,8 +89,12 @@ def test_resume_html_template_renders_trimmed_application_object(tmp_path: Path)
     assert "Education &amp; Certifications" not in html
     assert "Professional Summary" not in html
     assert "<strong>AI Platform:</strong> Python, Jinja2, OpenRouter" in html
-    assert "<strong>Languages &amp; Frameworks:</strong> Python, Ruby, MATLAB" in html
+    assert (
+        "<strong>Languages &amp; Frameworks:</strong> Ruby, MATLAB, RESTful APIs"
+        in html
+    )
     assert "Not in inventory" not in html
+    assert "REST APIs" not in html
     assert (
         "<strong>Agentic Workflow:</strong> Built a <b>dynamic</b> renderer prototype."
         in html
@@ -186,6 +198,35 @@ def test_resume_html_template_honors_section_render_flags(tmp_path: Path) -> Non
     assert "Visible Project" in html
     assert "Visible portfolio detail" in html
     assert "Hidden Project" not in html
+
+
+def test_resume_html_template_links_repo_slug_in_summary_note(tmp_path: Path) -> None:
+    yaml_path = tmp_path / "summary-note-link.yaml"
+    yaml_path.write_text(
+        yaml.safe_dump(
+            {
+                "header_top": {"line_1_name_header_text": "Max Perkhounkov"},
+                "professional_summary": {
+                    "paragraph": "Platform engineer.",
+                    "summary_note": (
+                        "Note: workflow found at: mperkhou/linkedin-career-mcp"
+                    ),
+                },
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    html = render_resume_html(
+        yaml_path=yaml_path,
+        template_path=Path("templates/resume/master_resume.html.j2"),
+    )
+
+    assert (
+        '<a href="https://github.com/mperkhou/linkedin-career-mcp">'
+        "mperkhou/linkedin-career-mcp</a>"
+    ) in html
 
 
 def test_resume_html_template_groups_supporting_sections_with_optional_page_break(

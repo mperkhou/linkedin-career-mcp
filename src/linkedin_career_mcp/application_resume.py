@@ -79,7 +79,9 @@ Context:
 
 Rules:
 - Preserve the category names exactly.
-- Only select skills already present in that category's primary or additional lists.
+- Only select display skills already present in that category's primary or additional lists.
+- Use match_terms as non-display aliases/evidence for those display skills. Do not return
+  match_terms directly.
 - Include primary skills when the JOD asks for them; the renderer already includes primary
   skills and will not duplicate them.
 - Include additional skills when the JOD asks for them; the renderer can add those skills
@@ -122,7 +124,9 @@ def apply_core_skill_jod_matches(
         inventory = inventory_by_category.get(normalized_category, [])
         requested = response_by_category.get(normalized_category, set())
         bucket["jod_matched_items"] = [
-            skill for skill in inventory if _normalize(skill) in requested
+            skill
+            for skill, aliases in inventory
+            if requested.intersection(aliases)
         ]
 
     return aro
@@ -346,11 +350,19 @@ def _core_skill_prompt_payload(application_resume: Mapping[str, Any]) -> list[di
     for bucket in _core_skill_buckets(application_resume):
         items = bucket.get("items")
         item_mapping = items if isinstance(items, Mapping) else {}
+        match_terms = _core_skill_match_terms_by_skill(item_mapping)
         payload.append(
             {
                 "category": str(bucket.get("category") or "").strip(),
                 "primary": _string_list(item_mapping.get("primary")),
                 "additional": _string_list(item_mapping.get("additional")),
+                "match_terms": [
+                    {
+                        "skill": skill,
+                        "terms": terms,
+                    }
+                    for skill, terms in match_terms.items()
+                ],
             }
         )
     return payload
@@ -358,19 +370,56 @@ def _core_skill_prompt_payload(application_resume: Mapping[str, Any]) -> list[di
 
 def _core_skill_inventory_by_category(
     application_resume: Mapping[str, Any],
-) -> dict[str, list[str]]:
-    inventory: dict[str, list[str]] = {}
+) -> dict[str, list[tuple[str, set[str]]]]:
+    inventory: dict[str, list[tuple[str, set[str]]]] = {}
     for bucket in _core_skill_buckets(application_resume):
         category = str(bucket.get("category") or "").strip()
         items = bucket.get("items")
         item_mapping = items if isinstance(items, Mapping) else {}
-        inventory[_normalize(category)] = _dedupe_preserve_order(
+        display_items = _dedupe_preserve_order(
             [
                 *_string_list(item_mapping.get("primary")),
                 *_string_list(item_mapping.get("additional")),
             ]
         )
+        match_terms = _core_skill_match_terms_by_skill(item_mapping)
+        inventory[_normalize(category)] = [
+            (
+                display_item,
+                {
+                    _normalize(display_item),
+                    *{
+                        _normalize(term)
+                        for term in match_terms.get(display_item, [])
+                    },
+                },
+            )
+            for display_item in display_items
+        ]
     return inventory
+
+
+def _core_skill_match_terms_by_skill(item_mapping: Mapping[str, Any]) -> dict[str, list[str]]:
+    display_items = _dedupe_preserve_order(
+        [
+            *_string_list(item_mapping.get("primary")),
+            *_string_list(item_mapping.get("additional")),
+        ]
+    )
+    display_by_key = {_normalize(item): item for item in display_items}
+    raw_match_terms = item_mapping.get("match_terms")
+    if not isinstance(raw_match_terms, Mapping):
+        return {}
+
+    terms_by_skill: dict[str, list[str]] = {}
+    for raw_skill, raw_terms in raw_match_terms.items():
+        skill = display_by_key.get(_normalize(raw_skill))
+        if skill is None:
+            continue
+        terms = _string_list(raw_terms)
+        if terms:
+            terms_by_skill[skill] = terms
+    return terms_by_skill
 
 
 def _extract_core_skill_match_response(response: Any) -> dict[str, set[str]]:

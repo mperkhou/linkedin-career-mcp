@@ -71,7 +71,6 @@ core_technical_skills:
       - ImageJ
       - Slicer 3D
       - nginx
-      - Python 3
       - pytest
       - pytest-mock
       - Ruff
@@ -83,6 +82,9 @@ core_technical_skills:
       - unit testing frameworks
       - semantic versioning
       - data transformation scripts
+      match_terms:
+        Python:
+        - Python 3
     jod_matched_items: []
   - order: 2
     category: Distributed Systems & Cloud
@@ -92,7 +94,6 @@ core_technical_skills:
       - Azure
       - Oracle Cloud Infrastructure (OCI)
       - ElasticSearch
-      - OpenSearch
       additional:
       - VMware ESX/vSphere
       - Azure Office 365
@@ -106,7 +107,6 @@ core_technical_skills:
       - Kaseya SaaS IT management
       - private cloud VMware clusters
       - Linux
-      - Linux environments
       - OCI Search Service
       - OCI Functions
       - OCI Metrics
@@ -114,15 +114,10 @@ core_technical_skills:
       - OCI Notification Service
       - OCI Artifact Registry
       - cross-tenancy policies
-      - managed PostgreSQL
       - cloud-hosted automation clusters
       - cloud-native platforms
-      - execution environments
-      - container images
       - production/staging environments
       - regulated cloud environments
-      - cloud monitoring
-      - cloud notification routing
       - multi-tenant clusters
       - multi-tenant cloud platforms
       - enterprise Ansible/AWX clusters
@@ -130,7 +125,13 @@ core_technical_skills:
       - OCI monitoring
       - API-backed data sources
       - cloud-facing interfaces
-      - execution nodes
+      match_terms:
+        Linux:
+        - Linux environments
+        Containerization:
+        - execution environments
+        - container images
+        - execution nodes
     jod_matched_items: []
   - order: 3
     category: Platform & API Engineering
@@ -151,7 +152,6 @@ core_technical_skills:
       - custom PHP plugins
       - SQL servers
       - healthcare application support
-      - REST APIs
       - infrastructure platform engineering
       - platform reliability
       - Scalability
@@ -171,8 +171,6 @@ core_technical_skills:
       - release engineering
       - production troubleshooting
       - technical documentation
-      - runbook authoring
-      - operational handoffs
       - stakeholder enablement
       - vendor-extensible service design
       - restore-point metadata
@@ -190,13 +188,21 @@ core_technical_skills:
       - workflow template migration
       - job template migration
       - configuration drift analysis
-      - success criteria definition
-      - stakeholder alignment
       - product feedback loops
       - AssetHub
       - AssetMiner
       - Confluence documentation
       - operator-facing dashboards
+      match_terms:
+        API Integration:
+        - REST APIs
+        Systems Architecture:
+        - operational handoffs
+        - stakeholder alignment
+        - success criteria definition
+        platform reliability:
+        - runbook authoring
+        - platform lifecycle management
     jod_matched_items: []
   - order: 4
     category: Automation & IaC
@@ -242,7 +248,6 @@ core_technical_skills:
       - rolling upgrade automation
       - production rollout automation
       - source-control publishing automation
-      - dry-run workflows
       - vendor-extensible automation
       - SCM-backed backup workflows
       - Ansible Vault automation
@@ -254,10 +259,7 @@ core_technical_skills:
       - AWX cluster operations
       - DevOps
       - Infrastructure as Code (IaC)
-      - schedule validation
-      - production-readiness checks
       - runtime image publishing
-      - execution-node operations
       - automation workflow templates
       - ONDA
       - onda-sm Python package
@@ -265,6 +267,14 @@ core_technical_skills:
       - OLAM 2.1/2.2
       - AWX fact-cache troubleshooting
       - semantic versioning
+      match_terms:
+        execution environment builds:
+        - execution-node operations
+        CI/CD automation:
+        - production-readiness checks
+        - schedule validation
+        source-control publishing automation:
+        - dry-run workflows
     jod_matched_items: []
   - order: 5
     category: Data & Observability
@@ -292,7 +302,6 @@ core_technical_skills:
       - network monitoring
       - CT/MR image data processing
       - statistical image analysis
-      - ELK-to-OpenSearch migrations
       - search-index migrations
       - historical data migration
       - document-count validation
@@ -320,10 +329,8 @@ core_technical_skills:
       - automation schedule reporting
       - host coverage analysis
       - resource timing analysis
-      - failure classification
       - fact-cache analysis
       - asset metadata modeling
-      - remediation guides
       - on-call dashboards
       - parallel Logstash processing
       - idempotent data transfers
@@ -343,13 +350,23 @@ core_technical_skills:
       - workflow log analytics
       - schedule metadata parsing
       - summary table reporting
-      - timing analysis
       - silent data loss detection
       - Slack/email alert routing
       - data-quality drift analysis
       - OCEAN alert routing
-      - OpenSearch quality reports
       - funicular visibility
+      match_terms:
+        PostgreSQL:
+        - managed PostgreSQL
+        OpenSearch:
+        - ELK-to-OpenSearch migrations
+        - OpenSearch quality reports
+        Observability:
+        - cloud monitoring
+        - cloud notification routing
+        - failure classification
+        - remediation guides
+        - timing analysis
     jod_matched_items: []
   - order: 6
     category: Security & Compliance
@@ -383,19 +400,22 @@ core_technical_skills:
       - human approval workflows
       - dry-run validation
       - change-management controls
-      - production guardrails
       - cross-tenancy policy governance
-      - incident response lifecycle
       - restore readiness
       - encrypted backups
       - secure secret retrieval
-      - auditability
       - SSO-backed AI environments
       - data protection
-      - read/write isolation
-      - audit-centric validation
       - controlled API access
       - secret-bearing argument rejection
+      match_terms:
+        Secure Coding Practices:
+        - production guardrails
+        - read/write isolation
+        - audit-centric validation
+        - auditability
+        incident management:
+        - incident response lifecycle
     jod_matched_items: []
   - order: 7
     category: AI Tools
@@ -420,14 +440,12 @@ core_technical_skills:
       - tool-using AI agents
       - AI-assisted TDD
       - AI-assisted debugging
-      - AI-assisted incident response
       - AI-assisted ticket automation
       - AI-assisted operational reporting
       - AI governance
       - governance-as-code
       - Human-in-the-Loop (HITL) guardrails
       - secure AI development environments
-      - AI-assisted operations
       - MCP-backed reporting
       - OCI-focused MCP interfaces
       - portable Codex skills
@@ -435,6 +453,10 @@ core_technical_skills:
       - OLAM MCP server
       - repository guardrails
       - CX/OCI/Jira skill bundles
+      match_terms:
+        LLM orchestration:
+        - AI-assisted incident response
+        - AI-assisted operations
     jod_matched_items: []
 professional_experience:
   render: true
@@ -481,7 +503,7 @@ professional_experience:
         jod_match_count: 0
       - category: Distributed Systems & Cloud
         matched:
-        - execution environments
+        - Containerization
         jod_match_count: 0
       - category: Platform & API Engineering
         matched:
@@ -665,7 +687,7 @@ professional_experience:
         jod_match_count: 0
       - category: Distributed Systems & Cloud
         matched:
-        - execution environments
+        - Containerization
         jod_match_count: 0
       - category: Platform & API Engineering
         matched:
@@ -801,7 +823,7 @@ professional_experience:
         jod_match_count: 0
       - category: Distributed Systems & Cloud
         matched:
-        - OpenSearch
+        - OCI Search Service
         - ElasticSearch
         - Oracle Cloud Infrastructure (OCI)
         - OCI Metrics
@@ -846,7 +868,7 @@ professional_experience:
         jod_match_count: 0
       - category: Distributed Systems & Cloud
         matched:
-        - OpenSearch
+        - OCI Search Service
         - ElasticSearch
         jod_match_count: 0
       - category: Platform & API Engineering
@@ -878,7 +900,6 @@ professional_experience:
       skills:
       - category: Data & Observability
         matched:
-        - ELK-to-OpenSearch migrations
         - historical data migration
         - document-count validation
         - OpenSearch
@@ -923,7 +944,6 @@ professional_experience:
         jod_match_count: 0
       - category: Data & Observability
         matched:
-        - ELK-to-OpenSearch migrations
         - historical data migration
         - document-count validation
         - OpenSearch
@@ -940,7 +960,7 @@ professional_experience:
         jod_match_count: 0
       - category: Security & Compliance
         matched:
-        - incident response lifecycle
+        - incident management
         jod_match_count: 0
       - category: Languages & Frameworks
         matched:
@@ -1147,7 +1167,7 @@ professional_experience:
         jod_match_count: 0
       - category: Security & Compliance
         matched:
-        - incident response lifecycle
+        - incident management
         jod_match_count: 0
       text: 'Alert Routing and Ownership: A major cross-platform skill area was alert
         routing and ownership cleanup. I helped update PDAF/PDIO monitoring paths
@@ -1197,7 +1217,6 @@ professional_experience:
         matched:
         - Oracle Cloud Infrastructure (OCI)
         - OCI Metrics
-        - managed PostgreSQL
         jod_match_count: 0
       - category: Platform & API Engineering
         matched:
@@ -1241,7 +1260,7 @@ professional_experience:
         - MCP (Model Context Protocol)
         - Oracle Code Assist (OCA)
         - AI-assisted TDD
-        - AI-assisted operations
+        - LLM orchestration
         - Cline rules
         jod_match_count: 0
       - category: Automation & IaC
@@ -1301,7 +1320,7 @@ professional_experience:
         - MCP server development
         - Codex skills
         - MCP (Model Context Protocol)
-        - AI-assisted operations
+        - LLM orchestration
         jod_match_count: 0
       - category: Automation & IaC
         matched:
@@ -1367,7 +1386,7 @@ professional_experience:
         - MCP server development
         - Codex skills
         - MCP (Model Context Protocol)
-        - AI-assisted operations
+        - LLM orchestration
         jod_match_count: 0
       - category: Automation & IaC
         matched:
@@ -1423,7 +1442,7 @@ professional_experience:
         - Codex skills
         - MCP (Model Context Protocol)
         - Oracle Code Assist (OCA)
-        - AI-assisted operations
+        - LLM orchestration
         jod_match_count: 0
       - category: Automation & IaC
         matched:
@@ -1596,7 +1615,6 @@ professional_experience:
         - OCI Functions
         - OCI Alarms
         - cross-tenancy policies
-        - managed PostgreSQL
         jod_match_count: 0
       - category: Platform & API Engineering
         matched:
@@ -1641,8 +1659,7 @@ professional_experience:
         matched:
         - Oracle Cloud Infrastructure (OCI)
         - OCI Metrics
-        - managed PostgreSQL
-        - execution environments
+        - Containerization
         jod_match_count: 0
       - category: Platform & API Engineering
         matched:
@@ -1691,7 +1708,7 @@ professional_experience:
         jod_match_count: 0
       - category: Security & Compliance
         matched:
-        - incident response lifecycle
+        - incident management
         jod_match_count: 0
       text: 'Stakeholder Support and On-Call: A steady part of my contribution was
         production support, on-call participation, and stakeholder assistance across
@@ -1734,7 +1751,7 @@ professional_experience:
         jod_match_count: 0
       - category: Security & Compliance
         matched:
-        - incident response lifecycle
+        - incident management
         jod_match_count: 0
       text: 'Documentation, Demos, Training, and Handoff: I also contributed through
         documentation, demos, remediation guides, Confluence pages, training, and
@@ -1879,7 +1896,6 @@ professional_experience:
       - category: Data & Observability
         matched:
         - OpenSearch
-        - ELK-to-OpenSearch migrations
         - Logstash
         - Filebeat
         - index lifecycle management (ILM)
@@ -1899,7 +1915,7 @@ professional_experience:
         jod_match_count: 0
       - category: Security & Compliance
         matched:
-        - incident response lifecycle
+        - incident management
         jod_match_count: 0
       - category: Languages & Frameworks
         matched:
@@ -1941,7 +1957,7 @@ professional_experience:
         - MCP server development
         - Codex skills
         - AI-assisted TDD
-        - AI-assisted operations
+        - LLM orchestration
         - Cline rules
         jod_match_count: 0
       - category: Automation & IaC
@@ -2189,7 +2205,6 @@ professional_experience:
       - category: Platform & API Engineering
         matched:
         - RESTful APIs
-        - REST APIs
         - API Integration
         - custom PHP plugins
         - service orchestration
@@ -2452,7 +2467,6 @@ professional_experience:
         matched:
         - Docker/Kubernetes
         - Containerization
-        - container images
         jod_match_count: 0
       - category: Platform & API Engineering
         matched:
@@ -2518,7 +2532,6 @@ professional_experience:
       - category: Distributed Systems & Cloud
         matched:
         - Linux
-        - Linux environments
         jod_match_count: 0
       - category: Platform & API Engineering
         matched:

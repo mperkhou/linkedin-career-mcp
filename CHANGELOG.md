@@ -1,5 +1,25 @@
 # linkedin-career-mcp CHANGELOG
 
+## 3.2.0 - Tune Core Technical Skills matching
+
+* Split Core Technical Skills matching aids from renderable skills by adding
+  non-display `match_terms` aliases to the master resume inventory.
+* Canonicalize matched helper terms such as managed PostgreSQL, Python 3, REST
+  APIs, and Linux environments back to display skills before storing ARO matches.
+* Render Core Technical Skills through a global canonical de-duplication pass so
+  repeated skills do not appear across multiple skill rows.
+* Tighten the master resume Core Technical Skills inventory so process phrases
+  like incident response lifecycle remain useful matching context without
+  appearing as resume skills.
+* Preserve job-specific ARO experience bullets and attached JOD context when
+  refreshing ARO objects from the master resume without API calls.
+* Restore a readable two-page resume PDF layout by removing over-aggressive
+  print page-avoid rules and replacing sub-9pt resume text.
+* Link the `mperkhou/linkedin-career-mcp` workflow note to the GitHub repository
+  in rendered resume HTML/PDF output.
+* Bump the package version to `3.2.0` for the ARO matching and rendering
+  improvement.
+
 ## 3.1.0 - Add Flask tracker archiving
 
 * Add a non-destructive archive state for tracker application rows so stale job
