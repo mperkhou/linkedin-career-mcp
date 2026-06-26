@@ -1,5 +1,12 @@
 # linkedin-career-mcp CHANGELOG
 
+## 3.3.1 - Align Education section resume layout
+
+* Render Education entries with the same heading-and-bullet hierarchy as
+  Professional Experience so institutions are not nested behind bullets and
+  education details use standard filled bullets.
+* Bump the package version to `3.3.1` for the resume layout polish.
+
 ## 3.3.0 - Add job-aware experience bullet rewriting
 
 * Replace the literal Google XYZ experience-bullet rewrite instruction with a

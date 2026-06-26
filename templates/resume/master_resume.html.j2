@@ -380,48 +380,55 @@
           <section class="resume-section with-rule">
             <div class="section-rule"></div>
             <h2 class="section-heading">{{ education.header_text | default("Education", true) }}</h2>
-            <ul class="bullet-list">
-              {% for item in education_items if item is string or (item.render | default(true)) %}
-                {% set details = item.details | default([]) %}
-                {% set sub_items = item.sub_items | default([]) %}
-                {% set entry_bullets = item.bullet_points | default([]) %}
-                {% set line_1 = item.line_1 | default({}) %}
-                {% set line_2 = item.line_2 | default({}) %}
-                <li class="education-item">
-                  {% if item is string %}
-                    {{ item | rich_text }}
-                  {% elif details %}
-                    <strong>{{ item.title }}:</strong> {{ details[0] | rich_text }}
-                  {% elif line_1.institution_name_text | default("", true) or line_2.degree_name_text | default("", true) %}
-                    <strong>{{ line_1.institution_name_text | default("", true) }}:</strong>
-                    {{ line_2.degree_name_text | default("", true) }}
-                    {% if line_2.degree_dates_text | default("", true) %}
-                      | <span class="job-dates">{{ line_2.degree_dates_text }}</span>
-                    {% endif %}
-                  {% else %}
-                    {{ item.title | default(item.rendered_text | default("", true), true) | rich_text }}
+            {% for item in education_items if item is string or (item.render | default(true)) %}
+              {% set details = item.details | default([]) %}
+              {% set sub_items = item.sub_items | default([]) %}
+              {% set entry_bullets = item.bullet_points | default([]) %}
+              {% set line_1 = item.line_1 | default({}) %}
+              {% set line_2 = item.line_2 | default({}) %}
+              <article class="job education-item">
+                {% if item is string %}
+                  <h3 class="job-company">{{ item | rich_text }}</h3>
+                {% elif details %}
+                  {% if item.title | default("", true) %}
+                    <h3 class="job-company">{{ item.title | rich_text }}</h3>
                   {% endif %}
-                  {% if entry_bullets %}
-                    <ul class="nested-list">
-                      {% for entry_bullet in entry_bullets if entry_bullet is string or (entry_bullet.render | default(true)) %}
-                        <li>{{ bullet_text(entry_bullet) }}</li>
-                      {% endfor %}
-                    </ul>
-                  {% elif sub_items %}
-                    <ul class="nested-list">
-                      {% for sub_item in sub_items %}
-                        <li>
-                          {% if sub_item.label | default("", true) %}
-                            <em>{{ sub_item.label }}:</em>
-                          {% endif %}
-                          {{ sub_item.text | default(sub_item, true) | rich_text }}
-                        </li>
-                      {% endfor %}
-                    </ul>
+                  <p class="job-title">{{ details[0] | rich_text }}</p>
+                {% elif line_1.institution_name_text | default("", true) or line_2.degree_name_text | default("", true) %}
+                  {% if line_1.institution_name_text | default("", true) %}
+                    <h3 class="job-company">{{ line_1.institution_name_text | rich_text }}</h3>
                   {% endif %}
-                </li>
-              {% endfor %}
-            </ul>
+                  {% if line_2.degree_name_text | default("", true) or line_2.degree_dates_text | default("", true) %}
+                    <p class="job-title">
+                      {{ line_2.degree_name_text | default("", true) }}
+                      {% if line_2.degree_dates_text | default("", true) %}
+                        | <span class="job-dates">{{ line_2.degree_dates_text }}</span>
+                      {% endif %}
+                    </p>
+                  {% endif %}
+                {% else %}
+                  <h3 class="job-company">{{ item.title | default(item.rendered_text | default("", true), true) | rich_text }}</h3>
+                {% endif %}
+                {% if entry_bullets %}
+                  <ul class="bullet-list">
+                    {% for entry_bullet in entry_bullets if entry_bullet is string or (entry_bullet.render | default(true)) %}
+                      <li>{{ bullet_text(entry_bullet) }}</li>
+                    {% endfor %}
+                  </ul>
+                {% elif sub_items %}
+                  <ul class="bullet-list">
+                    {% for sub_item in sub_items %}
+                      <li>
+                        {% if sub_item.label | default("", true) %}
+                          <em>{{ sub_item.label }}:</em>
+                        {% endif %}
+                        {{ sub_item.text | default(sub_item, true) | rich_text }}
+                      </li>
+                    {% endfor %}
+                  </ul>
+                {% endif %}
+              </article>
+            {% endfor %}
           </section>
         {% endif %}
 
