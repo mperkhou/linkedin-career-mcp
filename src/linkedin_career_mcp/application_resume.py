@@ -86,6 +86,8 @@ Rules:
   skills and will not duplicate them.
 - Include additional skills when the JOD asks for them; the renderer can add those skills
   to the visible Core Technical Skills section.
+- Select the strongest overlaps only; prefer no more than 8 additional display skills
+  per category so the visible skills section stays focused.
 - Do not invent skills, employers, tools, responsibilities, or credentials.
 - If a category has no clear overlap with the JOD, return an empty jod_matched_items list.
 
@@ -270,8 +272,9 @@ def build_experience_job_bullet_rewrite_prompt(
     job_label = _job_label(job)
 
     return f"""
-You are an elite, deterministic ATS optimization script. Your objective is to modify
-raw career history text to directly address the target job requirements.
+You are a senior resume editor and evidence auditor. Your objective is to rewrite
+raw career history into credible, job-aware resume bullets that directly address
+the target job requirements without sounding formulaic.
 
 Target Job Requirements:
 {target_lines}
@@ -282,12 +285,24 @@ Raw Experience{f" ({job_label})" if job_label else ""}:
 CRITICAL RULES:
 1. Strictly use the exact numerical metrics and outcomes provided in the Raw Experience.
 2. Do NOT hallucinate new tools, soft skills, software competencies, or outcomes.
-3. Rephrase verbs and phrase structures to align with the Target Job Requirements.
-4. If a target cannot be supported by the Raw Experience, ignore that target.
-5. Format the final output as between {min_bullets} and {max_bullets} punchy bullet
-   points utilizing the Google XYZ framework: "Accomplished [X], as measured by [Y],
-   by doing [Z]."
-6. Output ONLY the raw string of each bullet point, one per line. No introductions,
+3. Adapt the writing style to the job description's seniority, domain, and stakes.
+   For senior platform roles, prefer concrete systems, production pressure,
+   architecture ownership, reliability, identity/security, observability, and
+   operational judgment when the Raw Experience supports it.
+4. Preserve the action, evidence, and impact behind each bullet, but do not use a
+   fixed sentence template. Avoid the literal phrase pattern "Accomplished ... as
+   measured by ... by doing ...".
+5. Vary the first verb and sentence structure across bullets. Do not start more
+   than one bullet with the same first word, and do not start every bullet with
+   "Accomplished".
+6. Bullets may be one or two sentences when a second sentence materially improves
+   clarity, evidence, or senior-level judgment. Aim for 32-45 words per bullet,
+   and do not exceed 55 words. Keep each bullet compact and readable.
+7. Proofread for normal spelling, spacing, and punctuation. Do not concatenate
+   words such as "platformnodes"; write "platform nodes" instead.
+8. If a target cannot be supported by the Raw Experience, ignore that target.
+9. Format the final output as between {min_bullets} and {max_bullets} resume bullets.
+10. Output ONLY the raw string of each bullet, one bullet per line. No introductions,
    markdown, numbering, or chat text.
 """.strip()
 
@@ -545,6 +560,7 @@ def _clean_generated_line(text: str) -> str:
     cleaned = str(text or "").strip()
     cleaned = re.sub(r"^\s*(?:[-*]+|\d+[.)])\s*", "", cleaned)
     cleaned = cleaned.strip().strip('"').strip("'").strip()
+    cleaned = cleaned.replace("`", "")
     return cleaned
 
 

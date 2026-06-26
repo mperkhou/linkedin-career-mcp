@@ -49,6 +49,8 @@ def test_core_skills_prompt_uses_only_core_skills_and_trimmed_jod() -> None:
     assert "Python" in prompt
     assert "Terraform" in prompt
     assert "We need Python" in prompt
+    assert "Select the strongest overlaps only" in prompt
+    assert "visible skills section stays focused" in prompt
     assert "This professional experience bullet should not be sent" not in prompt
 
 
@@ -280,19 +282,23 @@ def test_jod_bullet_rewrite_targets_rendered_non_oracle_jobs() -> None:
         job_opening_description=jod_object,
         job=jobs_to_rewrite[0],
     )
-    assert "between 2 and 5 punchy bullet" in prompt
+    assert "between 2 and 5 resume bullets" in prompt
     assert "Looking for Python automation experience." in prompt
     assert "Bullet 1 evidence count 0." in prompt
     assert "Bullet 7 evidence count 1." in prompt
+    assert "senior resume editor and evidence auditor" in prompt
+    assert "Adapt the writing style to the job description" in prompt
+    assert "Aim for 32-45 words per bullet" in prompt
+    assert "Proofread for normal spelling" in prompt
+    assert "Google XYZ" not in prompt
 
     rewritten = replace_experience_job_bullets_from_text_response(
         application_resume=attached,
         job_order=2,
         bullet_response=(
-            "1. Accomplished a supported modernization outcome, as measured by the "
-            "available role scope, by doing Python automation.\n"
-            "- Accomplished operational reporting support, as measured by the available "
-            "role scope, by doing cloud observability work."
+            "1. Modernized supported platform workflows with Python automation. "
+            "Kept the work grounded in available role scope using `.clinerules`.\n"
+            "- Built operational reporting support for cloud observability work."
         ),
     )
     jobs = rewritten["professional_experience"]["jobs"]
@@ -306,8 +312,8 @@ def test_jod_bullet_rewrite_targets_rendered_non_oracle_jobs() -> None:
             "categories": {"assigned": [], "matched": []},
             "skills": [],
             "text": (
-                "Accomplished a supported modernization outcome, as measured by the "
-                "available role scope, by doing Python automation."
+                "Modernized supported platform workflows with Python automation. "
+                "Kept the work grounded in available role scope using .clinerules."
             ),
             "bullet_point_total_match_count": 0,
             "render": True,
@@ -316,10 +322,7 @@ def test_jod_bullet_rewrite_targets_rendered_non_oracle_jobs() -> None:
             "order": 2,
             "categories": {"assigned": [], "matched": []},
             "skills": [],
-            "text": (
-                "Accomplished operational reporting support, as measured by the available "
-                "role scope, by doing cloud observability work."
-            ),
+            "text": "Built operational reporting support for cloud observability work.",
             "bullet_point_total_match_count": 0,
             "render": True,
         },
@@ -350,25 +353,20 @@ def test_jod_bullet_rewrite_can_replace_oracle_paragraph_evidence() -> None:
         job_opening_description=jod_object,
         job=oracle_job,
     )
-    assert "between 6 and 10 punchy bullet" in prompt
+    assert "between 6 and 10 resume bullets" in prompt
     assert "Looking for network automation experience." in prompt
+    assert "than one bullet with the same first word" in prompt
 
     rewritten = replace_experience_job_bullets_from_text_response(
         application_resume=attached,
         job_order=1,
         bullet_response=(
-            "Accomplished network automation support, as measured by supported "
-            "source evidence, by building OLAM workflows.\n"
-            "Accomplished responsible AI tooling, as measured by supported source "
-            "evidence, by building Codex guardrails.\n"
-            "Accomplished release hygiene, as measured by supported source evidence, "
-            "by validating tests and changelogs.\n"
-            "Accomplished observability coverage, as measured by supported source "
-            "evidence, by building monitoring reports.\n"
-            "Accomplished secure config handling, as measured by supported source "
-            "evidence, by separating secrets.\n"
-            "Accomplished platform reliability, as measured by supported source "
-            "evidence, by diagnosing stuck jobs."
+            "Built network automation support with OLAM workflows.\n"
+            "Hardened responsible AI tooling through Codex guardrails.\n"
+            "Improved release hygiene by validating tests and changelogs.\n"
+            "Expanded observability coverage with monitoring reports.\n"
+            "Protected secure configuration handling by separating secrets.\n"
+            "Diagnosed platform reliability issues around stuck jobs."
         ),
     )
     oracle_bullets = rewritten["professional_experience"]["jobs"][0]["bullet_points"]
@@ -378,10 +376,7 @@ def test_jod_bullet_rewrite_can_replace_oracle_paragraph_evidence() -> None:
         "order": 1,
         "categories": {"assigned": [], "matched": []},
         "skills": [],
-        "text": (
-            "Accomplished network automation support, as measured by supported "
-            "source evidence, by building OLAM workflows."
-        ),
+        "text": "Built network automation support with OLAM workflows.",
         "bullet_point_total_match_count": 0,
         "render": True,
     }

@@ -1,5 +1,18 @@
 # linkedin-career-mcp CHANGELOG
 
+## 3.3.0 - Add job-aware experience bullet rewriting
+
+* Replace the literal Google XYZ experience-bullet rewrite instruction with a
+  job-aware senior resume editing prompt that preserves evidence while allowing
+  varied action verbs, sentence structures, and one- or two-sentence bullets.
+* Tune the rewrite prompt for senior platform roles so supported production
+  pressure, architecture ownership, identity/security, observability, and
+  operational judgment can surface naturally from the source evidence.
+* Cap rendered matched Core Technical Skills additions per category so live
+  regeneration can keep the visible skills section focused while preserving the
+  full match context in the Application Resume Object.
+* Bump the package version to `3.3.0` for the bullet rewrite prompt improvement.
+
 ## 3.2.0 - Tune Core Technical Skills matching
 
 * Split Core Technical Skills matching aids from renderable skills by adding
