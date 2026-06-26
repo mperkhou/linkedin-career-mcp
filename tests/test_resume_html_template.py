@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import yaml
+from bs4 import BeautifulSoup
 
 from scripts.render_resume_html import render_resume_html
 
@@ -193,6 +194,24 @@ def test_resume_html_template_honors_section_render_flags(tmp_path: Path) -> Non
     assert "University of Iowa" in html
     assert "Visible education detail" in html
     assert "Hidden education detail" not in html
+    soup = BeautifulSoup(html, "html.parser")
+    education_heading = soup.find("h2", string="Education")
+    assert education_heading is not None
+    education_section = education_heading.find_parent("section")
+    assert education_section is not None
+    education_entry = education_section.find("article", class_="education-item")
+    assert education_entry is not None
+    assert education_entry.find_parent("li") is None
+    assert education_entry.find("h3", class_="job-company").get_text(strip=True) == (
+        "University of Iowa"
+    )
+    degree_text = education_entry.find("p", class_="job-title").get_text(" ", strip=True)
+    assert " ".join(degree_text.split()) == "Bachelor of Science | 2009 - 2013"
+    assert education_entry.find("ul", class_="nested-list") is None
+    assert education_entry.find("ul", class_="bullet-list").find("li").get_text(
+        " ",
+        strip=True,
+    ) == "Visible education detail."
     assert "Visible certification" in html
     assert "Hidden certification" not in html
     assert "Visible Project" in html
