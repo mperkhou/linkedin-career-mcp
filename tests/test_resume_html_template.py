@@ -200,6 +200,41 @@ def test_resume_html_template_honors_section_render_flags(tmp_path: Path) -> Non
     assert "Hidden Project" not in html
 
 
+def test_resume_html_template_caps_matched_additional_skills(tmp_path: Path) -> None:
+    yaml_path = tmp_path / "capped-skills.yaml"
+    additional = [f"Extra Skill {index}" for index in range(1, 11)]
+    yaml_path.write_text(
+        yaml.safe_dump(
+            {
+                "header_top": {"line_1_name_header_text": "Max Perkhounkov"},
+                "core_technical_skills": {
+                    "bullet_points": [
+                        {
+                            "category": "Platform",
+                            "items": {
+                                "primary": ["Python"],
+                                "additional": additional,
+                            },
+                            "jod_matched_items": additional,
+                        }
+                    ]
+                },
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    html = render_resume_html(
+        yaml_path=yaml_path,
+        template_path=Path("templates/resume/master_resume.html.j2"),
+    )
+
+    assert "Extra Skill 8" in html
+    assert "Extra Skill 9" not in html
+    assert "<strong>Platform:</strong> Python" in html
+
+
 def test_resume_html_template_links_repo_slug_in_summary_note(tmp_path: Path) -> None:
     yaml_path = tmp_path / "summary-note-link.yaml"
     yaml_path.write_text(

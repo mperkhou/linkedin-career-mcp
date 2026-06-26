@@ -24,6 +24,7 @@ _RESUME_LINK_RE = re.compile(r"https?://[^\s<>)]*|mperkhou/linkedin-career-mcp")
 _RESUME_TEXT_LINKS = {
     "mperkhou/linkedin-career-mcp": "https://github.com/mperkhou/linkedin-career-mcp",
 }
+MAX_RENDERED_JOD_MATCHED_SKILLS_PER_CATEGORY = 8
 
 
 def linkify(value: object) -> Markup:
@@ -154,10 +155,17 @@ def _rendered_skill_items(value: object, *, seen: set[str]) -> list[str]:
         alias_by_key = _skill_aliases(items, display_by_key)
         additional_items = set(additional)
         jod_matched_items: list[str] = []
+        matched_keys: set[str] = set()
         for item in _string_list(value.get("jod_matched_items")):
             canonical = alias_by_key.get(_skill_key(item), item)
             if canonical in additional_items:
+                key = _skill_key(canonical)
+                if key in matched_keys:
+                    continue
+                matched_keys.add(key)
                 jod_matched_items.append(canonical)
+                if len(jod_matched_items) >= MAX_RENDERED_JOD_MATCHED_SKILLS_PER_CATEGORY:
+                    break
         candidates = primary + jod_matched_items
     else:
         candidates = _string_list(items)
