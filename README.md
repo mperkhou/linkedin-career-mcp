@@ -10,7 +10,7 @@ The workflow now centers on explicit objects instead of large freeform context b
 
 That object-oriented design is more straightforward than the previous artifact pipeline: each step has a clear input and output, the master resume carries structured source evidence, and expensive LLM calls are limited to the parts that need semantic matching. The result is easier to modify, easier to debug, and more reproducible across runs.
 
-The v3.0.0 redesign is documented in the [release notes](docs/release-notes/3.0.0.md), [experiment log](docs/experiments/2026-06-21-jod-target-aro-redesign.md), and [architecture decision record](docs/adr/0001-adopt-jod-target-aro-rewrite-workflow.md). The guiding lesson was to keep source evidence bounded and truthful, then let the LLM generate role-specific bullets instead of asking local scoring code to pick from a fixed bullet inventory.
+The v3.0.0 redesign is documented in the [release notes](docs/release-notes/3.0.0.md), [experiment log](docs/experiments/2026-06-21-jod-target-aro-redesign.md), and [architecture decision record](docs/adr/0001-adopt-jod-target-aro-rewrite-workflow.md). The guiding lesson was to keep source evidence bounded and truthful, then let the LLM generate role-specific bullets instead of asking local scoring code to pick from a fixed bullet inventory. The Codex post-generation highlighting workflow is documented in [ADR 0002](docs/adr/0002-codex-resume-highlighting-workflow.md).
 
 ## Terms
 
@@ -43,7 +43,8 @@ Once the master resume exists, the job workflow is:
 7. Ask the JOD-target model to distill the JOD into compact requirement targets.
 8. Rewrite the rendered experience jobs from their ARO source evidence, including current-role paragraph evidence stored in the MRO.
 9. Store the ARO in SQLite, render resume HTML through Jinja2, render PDF, and calculate ATS score.
-10. Review, edit, sync, download, and rescore from the Flask UI.
+10. Optionally run the guarded Codex highlighting workflow to add selective `<strong>` emphasis to professional-experience bullets without changing the underlying wording.
+11. Review, edit, sync, download, and rescore from the Flask UI.
 
 User edits update the ARO as the workflow basis. The rendered draft resume is derived from the ARO, and the tracker shows when the stored ARO and rendered resume are out of sync.
 
@@ -217,6 +218,19 @@ Render the current stored ARO into resume HTML/PDF and refresh ATS scoring witho
 make sync-draft-to-aro JOB_IDS="4424184336"
 ```
 
+Add selective Codex-driven bolding to existing draft resume bullets:
+
+```bash
+make highlight-draft-resumes JOB_IDS="4424184336"
+```
+
+Limit the polish pass to one rendered Professional Experience company when a
+resume only needs highlighting in that role:
+
+```bash
+make highlight-draft-resumes JOB_IDS="4424184336" HIGHLIGHT_EXPERIENCE_COMPANY=Oracle
+```
+
 Run validation:
 
 ```bash
@@ -264,6 +278,27 @@ use a different model from the JOD target and bullet rewrite calls.
 Use `MASTER_RESUME=<path>` to run the same ARO workflow against
 an alternate master resume object without replacing the canonical MRO.
 
+The optional Codex highlighting workflow runs after draft generation. The Codex
+CLI returns JSON patches, and Python validates that only `<strong>` tags were
+added before writing the ARO and re-rendering HTML/PDF:
+
+```bash
+CODEX_MODEL=gpt-5.5 make highlight-draft-resumes JOB_IDS="4424184336"
+```
+
+Override the Codex command or per-row timeout when needed:
+
+- `CODEX_COMMAND`: Makefile override for the Codex CLI command.
+- `CODEX_MODEL`: Makefile override for the Codex model, default `gpt-5.5`.
+- `CODEX_TIMEOUT_SECONDS`: Makefile override for the Codex CLI timeout.
+- `HIGHLIGHT_EXPERIENCE_COMPANY`: optional company-name filter for the rendered
+  Professional Experience jobs sent to Codex.
+- `HIGHLIGHT_EXPERIENCE_JOB_ORDER`: optional ARO job-order filter for the
+  rendered Professional Experience jobs sent to Codex.
+- `LINKEDIN_CAREER_MCP_CODEX_COMMAND`: script-level Codex command fallback.
+- `LINKEDIN_CAREER_MCP_CODEX_MODEL`: script-level model fallback.
+- `LINKEDIN_CAREER_MCP_CODEX_TIMEOUT_SECONDS`: script-level timeout fallback.
+
 The important local files are:
 
 - `profile/MP-MASTER-RESUME.txt`
@@ -278,6 +313,7 @@ The active workflow modules are intentionally smaller than the retired artifact 
 - `src/linkedin_career_mcp/workflows/matching.py`: LinkedIn search planning, filtering, JOD trimming, and DB seeding.
 - `src/linkedin_career_mcp/application_resume.py`: ARO initialization, Core Technical Skills matching prompt, JOD target creation, and evidence-backed bullet rewriting.
 - `src/linkedin_career_mcp/jod.py`: JOD cleaning and prompt trimming.
+- `src/linkedin_career_mcp/resume_highlighting.py`: guarded Codex JSON-patch workflow for selective resume bullet emphasis.
 - `src/linkedin_career_mcp/resume_rendering.py`: HTML/PDF rendering.
 - `src/linkedin_career_mcp/webapp.py`: database-backed review, edit, download, rescore, and background actions.
 

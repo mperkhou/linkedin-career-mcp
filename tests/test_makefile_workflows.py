@@ -54,3 +54,22 @@ def test_regenerate_draft_resumes_make_target_honors_resume_and_model_overrides(
     assert '--jod-model "example/model"' in output
     assert "for job_id in url-123" in output
     assert "$job_args $force_arg" in output
+
+
+def test_highlight_draft_resumes_make_target_uses_codex_workflow() -> None:
+    output = _make_dry_run(
+        "highlight-draft-resumes",
+        "JOB_IDS=url-123",
+        "CODEX_COMMAND=codex",
+        "CODEX_MODEL=gpt-5.5",
+        "CODEX_TIMEOUT_SECONDS=900",
+        "HIGHLIGHT_EXPERIENCE_COMPANY=Oracle",
+    )
+
+    assert "scripts/application_resume_highlight_drafts.py" in output
+    assert '--codex-command "codex"' in output
+    assert '--codex-model "gpt-5.5"' in output
+    assert '--timeout-seconds "900"' in output
+    assert "--experience-company Oracle" in output
+    assert "for job_id in url-123" in output
+    assert 'job_args="$job_args --job-id $job_id"' in output

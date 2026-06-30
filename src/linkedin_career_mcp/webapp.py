@@ -86,6 +86,7 @@ REGENERATE_ACTION_TARGETS = {
     "draft_resumes": "regenerate-draft-resumes",
     "aro_objects": "regenerate-aro-objects",
     "sync_draft_to_aro": "sync-draft-to-aro",
+    "highlight_drafts": "highlight-draft-resumes",
 }
 _DRAFT_REGENERATE_MODES = {"draft_resumes"}
 COVER_LETTER_OBJECT_SCHEMA_VERSION = "cover_letter_object.v0.1"
@@ -1216,12 +1217,14 @@ def start_background_action(
     *,
     regenerate_mode: str,
     job_ids: list[str],
+    highlight_with_codex: bool = False,
     runner: BackgroundActionRunner | None = None,
 ) -> BackgroundActionRun:
     run = _create_background_action_run(
         title=_background_action_title(
             regenerate_mode=regenerate_mode,
             job_ids=job_ids,
+            highlight_with_codex=highlight_with_codex,
         )
     )
     target = runner or _run_background_action
@@ -1231,6 +1234,7 @@ def start_background_action(
             "run_id": run.run_id,
             "regenerate_mode": regenerate_mode,
             "job_ids": job_ids,
+            "highlight_with_codex": highlight_with_codex,
         },
         daemon=True,
     )
@@ -1315,10 +1319,13 @@ def _run_background_action(
     run_id: str,
     regenerate_mode: str,
     job_ids: list[str],
+    highlight_with_codex: bool = False,
 ) -> None:
     try:
         if regenerate_mode:
             _run_regenerate_action(run_id=run_id, regenerate_mode=regenerate_mode, job_ids=job_ids)
+        if highlight_with_codex and regenerate_mode != "highlight_drafts":
+            _run_highlight_action(run_id=run_id, job_ids=job_ids)
         _append_background_action_message(run_id, "Background action completed.")
         _finish_background_action_run(run_id, status="completed", return_code=0)
     except Exception as exc:
@@ -1352,6 +1359,27 @@ def _run_regenerate_action(
     _append_background_action_message(run_id, "Regeneration command completed.")
 
 
+def _run_highlight_action(*, run_id: str, job_ids: list[str]) -> None:
+    command = _highlight_make_command(job_ids=job_ids)
+    _append_background_action_message(run_id, f"Running {' '.join(command)}")
+    process = subprocess.Popen(  # noqa: S603
+        command,
+        cwd=_project_root(),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    if process.stdout is None:
+        raise RuntimeError("Codex highlighting command did not provide an output stream")
+    for line in process.stdout:
+        _append_background_action_message(run_id, line)
+    return_code = process.wait()
+    if return_code != 0:
+        raise RuntimeError(f"Codex highlighting command exited with status {return_code}")
+    _append_background_action_message(run_id, "Codex highlighting command completed.")
+
+
 def _regenerate_make_command(*, regenerate_mode: str, job_ids: list[str]) -> list[str]:
     target = REGENERATE_ACTION_TARGETS.get(regenerate_mode)
     if target is None:
@@ -1362,6 +1390,12 @@ def _regenerate_make_command(*, regenerate_mode: str, job_ids: list[str]) -> lis
     if regenerate_mode in _DRAFT_REGENERATE_MODES:
         command.append("FIRST_DRAFT_FORCE=1")
     return command
+
+
+def _highlight_make_command(*, job_ids: list[str]) -> list[str]:
+    if not job_ids:
+        raise ValueError("At least one job id is required for Codex highlighting.")
+    return ["make", "highlight-draft-resumes", f"JOB_IDS={' '.join(job_ids)}"]
 
 
 def _project_root() -> Path:
@@ -1387,6 +1421,7 @@ def _background_action_title(
     *,
     regenerate_mode: str,
     job_ids: list[str],
+    highlight_with_codex: bool = False,
 ) -> str:
     parts: list[str] = []
     if regenerate_mode:
@@ -1394,8 +1429,11 @@ def _background_action_title(
             "draft_resumes": "regenerate draft resume",
             "aro_objects": "regenerate ARO object(s)",
             "sync_draft_to_aro": "sync draft to ARO",
+            "highlight_drafts": "Codex highlight draft resume",
         }.get(regenerate_mode, "regenerate docs")
         parts.append(f"{label} for {len(job_ids)} job(s)")
+    if highlight_with_codex and regenerate_mode != "highlight_drafts":
+        parts.append(f"Codex highlight draft resume for {len(job_ids)} job(s)")
     return " + ".join(parts) or "background action"
 
 
@@ -1502,6 +1540,7 @@ def create_app(
         run = start_background_action(
             regenerate_mode="draft_resumes",
             job_ids=[job_id],
+            highlight_with_codex=bool(request.form.get("highlight_with_codex")),
             runner=background_action_runner,
         )
         flash(f"Added LinkedIn job {job_id}. Started background action: {run.title}.")
@@ -1521,6 +1560,7 @@ def create_app(
         run = start_background_action(
             regenerate_mode="draft_resumes",
             job_ids=[job_id],
+            highlight_with_codex=bool(request.form.get("highlight_with_codex")),
             runner=background_action_runner,
         )
         flash(f"Added job URL {job_id}. Started background action: {run.title}.")
@@ -1530,6 +1570,7 @@ def create_app(
     def run_actions():
         regenerate_mode = str(request.form.get("regenerate_mode") or "").strip()
         regenerate_requested = bool(regenerate_mode)
+        highlight_with_codex = bool(request.form.get("highlight_with_codex"))
         job_ids = _selected_job_ids(request.form.getlist("job_id"))
         if not regenerate_requested:
             flash("Choose at least one action to run.")
@@ -1540,10 +1581,14 @@ def create_app(
         if regenerate_requested and regenerate_mode not in REGENERATE_ACTION_TARGETS:
             flash("Choose a valid regeneration option.")
             return redirect_to_index_state()
+        if highlight_with_codex and regenerate_mode != "draft_resumes":
+            flash("Codex highlighting can only be chained after draft resume regeneration.")
+            return redirect_to_index_state()
 
         run = start_background_action(
             regenerate_mode=regenerate_mode if regenerate_requested else "",
             job_ids=job_ids,
+            highlight_with_codex=highlight_with_codex,
             runner=background_action_runner,
         )
         flash(f"Started background action: {run.title}.")
@@ -3171,10 +3216,18 @@ INDEX_TEMPLATE = """
               <span>Regenerate Draft Resume</span>
             </label>
             <label>
+              <input type="radio" name="regenerate_mode" value="highlight_drafts">
+              <span>Codex Highlight Draft Resume</span>
+            </label>
+            <label>
               <input type="radio" name="regenerate_mode" value="sync_draft_to_aro">
               <span>Sync Draft to ARO</span>
             </label>
           </fieldset>
+          <label class="action-choice">
+            <input type="checkbox" name="highlight_with_codex" value="1">
+            <span>Run Codex highlighting after draft generation</span>
+          </label>
           <div class="actions-menu-footer">
             <span id="actions-selected-summary" class="actions-selected-summary">
               0 selected
@@ -3561,6 +3614,7 @@ INDEX_TEMPLATE = """
     const preserveStateLinks = [...document.querySelectorAll(".preserve-state-link")];
     const actionsForm = document.querySelector("#actions-form");
     const regenerateModeInputs = [...document.querySelectorAll("input[name='regenerate_mode']")];
+    const highlightWithCodexInput = document.querySelector("input[name='highlight_with_codex']");
     const runActionsButton = document.querySelector("#run-actions");
     const actionsSelectedSummary = document.querySelector("#actions-selected-summary");
     const actionStatus = document.querySelector("#action-status");
@@ -3900,11 +3954,19 @@ INDEX_TEMPLATE = """
     }
     function updateActionsState() {
       const selected = selectedJobIds();
+      const mode = selectedRegenerateMode();
       if (actionsSelectedSummary) {
         actionsSelectedSummary.textContent = `${selected.length} selected`;
       }
+      if (highlightWithCodexInput) {
+        const canChainHighlight = mode === "draft_resumes";
+        highlightWithCodexInput.disabled = !canChainHighlight;
+        if (!canChainHighlight) {
+          highlightWithCodexInput.checked = false;
+        }
+      }
       if (runActionsButton) {
-        const hasResumeAction = Boolean(selectedRegenerateMode());
+        const hasResumeAction = Boolean(mode);
         runActionsButton.disabled = !hasResumeAction || selected.length === 0;
       }
     }
@@ -4211,6 +4273,16 @@ ADD_APPLICATION_TEMPLATE = """
       font-weight: 700;
       text-transform: uppercase;
     }
+    .option-row {
+      align-items: center;
+      display: flex;
+      gap: 8px;
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 650;
+      text-transform: none;
+    }
+    .option-row input { margin: 0; }
     input[type="url"] {
       width: 100%;
       border: 1px solid var(--line);
@@ -4283,6 +4355,10 @@ ADD_APPLICATION_TEMPLATE = """
           required
         >
       </label>
+      <label class="option-row">
+        <input type="checkbox" name="highlight_with_codex" value="1" checked>
+        <span>Run Codex bullet highlighting after resume generation</span>
+      </label>
       <button type="submit">Load</button>
     </form>
 
@@ -4296,6 +4372,10 @@ ADD_APPLICATION_TEMPLATE = """
           placeholder="https://company.example/jobs/software-engineer"
           required
         >
+      </label>
+      <label class="option-row">
+        <input type="checkbox" name="highlight_with_codex" value="1" checked>
+        <span>Run Codex bullet highlighting after resume generation</span>
       </label>
       <button type="submit">Load</button>
     </form>

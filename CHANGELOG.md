@@ -1,5 +1,20 @@
 # linkedin-career-mcp CHANGELOG
 
+## 3.4.0 - Add Codex resume highlighting workflow
+
+* Add a guarded Codex post-generation workflow that proposes selective
+  `<strong>` emphasis for professional-experience bullets and rejects any output
+  that changes resume wording or uses unsupported markup.
+* Add `make highlight-draft-resumes`, a Flask tracker batch action, and an
+  add-job checkbox so highlighted draft resumes can be generated from the CLI or
+  chained after normal draft generation.
+* Allow Codex highlighting runs to be limited to a specific rendered
+  Professional Experience company or ARO job order for selective polishing.
+* Document the design decision behind using Codex as an agentic polish step,
+  including portfolio signaling and cost-aware use of already-budgeted Codex
+  subscription capacity.
+* Bump the package version to `3.4.0` for the new resume highlighting workflow.
+
 ## 3.3.1 - Align Education section resume layout
 
 * Render Education entries with the same heading-and-bullet hierarchy as
