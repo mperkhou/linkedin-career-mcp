@@ -16,8 +16,13 @@ MAX_JOBS ?= 10
 MASTER_RESUME ?= profile/MASTER-RESUME.yml
 JOD_MODEL ?= z-ai/glm-5.2
 CORE_SKILL_MODEL ?= $(JOD_MODEL)
+CODEX_COMMAND ?= codex
+CODEX_MODEL ?= gpt-5.5
+CODEX_TIMEOUT_SECONDS ?= 900
+HIGHLIGHT_EXPERIENCE_COMPANY ?=
+HIGHLIGHT_EXPERIENCE_JOB_ORDER ?=
 
-.PHONY: install install-python install-browser install-ollama ollama-model venv skill-link seed-jobs regenerate-draft-resumes regenerate-aro-objects sync-draft-to-aro launch-website stop-website restart-website test lint clean
+.PHONY: install install-python install-browser install-ollama ollama-model venv skill-link seed-jobs regenerate-draft-resumes regenerate-aro-objects sync-draft-to-aro highlight-draft-resumes launch-website stop-website restart-website test lint clean
 
 install: install-python install-ollama ollama-model skill-link
 
@@ -96,6 +101,22 @@ sync-draft-to-aro: venv
 		done; \
 	fi; \
 	$(VENV_PYTHON) scripts/application_resume_sync_drafts_to_aro.py $$job_args
+
+highlight-draft-resumes: venv
+	@job_args=""; \
+	if [ "$(JOB_IDS)" != "all" ]; then \
+		for job_id in $(JOB_IDS); do \
+			job_args="$$job_args --job-id $$job_id"; \
+		done; \
+	fi; \
+	filter_args=""; \
+	if [ -n "$(HIGHLIGHT_EXPERIENCE_COMPANY)" ]; then \
+		filter_args="$$filter_args --experience-company $(HIGHLIGHT_EXPERIENCE_COMPANY)"; \
+	fi; \
+	if [ -n "$(HIGHLIGHT_EXPERIENCE_JOB_ORDER)" ]; then \
+		filter_args="$$filter_args --experience-job-order $(HIGHLIGHT_EXPERIENCE_JOB_ORDER)"; \
+	fi; \
+	$(VENV_PYTHON) scripts/application_resume_highlight_drafts.py --codex-command "$(CODEX_COMMAND)" --codex-model "$(CODEX_MODEL)" --timeout-seconds "$(CODEX_TIMEOUT_SECONDS)" $$job_args $$filter_args
 
 launch-website: venv
 	$(VENV)/bin/linkedin-career-webapp --host "$(WEBSITE_HOST)" --port "$(WEBSITE_PORT)" --open-browser

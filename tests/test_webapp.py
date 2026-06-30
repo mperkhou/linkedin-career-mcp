@@ -186,9 +186,13 @@ def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypat
     assert "Sync from output" not in html
     assert "Regenerate ARO Objects" in html
     assert "Regenerate Draft Resume" in html
+    assert "Codex Highlight Draft Resume" in html
+    assert "Run Codex highlighting after draft generation" in html
     assert "Sync Draft to ARO" in html
     assert 'name="regenerate_mode" value="aro_objects"' in html
     assert 'name="regenerate_mode" value="draft_resumes"' in html
+    assert 'name="regenerate_mode" value="highlight_drafts"' in html
+    assert 'name="highlight_with_codex" value="1"' in html
     assert 'name="regenerate_mode" value="sync_draft_to_aro"' in html
     assert "ARO/Resume Sync" in html
     assert "Cover letters" not in html
@@ -528,6 +532,15 @@ def test_regenerate_make_command_maps_modes_to_make_targets():
         regenerate_mode="sync_draft_to_aro",
         job_ids=["url-123"],
     ) == ["make", "sync-draft-to-aro", "JOB_IDS=url-123"]
+    assert webapp._regenerate_make_command(  # noqa: SLF001
+        regenerate_mode="highlight_drafts",
+        job_ids=["url-123"],
+    ) == ["make", "highlight-draft-resumes", "JOB_IDS=url-123"]
+    assert webapp._highlight_make_command(job_ids=["url-123"]) == [  # noqa: SLF001
+        "make",
+        "highlight-draft-resumes",
+        "JOB_IDS=url-123",
+    ]
     with pytest.raises(ValueError, match="Unsupported regeneration mode"):
         webapp._regenerate_make_command(  # noqa: SLF001
             regenerate_mode="resumes",
@@ -1026,6 +1039,7 @@ def test_actions_run_starts_background_regeneration(tmp_path: Path):
     assert calls
     assert "sync_requested" not in calls[0]
     assert calls[0]["regenerate_mode"] == "draft_resumes"
+    assert calls[0]["highlight_with_codex"] is False
     assert calls[0]["job_ids"] == ["123", "456"]
 
     status = client.get("/actions/status").get_json()
@@ -1034,6 +1048,53 @@ def test_actions_run_starts_background_regeneration(tmp_path: Path):
     assert status["runs"][0]["return_code"] == 0
     assert status["runs"][0]["title"] == "regenerate draft resume for 2 job(s)"
     assert any("processing job 123" in message for message in status["runs"][0]["messages"])
+
+
+def test_actions_run_can_chain_codex_highlighting_after_draft_generation(tmp_path: Path):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    calls = []
+    completed = threading.Event()
+
+    def runner(**kwargs):
+        calls.append(kwargs)
+        webapp._finish_background_action_run(  # noqa: SLF001
+            kwargs["run_id"],
+            status="completed",
+            return_code=0,
+        )
+        completed.set()
+
+    output_dir = tmp_path / "output"
+    database_path = output_dir / "tracking/applications.sqlite3"
+    app = create_app(
+        database_path=database_path,
+        output_dir=output_dir,
+        background_action_runner=runner,
+    )
+    client = app.test_client()
+
+    response = client.post(
+        "/actions/run",
+        data={
+            "regenerate_mode": "draft_resumes",
+            "highlight_with_codex": "1",
+            "job_id": ["url-123"],
+        },
+    )
+
+    assert response.status_code == 302
+    assert completed.wait(timeout=2)
+    assert calls[0]["regenerate_mode"] == "draft_resumes"
+    assert calls[0]["highlight_with_codex"] is True
+
+    status = client.get("/actions/status").get_json()
+    assert status is not None
+    assert status["runs"][0]["title"] == (
+        "regenerate draft resume for 1 job(s) + "
+        "Codex highlight draft resume for 1 job(s)"
+    )
 
 
 def test_background_action_runs_only_requested_new_workflow(
@@ -1048,7 +1109,11 @@ def test_background_action_runs_only_requested_new_workflow(
     def fake_regenerate_action(**kwargs):
         calls.append(("regenerate", kwargs["regenerate_mode"]))
 
+    def fake_highlight_action(**kwargs):
+        calls.append(("highlight", " ".join(kwargs["job_ids"])))
+
     monkeypatch.setattr(webapp, "_run_regenerate_action", fake_regenerate_action)
+    monkeypatch.setattr(webapp, "_run_highlight_action", fake_highlight_action)
 
     run = webapp._create_background_action_run(title="generate first draft")  # noqa: SLF001
     webapp._run_background_action(  # noqa: SLF001
@@ -1060,6 +1125,17 @@ def test_background_action_runs_only_requested_new_workflow(
     assert calls == [("regenerate", "draft_resumes")]
     status = webapp.background_action_snapshots()[0]
     assert status["status"] == "completed"
+
+    calls.clear()
+    run = webapp._create_background_action_run(title="generate first draft")  # noqa: SLF001
+    webapp._run_background_action(  # noqa: SLF001
+        run_id=run.run_id,
+        regenerate_mode="draft_resumes",
+        job_ids=["url-123"],
+        highlight_with_codex=True,
+    )
+
+    assert calls == [("regenerate", "draft_resumes"), ("highlight", "url-123")]
 
     calls.clear()
     run = webapp._create_background_action_run(title="regenerate ARO object")  # noqa: SLF001
@@ -1080,6 +1156,17 @@ def test_background_action_runs_only_requested_new_workflow(
     )
 
     assert calls == [("regenerate", "sync_draft_to_aro")]
+
+    calls.clear()
+    run = webapp._create_background_action_run(title="Codex highlight draft resume")  # noqa: SLF001
+    webapp._run_background_action(  # noqa: SLF001
+        run_id=run.run_id,
+        regenerate_mode="highlight_drafts",
+        job_ids=["url-123"],
+        highlight_with_codex=True,
+    )
+
+    assert calls == [("regenerate", "highlight_drafts")]
 
 
 def test_add_application_loads_linkedin_job_and_starts_regeneration(
@@ -1145,6 +1232,8 @@ def test_add_application_loads_linkedin_job_and_starts_regeneration(
     assert 'action="/applications/add/linkedin"' in add_html
     assert 'action="/applications/add/other"' in add_html
     assert 'name="other_url"' in add_html
+    assert "Run Codex bullet highlighting after resume generation" in add_html
+    assert 'name="highlight_with_codex" value="1" checked' in add_html
 
     response = client.post(
         "/applications/add/linkedin",
@@ -1162,6 +1251,7 @@ def test_add_application_loads_linkedin_job_and_starts_regeneration(
     assert calls
     assert "sync_requested" not in calls[0]
     assert calls[0]["regenerate_mode"] == "draft_resumes"
+    assert calls[0]["highlight_with_codex"] is False
     assert calls[0]["job_ids"] == ["12345"]
 
     with webapp.connect_database(database_path) as connection:
@@ -1249,6 +1339,7 @@ def test_add_application_loads_other_job_url_and_starts_regeneration(
     assert calls
     assert "sync_requested" not in calls[0]
     assert calls[0]["regenerate_mode"] == "draft_resumes"
+    assert calls[0]["highlight_with_codex"] is False
     assert calls[0]["job_ids"] == ["url-abc123def456"]
 
     with webapp.connect_database(database_path) as connection:
