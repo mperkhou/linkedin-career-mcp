@@ -56,6 +56,22 @@ def test_regenerate_draft_resumes_make_target_honors_resume_and_model_overrides(
     assert "$job_args $force_arg" in output
 
 
+def test_refine_draft_resumes_make_target_uses_glm_second_pass_model() -> None:
+    output = _make_dry_run(
+        "refine-draft-resumes",
+        "JOB_IDS=url-123",
+        "SECOND_PASS_APPLY=1",
+    )
+
+    assert "linkedin-career-refine-resume" in output
+    assert '--job-id "$job_id"' in output
+    assert '--master-resume "profile/MASTER-RESUME.yml"' in output
+    assert '--api-model "z-ai/glm-5.2"' in output
+    assert 'apply_arg="--apply"' in output
+    assert "$apply_arg" in output
+    assert "for job_id in url-123" in output
+
+
 def test_highlight_draft_resumes_make_target_uses_codex_workflow() -> None:
     output = _make_dry_run(
         "highlight-draft-resumes",

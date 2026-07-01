@@ -16,13 +16,15 @@ MAX_JOBS ?= 10
 MASTER_RESUME ?= profile/MASTER-RESUME.yml
 JOD_MODEL ?= z-ai/glm-5.2
 CORE_SKILL_MODEL ?= $(JOD_MODEL)
+SECOND_PASS_MODEL ?= z-ai/glm-5.2
+SECOND_PASS_APPLY ?= 0
 CODEX_COMMAND ?= codex
 CODEX_MODEL ?= gpt-5.5
 CODEX_TIMEOUT_SECONDS ?= 900
 HIGHLIGHT_EXPERIENCE_COMPANY ?=
 HIGHLIGHT_EXPERIENCE_JOB_ORDER ?=
 
-.PHONY: install install-python install-browser install-ollama ollama-model venv skill-link seed-jobs regenerate-draft-resumes regenerate-aro-objects sync-draft-to-aro highlight-draft-resumes launch-website stop-website restart-website test lint clean
+.PHONY: install install-python install-browser install-ollama ollama-model venv skill-link seed-jobs regenerate-draft-resumes regenerate-aro-objects sync-draft-to-aro refine-draft-resumes highlight-draft-resumes launch-website stop-website restart-website test lint clean
 
 install: install-python install-ollama ollama-model skill-link
 
@@ -101,6 +103,19 @@ sync-draft-to-aro: venv
 		done; \
 	fi; \
 	$(VENV_PYTHON) scripts/application_resume_sync_drafts_to_aro.py $$job_args
+
+refine-draft-resumes: venv
+	@if [ "$(JOB_IDS)" = "all" ]; then \
+		echo "Set JOB_IDS=<job_id ...> for refine-draft-resumes"; \
+		exit 2; \
+	fi; \
+	apply_arg=""; \
+	if [ "$(SECOND_PASS_APPLY)" = "1" ] || [ "$(SECOND_PASS_APPLY)" = "true" ]; then \
+		apply_arg="--apply"; \
+	fi; \
+	for job_id in $(JOB_IDS); do \
+		$(VENV)/bin/linkedin-career-refine-resume --job-id "$$job_id" --master-resume "$(MASTER_RESUME)" --api-model "$(SECOND_PASS_MODEL)" $$apply_arg; \
+	done
 
 highlight-draft-resumes: venv
 	@job_args=""; \
