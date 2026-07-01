@@ -1,5 +1,13 @@
 # linkedin-career-mcp CHANGELOG
 
+## 3.4.1 - Refresh Oracle agentic AI evidence
+
+* Add Oracle OLAM MCP runtime architecture and agent-facing tool-contract
+  evidence to the master resume source text and structured resume YAML.
+* Link the new agentic AI evidence to the factual AI, platform engineering,
+  automation, observability, and security skill inventory used by ARO matching.
+* Bump the package version to `3.4.1` for the master resume data refresh.
+
 ## 3.4.0 - Add Codex resume highlighting workflow
 
 * Add a guarded Codex post-generation workflow that proposes selective
