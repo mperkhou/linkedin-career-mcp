@@ -1,5 +1,28 @@
 # linkedin-career-mcp CHANGELOG
 
+## 4.0.0 - Add DB-backed second-pass resume variants
+
+* Add explainable ATS diagnostics, noisy phrase regressions, structured
+  second-pass critique parsing, external critique classification, and
+  evidence-backed patch validation.
+* Store resume variants in SQLite so first drafts remain available as `v1`, GLM
+  5.2 refinements are stored as `v2`, and Codex manual pass output is stored as
+  `manual` without overwriting prior drafts.
+* Add `make refine-draft-resumes`, defaulting to
+  `SECOND_PASS_MODEL ?= z-ai/glm-5.2`, for one-job or all-active v2 refinement
+  runs with DB-stored critique, validation, ATS diagnostics, and model metadata.
+* Add Flask tracker review controls for Draft v1, Refined v2, and Manual pass
+  variants, including reversible selection, per-variant HTML/PDF downloads, ATS
+  deltas, ARO diff, accepted/rejected changes, and unsupported claim details.
+* Add `make manual-pass-resumes` and tracker support for storing a Codex manual
+  pass variant from v1, v2, critique/validation output, ATS diagnostics, JOD
+  text, prompt JOD text, and master-resume evidence.
+* Document the second-pass variant workflow, evidence rules, manual critique
+  ingestion, ATS diagnostics, and migration notes in the README and 4.0.0
+  release notes.
+* Bump the package version to `4.0.0` because resume storage, schema, and review
+  workflow behavior changed.
+
 ## 3.5.0 - Add manual resume passthrough workflow
 
 * Open tracker `Job URL` links directly to the stored LinkedIn posting in a new

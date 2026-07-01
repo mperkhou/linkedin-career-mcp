@@ -1,16 +1,16 @@
 # LinkedIn Career MCP
 
-LinkedIn Career MCP is a local, database-backed job-search and resume-tailoring workflow. It searches public LinkedIn postings, trims noisy job-opening descriptions, builds per-job Application Resume Objects (AROs) from a structured master resume, renders first-draft resume HTML/PDF, and keeps the human review loop in a Flask tracker.
+LinkedIn Career MCP is a local, database-backed job-search and resume-tailoring workflow. It searches public LinkedIn postings, trims noisy job-opening descriptions, builds per-job Application Resume Objects (AROs) from a structured master resume, renders versioned resume HTML/PDF variants, and keeps the human review loop in a Flask tracker.
 
 The project is intentionally local-first. It does not authenticate to LinkedIn, read private member data, submit applications, or auto-generate cover letters.
 
 ## What Changed
 
-The workflow now centers on explicit objects instead of large freeform context bundles. `profile/MASTER-RESUME.yml` is the canonical Master Resume Object (MRO); each job gets an Application Resume Object (ARO) deep-copied from that master; cover letters are manual Cover Letter Objects (CLOs); and the Flask database stores the ARO, rendered HTML, rendered PDF, ATS fields, and user edits.
+The workflow now centers on explicit objects instead of large freeform context bundles. `profile/MASTER-RESUME.yml` is the canonical Master Resume Object (MRO); each job gets an Application Resume Object (ARO) deep-copied from that master; cover letters are manual Cover Letter Objects (CLOs); and the Flask database stores the ARO, rendered HTML, rendered PDF, ATS fields, resume variants, and user edits.
 
 That object-oriented design is more straightforward than the previous artifact pipeline: each step has a clear input and output, the master resume carries structured source evidence, and expensive LLM calls are limited to the parts that need semantic matching. The result is easier to modify, easier to debug, and more reproducible across runs.
 
-The v3.0.0 redesign is documented in the [release notes](docs/release-notes/3.0.0.md), [experiment log](docs/experiments/2026-06-21-jod-target-aro-redesign.md), and [architecture decision record](docs/adr/0001-adopt-jod-target-aro-rewrite-workflow.md). The guiding lesson was to keep source evidence bounded and truthful, then let the LLM generate role-specific bullets instead of asking local scoring code to pick from a fixed bullet inventory. The Codex post-generation highlighting workflow is documented in [ADR 0002](docs/adr/0002-codex-resume-highlighting-workflow.md).
+The v3.0.0 redesign is documented in the [release notes](docs/release-notes/3.0.0.md), [experiment log](docs/experiments/2026-06-21-jod-target-aro-redesign.md), and [architecture decision record](docs/adr/0001-adopt-jod-target-aro-rewrite-workflow.md). The guiding lesson was to keep source evidence bounded and truthful, then let the LLM generate role-specific bullets instead of asking local scoring code to pick from a fixed bullet inventory. The Codex post-generation highlighting workflow is documented in [ADR 0002](docs/adr/0002-codex-resume-highlighting-workflow.md), and the DB-backed second-pass variant workflow is documented in the [4.0.0 release notes](docs/release-notes/4.0.0.md).
 
 ## Terms
 
@@ -19,6 +19,8 @@ The v3.0.0 redesign is documented in the [release notes](docs/release-notes/3.0.
 - **ARO**: Application Resume Object. This is a per-job deep copy of the MRO with JOD match lists, generated experience bullets, render flags, and manual edits.
 - **CLO**: Cover Letter Object. This is a manually pasted/edited rich-text cover letter stored in the database and rendered to PDF.
 - **ATS score**: A local proxy score that combines parsing, keyword, semantic, and formatting signals from the rendered resume and the selected JOD.
+- **ATS diagnostics**: Explainable ATS details stored with generated variants, including matched terms, unmatched weighted terms, noisy phrase matches, component scores, and semantic signals.
+- **Resume variant**: A DB-backed resume version for a job. `v1` is the first draft, `v2` is the GLM second-pass refinement, and `manual` is a Codex manual pass. Selecting a variant only changes the active HTML/PDF links and is reversible.
 
 ## Master Resume Setup
 
@@ -42,11 +44,13 @@ Once the master resume exists, the job workflow is:
 6. Ask the configured LLM through OpenRouter to match Core Technical Skills to the JOD.
 7. Ask the JOD-target model to distill the JOD into compact requirement targets.
 8. Rewrite the rendered experience jobs from their ARO source evidence, including current-role paragraph evidence stored in the MRO.
-9. Store the ARO in SQLite, render resume HTML through Jinja2, render PDF, and calculate ATS score.
-10. Optionally run the guarded Codex highlighting workflow to add selective `<strong>` emphasis to professional-experience bullets without changing the underlying wording.
-11. Review, edit, sync, download, and rescore from the Flask UI.
+9. Store the first draft as `v1` in SQLite, render resume HTML through Jinja2, render PDF, and calculate ATS score.
+10. Optionally run the GLM 5.2 second-pass workflow to store a `v2` variant with critique, ATS diagnostics, accepted/rejected patches, validation details, and model metadata.
+11. Optionally run the Codex manual pass workflow to store a `manual` variant that reviews v1, v2, critique output, validation output, JOD text, and master-resume evidence.
+12. Optionally run the guarded Codex highlighting workflow to add selective `<strong>` emphasis to professional-experience bullets without changing the underlying wording.
+13. Review, edit, switch variants, download, and rescore from the Flask UI.
 
-User edits update the ARO as the workflow basis. The rendered draft resume is derived from the ARO, and the tracker shows when the stored ARO and rendered resume are out of sync.
+User edits update the ARO as the workflow basis. The selected resume variant controls the normal HTML/PDF links on the tracker, and switching between v1, v2, and manual variants copies that variant into the active resume fields without deleting the other variants.
 
 ### JOD Target Rewrite Example
 
@@ -63,9 +67,11 @@ ORDER BY rowid;
 
 The stored first draft updates fields such as `application_resume_object`,
 `resume_html_content`, `resume_content`, `resume_filename`, `source_resume_path`,
-`ats_score`, `ats_keyword_score`, and `ats_semantic_score`. The `source_*_path`
-fields are populated for explicit artifact-cache runs; normal Flask/Make runs can
-store the rendered HTML/PDF blobs in SQLite with blank source paths.
+`ats_score`, `ats_keyword_score`, and `ats_semantic_score`, and it is also
+backfilled into `application_resume_variants` as `variant_key = 'v1'`. The
+`source_*_path` fields are populated for explicit artifact-cache runs; normal
+Flask/Make runs can store the rendered HTML/PDF blobs in SQLite with blank
+source paths.
 
 A cached smoke run for `url-9823c4455364` used this row:
 
@@ -153,9 +159,39 @@ The stored ARO keeps those generated bullets as the rendered experience content
 for that role. The current-role rewrite follows the same source-evidence pattern,
 but starts from paragraph-level evidence stored directly in `profile/MASTER-RESUME.yml`.
 
+### Second-Pass Variant Workflow
+
+Second-pass refinement is DB-backed. The `application_resume_variants` table
+stores each variant's ARO YAML, rendered HTML, PDF bytes, ATS scores, ATS
+diagnostics, evidence packet, critique prompt/response, parsed critique,
+accepted/rejected validation report, external critique classification, and model
+metadata.
+
+The GLM 5.2 second pass reads v1, the selected JOD/prompt JOD, ATS diagnostics,
+JOD targets, and MRO/ARO evidence. It may propose supported rewording,
+reordering, emphasis, and supported skill aliases. The validator rejects new
+skills, tools, metrics, employers, compliance claims, or responsibilities that
+are not already supported by the MRO/ARO evidence. ATS missing terms are treated
+as semantic signals for review, not as a reason to stuff unsupported keywords.
+
+External critique text can be pasted into the refinement workflow. Suggestions
+are classified as `supported`, `needs_user_evidence`, `noisy_or_role_mismatch`,
+or `rejected`. Only supported suggestions may feed the patch validator.
+
+The second pass stores `v2` without changing the selected resume. The tracker's
+variant review page can compare v1 and v2, download either HTML/PDF, inspect ATS
+deltas and accepted/rejected changes, then switch the active resume links with
+`Use v1 draft` or `Use v2 draft`.
+
+The manual pass is a separate Codex workflow. It receives v1, v2, v2 critique
+and validation details, ATS diagnostics, JOD text, prompt JOD text, and
+master-resume evidence, then stores a `manual` variant through the same DB model.
+It also does not change the selected resume until the tracker action
+`Use manual pass` is clicked.
+
 ## Flask Tracker
 
-The tracker is the daily operating surface. The main page shows job status, ATS score, JOD links, resume links, ARO/resume sync state, and manual cover-letter actions.
+The tracker is the daily operating surface. The main page shows job status, ATS score, JOD links, resume links, selected resume variant, ARO/resume sync state, and manual cover-letter actions.
 
 ![Annotated main tracker](docs/assets/tracker-main-annotated.png)
 
@@ -171,6 +207,14 @@ where the tracker shows removed text and a line-level diff.
 The resume editor exposes ARO-backed fields and rich-text controls. Saving re-renders HTML/PDF and refreshes ATS scoring.
 
 ![Annotated resume editor](docs/assets/resume-editor-annotated.png)
+
+Each job with generated resumes has a variant review page. The tracker badges the
+selected draft as `Draft v1`, `Refined v2`, or `Manual pass`; the review page
+shows each variant's ATS score and component deltas, missing terms, accepted and
+rejected changes, unsupported claims, ARO diff, and variant-specific HTML/PDF
+links. The `Use v1 draft`, `Use v2 draft`, and `Use manual pass` actions are
+reversible because they only copy the selected variant into the active resume
+fields.
 
 Cover letters are manual for now. The edit page provides a rich-text area for pasted content, then renders the emerald-style PDF on save.
 
@@ -231,6 +275,25 @@ resume only needs highlighting in that role:
 make highlight-draft-resumes JOB_IDS="4424184336" HIGHLIGHT_EXPERIENCE_COMPANY=Oracle
 ```
 
+Run the GLM 5.2 second-pass refinement for one job, or for all active postings:
+
+```bash
+make refine-draft-resumes JOB_IDS="4424184336"
+make refine-draft-resumes JOB_IDS=all
+```
+
+This stores `v2` resume variants and comparison metadata without selecting v2 as
+the active resume.
+
+Run the Codex manual pass for selected jobs after v1 and v2 variants exist:
+
+```bash
+make manual-pass-resumes JOB_IDS="4424184336"
+```
+
+This stores `manual` resume variants without selecting them as the active
+resume.
+
 Run validation:
 
 ```bash
@@ -278,6 +341,19 @@ use a different model from the JOD target and bullet rewrite calls.
 Use `MASTER_RESUME=<path>` to run the same ARO workflow against
 an alternate master resume object without replacing the canonical MRO.
 
+Second-pass refinement defaults to GLM 5.2 through `SECOND_PASS_MODEL` and stores
+its output as DB variants:
+
+```bash
+SECOND_PASS_MODEL=z-ai/glm-5.2 make refine-draft-resumes JOB_IDS=all
+```
+
+Override the second-pass model or timeout when needed:
+
+- `SECOND_PASS_MODEL`: OpenRouter model for v2 critique/refinement, default
+  `z-ai/glm-5.2`.
+- `SECOND_PASS_TIMEOUT_SECONDS`: per-row LLM timeout for v2 refinement.
+
 The optional Codex highlighting workflow runs after draft generation. The Codex
 CLI returns JSON patches, and Python validates that only `<strong>` tags were
 added before writing the ARO and re-rendering HTML/PDF:
@@ -291,6 +367,8 @@ Override the Codex command or per-row timeout when needed:
 - `CODEX_COMMAND`: Makefile override for the Codex CLI command.
 - `CODEX_MODEL`: Makefile override for the Codex model, default `gpt-5.5`.
 - `CODEX_TIMEOUT_SECONDS`: Makefile override for the Codex CLI timeout.
+- `MANUAL_PASS_MASTER_RESUME_TEXT`: master-resume source text included in the
+  manual pass evidence bundle.
 - `HIGHLIGHT_EXPERIENCE_COMPANY`: optional company-name filter for the rendered
   Professional Experience jobs sent to Codex.
 - `HIGHLIGHT_EXPERIENCE_JOB_ORDER`: optional ARO job-order filter for the
@@ -313,6 +391,9 @@ The active workflow modules are intentionally smaller than the retired artifact 
 - `src/linkedin_career_mcp/workflows/matching.py`: LinkedIn search planning, filtering, JOD trimming, and DB seeding.
 - `src/linkedin_career_mcp/application_resume.py`: ARO initialization, Core Technical Skills matching prompt, JOD target creation, and evidence-backed bullet rewriting.
 - `src/linkedin_career_mcp/jod.py`: JOD cleaning and prompt trimming.
+- `src/linkedin_career_mcp/resume_refinement.py`: ATS diagnostics, second-pass critique schema, external critique classification, and evidence-backed patch validation.
+- `src/linkedin_career_mcp/resume_refinement_cli.py`: DB-backed v2 variant generation and per-job comparison output.
+- `src/linkedin_career_mcp/resume_manual_pass.py`: Codex manual pass input bundle, response parsing, validation, and manual variant storage.
 - `src/linkedin_career_mcp/resume_highlighting.py`: guarded Codex JSON-patch workflow for selective resume bullet emphasis.
 - `src/linkedin_career_mcp/resume_rendering.py`: HTML/PDF rendering.
 - `src/linkedin_career_mcp/webapp.py`: database-backed review, edit, download, rescore, and background actions.
