@@ -135,6 +135,15 @@ def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypat
         resume_pdf=resume_pdf,
     )
     with webapp.connect_database(database_path) as connection:
+        connection.execute(
+            """
+            UPDATE applications
+            SET notes = 'Manual second pass 2026-07-01: refreshed artifacts.'
+            WHERE job_id = '123'
+            """
+        )
+        connection.commit()
+    with webapp.connect_database(database_path) as connection:
         score_row = connection.execute(
             """
             SELECT ats_score, ats_parsing_score, ats_keyword_score,
@@ -235,6 +244,10 @@ def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypat
     assert "Resume" in cells[8].get_text(" ", strip=True)
     assert cells[9].select_one(".sync-status") is not None
     assert "Edit" in cells[10].get_text(" ", strip=True)
+    manual_badge = cells[2].select_one(".manual-pass-badge")
+    assert manual_badge is not None
+    assert manual_badge.get_text(" ", strip=True) == "Manual pass"
+    assert manual_badge["title"] == "Manual second-pass resume review completed"
     assert b"Mid-Senior level" in index.data
     assert b'id="company-sort"' in index.data
     assert b'id="matched-sort"' in index.data

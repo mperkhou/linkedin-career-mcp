@@ -1969,10 +1969,19 @@ def _application_select_columns() -> str:
             ELSE 'No'
         END
     """
+    manual_passthrough_status = """
+        CASE
+            WHEN lower(COALESCE(applications.notes, '')) LIKE '%manual second pass%'
+              OR lower(COALESCE(applications.notes, '')) LIKE '%manual passthrough%'
+            THEN 'Yes'
+            ELSE 'No'
+        END
+    """
     return f"""
         applications.*,
         {sync_status} AS aro_resume_sync_status,
-        CASE WHEN {sync_status} = 'Yes' THEN 0 ELSE 1 END AS aro_resume_out_of_sync
+        CASE WHEN {sync_status} = 'Yes' THEN 0 ELSE 1 END AS aro_resume_out_of_sync,
+        {manual_passthrough_status} AS manual_passthrough_status
     """
 
 
@@ -2991,6 +3000,26 @@ INDEX_TEMPLATE = """
     .company { min-width: 160px; font-weight: 650; }
     .job { min-width: 260px; }
     .job-id { display: block; color: var(--muted); font-size: 12px; margin-top: 3px; }
+    .job-badges {
+      align-items: center;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .manual-pass-badge {
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      border-radius: 999px;
+      color: #9a3412;
+      display: inline-flex;
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1;
+      padding: 4px 7px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
     .date-col { min-width: 104px; white-space: nowrap; }
     .experience-col { min-width: 126px; white-space: nowrap; }
     .score-col { min-width: 104px; position: relative; }
@@ -3388,6 +3417,16 @@ INDEX_TEMPLATE = """
               <td class="job">
                 {{ row.job_title }}
                 <span class="job-id">{{ row.job_id }}</span>
+                {% if row.manual_passthrough_status == 'Yes' %}
+                  <span class="job-badges">
+                    <span
+                      class="manual-pass-badge"
+                      title="Manual second-pass resume review completed"
+                    >
+                      Manual pass
+                    </span>
+                  </span>
+                {% endif %}
               </td>
               <td class="date-col">
                 {{ row.date_posted|display_date if row.date_posted else '' }}
