@@ -21,10 +21,11 @@ SECOND_PASS_TIMEOUT_SECONDS ?= 120
 CODEX_COMMAND ?= codex
 CODEX_MODEL ?= gpt-5.5
 CODEX_TIMEOUT_SECONDS ?= 900
+MANUAL_PASS_MASTER_RESUME_TEXT ?= profile/MP-MASTER-RESUME.txt
 HIGHLIGHT_EXPERIENCE_COMPANY ?=
 HIGHLIGHT_EXPERIENCE_JOB_ORDER ?=
 
-.PHONY: install install-python install-browser install-ollama ollama-model venv skill-link seed-jobs regenerate-draft-resumes regenerate-aro-objects sync-draft-to-aro refine-draft-resumes highlight-draft-resumes launch-website stop-website restart-website test lint clean
+.PHONY: install install-python install-browser install-ollama ollama-model venv skill-link seed-jobs regenerate-draft-resumes regenerate-aro-objects sync-draft-to-aro refine-draft-resumes highlight-draft-resumes manual-pass-resumes launch-website stop-website restart-website test lint clean
 
 install: install-python install-ollama ollama-model skill-link
 
@@ -130,6 +131,17 @@ highlight-draft-resumes: venv
 		filter_args="$$filter_args --experience-job-order $(HIGHLIGHT_EXPERIENCE_JOB_ORDER)"; \
 	fi; \
 	$(VENV_PYTHON) scripts/application_resume_highlight_drafts.py --codex-command "$(CODEX_COMMAND)" --codex-model "$(CODEX_MODEL)" --timeout-seconds "$(CODEX_TIMEOUT_SECONDS)" $$job_args $$filter_args
+
+manual-pass-resumes: venv
+	@if [ "$(JOB_IDS)" = "all" ]; then \
+		echo "Set JOB_IDS=<job_id ...> for manual-pass-resumes"; \
+		exit 2; \
+	fi; \
+	job_args=""; \
+	for job_id in $(JOB_IDS); do \
+		job_args="$$job_args --job-id $$job_id"; \
+	done; \
+	$(VENV_PYTHON) scripts/application_resume_manual_pass.py --master-resume "$(MASTER_RESUME)" --master-resume-text "$(MANUAL_PASS_MASTER_RESUME_TEXT)" --codex-command "$(CODEX_COMMAND)" --codex-model "$(CODEX_MODEL)" --timeout-seconds "$(CODEX_TIMEOUT_SECONDS)" $$job_args
 
 launch-website: venv
 	$(VENV)/bin/linkedin-career-webapp --host "$(WEBSITE_HOST)" --port "$(WEBSITE_PORT)" --open-browser

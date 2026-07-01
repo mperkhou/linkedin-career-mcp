@@ -210,11 +210,13 @@ def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypat
     assert "Regenerate ARO Objects" in html
     assert "Regenerate Draft Resume" in html
     assert "Codex Highlight Draft Resume" in html
+    assert "Codex Manual Pass Variant" in html
     assert "Run Codex highlighting after draft generation" in html
     assert "Sync Draft to ARO" in html
     assert 'name="regenerate_mode" value="aro_objects"' in html
     assert 'name="regenerate_mode" value="draft_resumes"' in html
     assert 'name="regenerate_mode" value="highlight_drafts"' in html
+    assert 'name="regenerate_mode" value="manual_pass"' in html
     assert 'name="highlight_with_codex" value="1"' in html
     assert 'name="regenerate_mode" value="sync_draft_to_aro"' in html
     assert "ARO/Resume Sync" in html
@@ -563,6 +565,10 @@ def test_regenerate_make_command_maps_modes_to_make_targets():
         regenerate_mode="highlight_drafts",
         job_ids=["url-123"],
     ) == ["make", "highlight-draft-resumes", "JOB_IDS=url-123"]
+    assert webapp._regenerate_make_command(  # noqa: SLF001
+        regenerate_mode="manual_pass",
+        job_ids=["url-123"],
+    ) == ["make", "manual-pass-resumes", "JOB_IDS=url-123"]
     assert webapp._highlight_make_command(job_ids=["url-123"]) == [  # noqa: SLF001
         "make",
         "highlight-draft-resumes",
@@ -1392,6 +1398,49 @@ def test_actions_run_can_chain_codex_highlighting_after_draft_generation(tmp_pat
     )
 
 
+def test_actions_run_can_start_codex_manual_pass_variant(tmp_path: Path):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    calls = []
+    completed = threading.Event()
+
+    def runner(**kwargs):
+        calls.append(kwargs)
+        webapp._finish_background_action_run(  # noqa: SLF001
+            kwargs["run_id"],
+            status="completed",
+            return_code=0,
+        )
+        completed.set()
+
+    output_dir = tmp_path / "output"
+    database_path = output_dir / "tracking/applications.sqlite3"
+    app = create_app(
+        database_path=database_path,
+        output_dir=output_dir,
+        background_action_runner=runner,
+    )
+    client = app.test_client()
+
+    response = client.post(
+        "/actions/run",
+        data={
+            "regenerate_mode": "manual_pass",
+            "job_id": ["url-123"],
+        },
+    )
+
+    assert response.status_code == 302
+    assert completed.wait(timeout=2)
+    assert calls[0]["regenerate_mode"] == "manual_pass"
+    assert calls[0]["highlight_with_codex"] is False
+
+    status = client.get("/actions/status").get_json()
+    assert status is not None
+    assert status["runs"][0]["title"] == "Codex manual pass resume for 1 job(s)"
+
+
 def test_background_action_runs_only_requested_new_workflow(
     tmp_path: Path,
     monkeypatch,
@@ -1462,6 +1511,16 @@ def test_background_action_runs_only_requested_new_workflow(
     )
 
     assert calls == [("regenerate", "highlight_drafts")]
+
+    calls.clear()
+    run = webapp._create_background_action_run(title="Codex manual pass resume")  # noqa: SLF001
+    webapp._run_background_action(  # noqa: SLF001
+        run_id=run.run_id,
+        regenerate_mode="manual_pass",
+        job_ids=["url-123"],
+    )
+
+    assert calls == [("regenerate", "manual_pass")]
 
 
 def test_add_application_loads_linkedin_job_and_starts_regeneration(

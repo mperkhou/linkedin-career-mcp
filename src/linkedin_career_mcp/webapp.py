@@ -97,6 +97,7 @@ REGENERATE_ACTION_TARGETS = {
     "aro_objects": "regenerate-aro-objects",
     "sync_draft_to_aro": "sync-draft-to-aro",
     "highlight_drafts": "highlight-draft-resumes",
+    "manual_pass": "manual-pass-resumes",
 }
 _DRAFT_REGENERATE_MODES = {"draft_resumes"}
 COVER_LETTER_OBJECT_SCHEMA_VERSION = "cover_letter_object.v0.1"
@@ -2153,6 +2154,7 @@ def _background_action_title(
             "aro_objects": "regenerate ARO object(s)",
             "sync_draft_to_aro": "sync draft to ARO",
             "highlight_drafts": "Codex highlight draft resume",
+            "manual_pass": "Codex manual pass resume",
         }.get(regenerate_mode, "regenerate docs")
         parts.append(f"{label} for {len(job_ids)} job(s)")
     if highlight_with_codex and regenerate_mode != "highlight_drafts":
@@ -4090,6 +4092,10 @@ INDEX_TEMPLATE = """
             <label>
               <input type="radio" name="regenerate_mode" value="highlight_drafts">
               <span>Codex Highlight Draft Resume</span>
+            </label>
+            <label>
+              <input type="radio" name="regenerate_mode" value="manual_pass">
+              <span>Codex Manual Pass Variant</span>
             </label>
             <label>
               <input type="radio" name="regenerate_mode" value="sync_draft_to_aro">

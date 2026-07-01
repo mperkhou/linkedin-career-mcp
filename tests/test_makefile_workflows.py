@@ -96,3 +96,22 @@ def test_highlight_draft_resumes_make_target_uses_codex_workflow() -> None:
     assert "--experience-company Oracle" in output
     assert "for job_id in url-123" in output
     assert 'job_args="$job_args --job-id $job_id"' in output
+
+
+def test_manual_pass_resumes_make_target_uses_codex_workflow() -> None:
+    output = _make_dry_run(
+        "manual-pass-resumes",
+        "JOB_IDS=url-123",
+        "CODEX_COMMAND=codex",
+        "CODEX_MODEL=gpt-5.5",
+        "CODEX_TIMEOUT_SECONDS=900",
+    )
+
+    assert "scripts/application_resume_manual_pass.py" in output
+    assert '--master-resume "profile/MASTER-RESUME.yml"' in output
+    assert '--master-resume-text "profile/MP-MASTER-RESUME.txt"' in output
+    assert '--codex-command "codex"' in output
+    assert '--codex-model "gpt-5.5"' in output
+    assert '--timeout-seconds "900"' in output
+    assert "for job_id in url-123" in output
+    assert 'job_args="$job_args --job-id $job_id"' in output

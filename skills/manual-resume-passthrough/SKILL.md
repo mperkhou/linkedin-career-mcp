@@ -7,14 +7,19 @@ description: Use when the user asks for a manual second pass, manual passthrough
 
 Use this workflow after the generator has already created a first-draft ARO,
 HTML, PDF, and ATS score for a job row in `output/tracking/applications.sqlite3`.
-The goal is a factual second pass, not a keyword-stuffing pass.
+The goal is a factual manual pass, not a keyword-stuffing pass. In the current
+tracker, the app-triggered workflow stores the result as a `manual` resume
+variant in `application_resume_variants`; it does not overwrite the v1 or v2
+variant rows or switch the selected resume automatically.
 
 ## Inputs
 
 - Job id, usually from a prompt like `next do 4434941023`.
 - Live DB: `output/tracking/applications.sqlite3`.
 - Master evidence: `profile/MP-MASTER-RESUME.txt` and `profile/MASTER-RESUME.yml`.
-- Existing generated ARO from the `applications.application_resume_object` column.
+- Stored v1/v2 resume variants from `application_resume_variants`.
+- v2 critique, validation report, evidence packet, ATS diagnostics, JOD, prompt
+  JOD, and master-resume evidence.
 
 ## Workflow
 
@@ -56,19 +61,22 @@ The goal is a factual second pass, not a keyword-stuffing pass.
    - Prefer the cleanest credible version, not necessarily the highest score.
 
 6. Store the final pass:
-   - First call `save_application_resume_edit(..., backup_current=True)` so the
-     prior ARO is available in the tracker backup slot.
-   - Then run `scripts/application_resume_store_first_draft.py` with explicit
-     `--output-html` and `--output-pdf` paths under
-     `output/resumes/<Company_Slug>/<job_id>_<title_slug>/`.
-   - Re-query the row and verify source paths, ATS fields, and backup presence.
+   - Prefer the app-triggerable path:
+     `make manual-pass-resumes JOB_IDS=<job_id>`.
+   - The script builds the v1/v2 evidence bundle, calls Codex, renders the
+     returned ARO, recalculates ATS diagnostics, and stores a `manual` variant
+     through the same DB-backed variant model used by v1/v2.
+   - Re-query `application_resume_variants` and verify the `manual` row has ARO,
+     HTML, PDF, ATS diagnostics, the Codex prompt/response, validation payload,
+     and model metadata.
+   - Do not switch the selected resume automatically. Use the tracker variant
+     review page to select `Manual pass` when it is ready.
 
-7. Add the tracker note:
-   - Append, do not replace, any existing notes.
-   - Start the note with `Manual second pass YYYY-MM-DD:` so the Flask tracker
-     can display the `Manual pass` badge.
-   - Include old score to new score, what was emphasized, and what was left
-     unsupported.
+7. Tracker review:
+   - Open `/resumes/<job_id>/variants` in the Flask tracker.
+   - Compare v1, v2, and Manual pass ATS movement, diff, accepted/rejected
+     evidence, unsupported terms, and artifact links.
+   - Select `Use manual pass` only after review. This action is reversible.
 
 8. Visual verification:
    - Render the stored PDF to PNG with `pdftoppm`.
@@ -84,8 +92,8 @@ When finished, report:
 - ATS movement and remaining missing high-value terms.
 - PDF, HTML, and candidate YAML paths.
 - DB checkpoint path.
-- Confirmation that the tracker note was appended and the `Manual pass` badge
-  should appear.
+- Confirmation that the `manual` resume variant was stored and remains
+  unselected until explicitly chosen from the tracker.
 - Verification commands run.
 
 ## Guardrails
