@@ -1,0 +1,4 @@
+interface:
+  display_name: "Manual Resume Passthrough"
+  short_description: "Second-pass resume refinement"
+  default_prompt: "Use $manual-resume-passthrough to run a grounded second pass on job 4434941023."

@@ -1,5 +1,17 @@
 # linkedin-career-mcp CHANGELOG
 
+## 3.5.0 - Add manual resume passthrough workflow
+
+* Open tracker `Job URL` links directly to the stored LinkedIn posting in a new
+  tab instead of routing through the local `/linkedin/<job_id>` helper.
+* Show a `Manual pass` badge in the Flask tracker for applications whose notes
+  record a manual second-pass resume refresh.
+* Add a project Codex skill that packages the grounded manual resume passthrough
+  workflow for reuse from future sessions, and link it through the default
+  `make install` skill setup.
+* Bump the package version to `3.5.0` for the tracker badge and reusable
+  second-pass workflow.
+
 ## 3.4.1 - Refresh Oracle agentic AI evidence and cover letter PDFs
 
 * Add Oracle OLAM MCP runtime architecture and agent-facing tool-contract
