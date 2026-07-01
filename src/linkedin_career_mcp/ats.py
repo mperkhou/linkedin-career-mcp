@@ -19,6 +19,32 @@ class AtsProxyScore:
     missing_high_value_terms: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class AtsWeightedTerm:
+    term: str
+    weight: float
+
+
+@dataclass(frozen=True)
+class AtsComponentScores:
+    overall_score: int
+    parsing_score: int
+    keyword_match_score: int
+    semantic_match_score: int
+    formatting_score: int
+    formatting_risk: str
+
+
+@dataclass(frozen=True)
+class AtsDiagnostics:
+    score: AtsProxyScore
+    component_scores: AtsComponentScores
+    matched_terms: tuple[AtsWeightedTerm, ...]
+    unmatched_weighted_terms: tuple[AtsWeightedTerm, ...]
+    repeated_phrase_terms: tuple[AtsWeightedTerm, ...]
+    likely_noisy_phrase_matches: tuple[AtsWeightedTerm, ...]
+
+
 TECHNICAL_TERMS = (
     "access control",
     "agentic ai",
@@ -269,22 +295,50 @@ REPEATED_PHRASE_BLOCKED_WORDS = {
 
 
 def calculate_ats_proxy_score(*, resume_pdf: bytes, job_description: str) -> AtsProxyScore:
+    return calculate_ats_diagnostics(
+        resume_pdf=resume_pdf,
+        job_description=job_description,
+    ).score
+
+
+def calculate_ats_diagnostics(*, resume_pdf: bytes, job_description: str) -> AtsDiagnostics:
     resume_text = extract_pdf_text(resume_pdf)
     resume_normalized = _normalize_text(resume_text)
     job_normalized = _normalize_text(job_description)
-    job_terms = _extract_weighted_terms(job_description)
+    job_terms, repeated_phrases = _extract_weighted_terms_with_repeated_phrases(
+        job_description
+    )
     resume_terms = _matching_terms(resume_normalized, (term for term, _ in job_terms))
-    missing_terms = _missing_high_value_terms(
+    repeated_phrase_lookup = set(repeated_phrases)
+    technical_term_lookup = {_normalize_text(term) for term in TECHNICAL_TERMS}
+    repeated_phrase_terms = tuple(
+        _weighted_term(term, weight)
+        for term, weight in job_terms
+        if term in repeated_phrase_lookup and term not in technical_term_lookup
+    )
+    likely_noisy_phrase_terms = _likely_noisy_repeated_phrase_terms(
+        repeated_phrase_terms=repeated_phrase_terms,
+        resume_terms=resume_terms,
+    )
+    scoring_terms = _scored_weighted_terms(
         job_terms=job_terms,
+        likely_noisy_phrase_terms=likely_noisy_phrase_terms,
+    )
+    scoring_job_normalized = _without_phrases(
+        job_normalized,
+        (term.term for term in likely_noisy_phrase_terms),
+    )
+    missing_terms = _missing_high_value_terms(
+        job_terms=scoring_terms,
         resume_terms=resume_terms,
     )
 
     parsing_score = _parsing_score(resume_text, resume_normalized)
-    keyword_score = _keyword_score(job_terms, resume_terms)
+    keyword_score = _keyword_score(scoring_terms, resume_terms)
     semantic_score = _semantic_score(
         resume_normalized=resume_normalized,
-        job_normalized=job_normalized,
-        job_terms=job_terms,
+        job_normalized=scoring_job_normalized,
+        job_terms=scoring_terms,
         resume_terms=resume_terms,
     )
     formatting_risk = _formatting_risk(parsing_score=parsing_score, resume_text=resume_text)
@@ -297,13 +351,36 @@ def calculate_ats_proxy_score(*, resume_pdf: bytes, job_description: str) -> Ats
             + formatting_score * 0.10
         )
     )
-    return AtsProxyScore(
+    score = AtsProxyScore(
         overall_score=overall,
         parsing_score=parsing_score,
         keyword_match_score=keyword_score,
         semantic_match_score=semantic_score,
         formatting_risk=formatting_risk,
         missing_high_value_terms=missing_terms,
+    )
+    return AtsDiagnostics(
+        score=score,
+        component_scores=AtsComponentScores(
+            overall_score=overall,
+            parsing_score=parsing_score,
+            keyword_match_score=keyword_score,
+            semantic_match_score=semantic_score,
+            formatting_score=formatting_score,
+            formatting_risk=formatting_risk,
+        ),
+        matched_terms=tuple(
+            _weighted_term(term, weight)
+            for term, weight in job_terms
+            if term in resume_terms
+        ),
+        unmatched_weighted_terms=tuple(
+            _weighted_term(term, weight)
+            for term, weight in scoring_terms
+            if term not in resume_terms
+        ),
+        repeated_phrase_terms=repeated_phrase_terms,
+        likely_noisy_phrase_matches=likely_noisy_phrase_terms,
     )
 
 
@@ -401,19 +478,30 @@ def _missing_high_value_terms(
 
 
 def _extract_weighted_terms(job_description: str) -> list[tuple[str, float]]:
+    return _extract_weighted_terms_with_repeated_phrases(job_description)[0]
+
+
+def _extract_weighted_terms_with_repeated_phrases(
+    job_description: str,
+) -> tuple[list[tuple[str, float]], tuple[str, ...]]:
     normalized = _normalize_text(job_description)
     terms: dict[str, float] = {}
     for term in TECHNICAL_TERMS:
         if _contains_weightable_term(job_description, normalized, term):
             terms[term] = max(terms.get(term, 0.0), _term_weight(job_description, term))
-    for phrase in _extract_repeated_phrases(normalized):
+    repeated_phrases = tuple(_extract_repeated_phrases(normalized))
+    for phrase in repeated_phrases:
         if phrase not in terms:
             terms[phrase] = 0.75
-    return sorted(terms.items(), key=lambda item: (-item[1], item[0]))[:40]
+    return sorted(terms.items(), key=lambda item: (-item[1], item[0]))[:40], repeated_phrases
 
 
 def _extract_repeated_phrases(text: str) -> list[str]:
-    words = [word for word in re.findall(r"[a-z][a-z0-9.+#/-]+", text) if word not in STOPWORDS]
+    words = [
+        word
+        for raw_word in re.findall(r"[a-z][a-z0-9.+#/-]+", text)
+        if (word := raw_word.strip(".")) and word not in STOPWORDS
+    ]
     phrases: dict[str, int] = {}
     for size in (2, 3):
         for index in range(0, max(len(words) - size + 1, 0)):
@@ -436,6 +524,15 @@ def _is_relevant_repeated_phrase(phrase: str) -> bool:
     return bool(words & REPEATED_PHRASE_TECH_ANCHOR_WORDS)
 
 
+def _is_likely_noisy_repeated_phrase(phrase: str) -> bool:
+    words = phrase.split()
+    if len(words) < 3:
+        return False
+    if "ci/cd" in words:
+        return False
+    return bool(set(words) & REPEATED_PHRASE_TECH_ANCHOR_WORDS)
+
+
 def _term_weight(job_description: str, term: str) -> float:
     for sentence in re.split(r"(?<=[.!?])\s+|\n+", job_description):
         normalized_sentence = _normalize_text(sentence)
@@ -448,6 +545,61 @@ def _term_weight(job_description: str, term: str) -> float:
 
 def _matching_terms(text: str, terms: object) -> set[str]:
     return {term for term in terms if isinstance(term, str) and _contains_term(text, term)}
+
+
+def _weighted_term(term: str, weight: float) -> AtsWeightedTerm:
+    return AtsWeightedTerm(term=term, weight=weight)
+
+
+def _likely_noisy_repeated_phrase_terms(
+    *,
+    repeated_phrase_terms: tuple[AtsWeightedTerm, ...],
+    resume_terms: set[str],
+) -> tuple[AtsWeightedTerm, ...]:
+    root_noisy_phrases = {
+        term.term
+        for term in repeated_phrase_terms
+        if term.term not in resume_terms and _is_likely_noisy_repeated_phrase(term.term)
+    }
+    return tuple(
+        term
+        for term in repeated_phrase_terms
+        if term.term not in resume_terms
+        and (
+            term.term in root_noisy_phrases
+            or _is_subphrase_of_any(term.term, root_noisy_phrases)
+        )
+    )
+
+
+def _scored_weighted_terms(
+    *,
+    job_terms: list[tuple[str, float]],
+    likely_noisy_phrase_terms: tuple[AtsWeightedTerm, ...],
+) -> list[tuple[str, float]]:
+    noisy_terms = {term.term for term in likely_noisy_phrase_terms}
+    return [(term, weight) for term, weight in job_terms if term not in noisy_terms]
+
+
+def _is_subphrase_of_any(phrase: str, possible_parents: set[str]) -> bool:
+    padded_phrase = f" {_normalize_text(phrase)} "
+    return any(
+        padded_phrase in f" {_normalize_text(parent)} "
+        for parent in possible_parents
+        if parent != phrase
+    )
+
+
+def _without_phrases(text: str, phrases: object) -> str:
+    cleaned = text
+    for phrase in sorted(
+        (phrase for phrase in phrases if isinstance(phrase, str) and phrase.strip()),
+        key=len,
+        reverse=True,
+    ):
+        normalized_phrase = re.escape(_normalize_text(phrase))
+        cleaned = re.sub(rf"(?<![a-z0-9]){normalized_phrase}(?![a-z0-9])", " ", cleaned)
+    return re.sub(r"\s+", " ", cleaned).strip()
 
 
 def _cluster_for_term(term: str) -> set[str] | None:
