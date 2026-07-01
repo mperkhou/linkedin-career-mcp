@@ -53,6 +53,12 @@ VIEW_STATE_DIRECTIONS = {"asc", "desc"}
 VIEW_STATE_QUERY_KEYS = {"q", "status", "archive", "sort", "direction"}
 DEFAULT_RESUME_VARIANT = "v1"
 SECOND_PASS_RESUME_VARIANT = "v2"
+MANUAL_PASS_RESUME_VARIANT = "manual"
+RESUME_VARIANT_LABELS = {
+    DEFAULT_RESUME_VARIANT: "Draft v1",
+    SECOND_PASS_RESUME_VARIANT: "Refined v2",
+    MANUAL_PASS_RESUME_VARIANT: "Manual pass",
+}
 APPLICATION_EXTRA_COLUMNS = {
     "archived_at": "TEXT",
     "selected_resume_variant": f"TEXT NOT NULL DEFAULT '{DEFAULT_RESUME_VARIANT}'",
@@ -1006,6 +1012,282 @@ def fetch_resume_variant_comparisons(
     return comparisons
 
 
+def fetch_application_resume_variants(
+    *,
+    database_path: Path,
+    job_id: str,
+) -> list[dict[str, Any]]:
+    application = _fetch_application(database_path, job_id)
+    if application is None:
+        return []
+    selected_variant = str(
+        application["selected_resume_variant"] or DEFAULT_RESUME_VARIANT
+    )
+    with connect_database(database_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT *
+            FROM application_resume_variants
+            WHERE job_id = ?
+            ORDER BY
+                CASE variant_key
+                    WHEN ? THEN 0
+                    WHEN ? THEN 1
+                    WHEN ? THEN 2
+                    ELSE 3
+                END,
+                updated_at DESC,
+                variant_key COLLATE NOCASE ASC
+            """,
+            (
+                job_id,
+                DEFAULT_RESUME_VARIANT,
+                SECOND_PASS_RESUME_VARIANT,
+                MANUAL_PASS_RESUME_VARIANT,
+            ),
+        ).fetchall()
+    baseline_score = next(
+        (
+            row["ats_score"]
+            for row in rows
+            if row["variant_key"] == DEFAULT_RESUME_VARIANT
+        ),
+        None,
+    )
+    return [
+        _resume_variant_summary(
+            row=row,
+            selected_variant=selected_variant,
+            baseline_score=baseline_score,
+        )
+        for row in rows
+    ]
+
+
+def fetch_application_resume_variant(
+    *,
+    database_path: Path,
+    job_id: str,
+    variant_key: str,
+) -> sqlite3.Row | None:
+    with connect_database(database_path) as connection:
+        return connection.execute(
+            """
+            SELECT *
+            FROM application_resume_variants
+            WHERE job_id = ?
+              AND variant_key = ?
+            """,
+            (job_id, variant_key),
+        ).fetchone()
+
+
+def select_application_resume_variant(
+    *,
+    database_path: Path,
+    job_id: str,
+    variant_key: str,
+) -> dict[str, Any]:
+    now = datetime.now(UTC).isoformat(timespec="seconds")
+    with connect_database(database_path) as connection:
+        application = connection.execute(
+            """
+            SELECT job_id
+            FROM applications
+            WHERE job_id = ?
+            """,
+            (job_id,),
+        ).fetchone()
+        if application is None:
+            raise ValueError(f"Application row was not found for job_id={job_id}.")
+        variant = connection.execute(
+            """
+            SELECT *
+            FROM application_resume_variants
+            WHERE job_id = ?
+              AND variant_key = ?
+            """,
+            (job_id, variant_key),
+        ).fetchone()
+        if variant is None:
+            raise ValueError(
+                f"Resume variant {variant_key!r} was not found for job_id={job_id}."
+            )
+        connection.execute(
+            """
+            UPDATE applications
+            SET selected_resume_variant = ?,
+                application_resume_object = ?,
+                application_resume_updated_at = ?,
+                resume_html_filename = ?,
+                resume_html_content = ?,
+                resume_html_mime_type = ?,
+                source_resume_html_path = ?,
+                resume_html_updated_at = ?,
+                resume_filename = ?,
+                resume_content = ?,
+                resume_mime_type = ?,
+                source_resume_path = ?,
+                resume_updated_at = ?,
+                ats_score = ?,
+                ats_parsing_score = ?,
+                ats_keyword_score = ?,
+                ats_semantic_score = ?,
+                ats_formatting_risk = ?,
+                ats_missing_terms = ?,
+                ats_updated_at = ?,
+                updated_at = ?
+            WHERE job_id = ?
+            """,
+            (
+                variant_key,
+                variant["application_resume_object"],
+                variant["updated_at"] or now,
+                variant["resume_html_filename"] or "",
+                variant["resume_html_content"],
+                variant["resume_html_mime_type"] or "text/html; charset=utf-8",
+                variant["source_resume_html_path"] or "",
+                variant["resume_html_updated_at"] or variant["updated_at"] or now,
+                variant["resume_filename"] or "",
+                variant["resume_content"],
+                variant["resume_mime_type"] or "application/pdf",
+                variant["source_resume_path"] or "",
+                variant["resume_updated_at"] or variant["updated_at"] or now,
+                variant["ats_score"],
+                variant["ats_parsing_score"],
+                variant["ats_keyword_score"],
+                variant["ats_semantic_score"],
+                variant["ats_formatting_risk"],
+                variant["ats_missing_terms"],
+                variant["ats_updated_at"] or variant["updated_at"],
+                now,
+                job_id,
+            ),
+        )
+        connection.commit()
+    return {
+        "variant_key": variant_key,
+        "variant_label": _resume_variant_label(variant_key, variant["variant_label"]),
+    }
+
+
+def _resume_variant_summary(
+    *,
+    row: sqlite3.Row,
+    selected_variant: str,
+    baseline_score: Any,
+) -> dict[str, Any]:
+    validation = _loads_json_mapping(row["validation_json"])
+    critique = _loads_json_mapping(row["critique_json"])
+    model_metadata = _loads_json_mapping(row["model_metadata_json"])
+    accepted_change_ids = _string_list(validation.get("accepted_change_ids"))
+    rejected_changes = _dict_list(validation.get("rejected_changes"))
+    proposed_changes = _dict_list(critique.get("proposed_changes"))
+    proposed_change_by_id = {
+        str(change.get("change_id") or ""): change for change in proposed_changes
+    }
+    accepted_changes = [
+        {
+            **proposed_change_by_id.get(change_id, {}),
+            "change_id": change_id,
+        }
+        for change_id in accepted_change_ids
+    ]
+    unsupported_claims = sorted(
+        {
+            claim
+            for change in proposed_changes
+            for claim in _string_list(change.get("unsupported_claims"))
+        }
+    )
+    ats_score = row["ats_score"]
+    ats_delta = (
+        int(ats_score) - int(baseline_score)
+        if ats_score is not None and baseline_score is not None
+        else None
+    )
+    variant_key = str(row["variant_key"])
+    return {
+        "variant_key": variant_key,
+        "variant_label": _resume_variant_label(variant_key, row["variant_label"]),
+        "action_label": _resume_variant_action_label(variant_key, row["variant_label"]),
+        "badge_class": _resume_variant_badge_class(variant_key),
+        "source": row["source"],
+        "parent_variant_key": row["parent_variant_key"],
+        "is_selected": variant_key == selected_variant,
+        "resume_filename": row["resume_filename"],
+        "resume_html_filename": row["resume_html_filename"],
+        "has_pdf": row["resume_content"] is not None,
+        "has_html": bool(row["resume_html_content"]),
+        "ats_score": ats_score,
+        "ats_delta": ats_delta,
+        "ats_parsing_score": row["ats_parsing_score"],
+        "ats_keyword_score": row["ats_keyword_score"],
+        "ats_semantic_score": row["ats_semantic_score"],
+        "ats_formatting_risk": row["ats_formatting_risk"],
+        "ats_missing_terms": row["ats_missing_terms"],
+        "updated_at": row["updated_at"],
+        "model": model_metadata.get("model"),
+        "accepted_changes": accepted_changes,
+        "rejected_changes": rejected_changes,
+        "unsupported_claims": unsupported_claims,
+        "validation_is_valid": validation.get("is_valid"),
+    }
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _dict_list(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _resume_variant_label(variant_key: str, fallback: Any = None) -> str:
+    return RESUME_VARIANT_LABELS.get(variant_key, str(fallback or variant_key))
+
+
+def _resume_variant_action_label(variant_key: str, fallback: Any = None) -> str:
+    return {
+        DEFAULT_RESUME_VARIANT: "Use v1 draft",
+        SECOND_PASS_RESUME_VARIANT: "Use v2 draft",
+        MANUAL_PASS_RESUME_VARIANT: "Use manual pass",
+    }.get(variant_key, f"Use {_resume_variant_label(variant_key, fallback)}")
+
+
+def _resume_variant_badge_class(variant_key: str) -> str:
+    return {
+        DEFAULT_RESUME_VARIANT: "is-v1",
+        SECOND_PASS_RESUME_VARIANT: "is-v2",
+        MANUAL_PASS_RESUME_VARIANT: "is-manual",
+    }.get(variant_key, "is-other")
+
+
+def _resume_variant_unified_diff(
+    first_variant: sqlite3.Row | None,
+    second_variant: sqlite3.Row | None,
+) -> str:
+    if first_variant is None or second_variant is None:
+        return ""
+    first_text = str(first_variant["application_resume_object"] or "")
+    second_text = str(second_variant["application_resume_object"] or "")
+    if first_text == second_text:
+        return ""
+    return "\n".join(
+        difflib.unified_diff(
+            first_text.splitlines(),
+            second_text.splitlines(),
+            fromfile=_resume_variant_label(str(first_variant["variant_key"])),
+            tofile=_resume_variant_label(str(second_variant["variant_key"])),
+            lineterm="",
+        )
+    )
+
+
 def _resume_variant_count(connection: sqlite3.Connection, *, variant_key: str) -> int:
     row = connection.execute(
         """
@@ -1905,6 +2187,8 @@ def create_app(
     app.jinja_env.filters["rich_text"] = rich_text
     app.jinja_env.globals["bullet_text_for_editing"] = _bullet_text_for_editing
     app.jinja_env.globals["job_bulk_bullet_text"] = _job_bulk_bullet_text
+    app.jinja_env.globals["resume_variant_label"] = _resume_variant_label
+    app.jinja_env.globals["resume_variant_badge_class"] = _resume_variant_badge_class
 
     def redirect_to_index_state():
         return redirect(_safe_index_return_path(request.values.get("return_to")))
@@ -2100,6 +2384,81 @@ def create_app(
             mimetype=row["resume_html_mime_type"] or "text/html; charset=utf-8",
         )
 
+    @app.get("/resumes/<job_id>/variants")
+    def resume_variants_review(job_id: str):
+        row = _fetch_application(database_path, job_id)
+        if row is None:
+            abort(404)
+        variants = fetch_application_resume_variants(
+            database_path=database_path,
+            job_id=job_id,
+        )
+        if not variants:
+            return Response("Resume variants were not found in the database.", status=404)
+        v1_variant = fetch_application_resume_variant(
+            database_path=database_path,
+            job_id=job_id,
+            variant_key=DEFAULT_RESUME_VARIANT,
+        )
+        v2_variant = fetch_application_resume_variant(
+            database_path=database_path,
+            job_id=job_id,
+            variant_key=SECOND_PASS_RESUME_VARIANT,
+        )
+        return render_template_string(
+            RESUME_VARIANTS_TEMPLATE,
+            row=row,
+            variants=variants,
+            diff_text=_resume_variant_unified_diff(v1_variant, v2_variant),
+            return_to=_safe_index_return_path(request.args.get("return_to")),
+        )
+
+    @app.get("/resumes/<job_id>/variants/<variant_key>")
+    def resume_variant_pdf(job_id: str, variant_key: str):
+        variant = fetch_application_resume_variant(
+            database_path=database_path,
+            job_id=job_id,
+            variant_key=variant_key,
+        )
+        if variant is None or variant["resume_content"] is None:
+            return Response("Resume variant PDF was not found in the database.", status=404)
+        return send_file(
+            BytesIO(variant["resume_content"]),
+            mimetype=variant["resume_mime_type"] or "application/pdf",
+            download_name=variant["resume_filename"] or f"{job_id}_{variant_key}.pdf",
+            as_attachment=False,
+        )
+
+    @app.get("/resume-html/<job_id>/variants/<variant_key>")
+    def resume_variant_html(job_id: str, variant_key: str):
+        variant = fetch_application_resume_variant(
+            database_path=database_path,
+            job_id=job_id,
+            variant_key=variant_key,
+        )
+        if variant is None or not variant["resume_html_content"]:
+            return Response("Resume variant HTML was not found in the database.", status=404)
+        return Response(
+            variant["resume_html_content"],
+            mimetype=variant["resume_html_mime_type"] or "text/html; charset=utf-8",
+        )
+
+    @app.post("/resumes/<job_id>/variants/<variant_key>/use")
+    def resume_variant_use(job_id: str, variant_key: str):
+        try:
+            selected = select_application_resume_variant(
+                database_path=database_path,
+                job_id=job_id,
+                variant_key=variant_key,
+            )
+        except ValueError as exc:
+            flash(str(exc))
+        else:
+            flash(f"Using {selected['variant_label']} for resume HTML/PDF links.")
+        return redirect(
+            _resume_variant_review_return_path(job_id, request.form.get("return_to"))
+        )
+
     @app.get("/resumes/<job_id>/edit")
     def resume_edit(job_id: str):
         row = _fetch_application(database_path, job_id)
@@ -2115,6 +2474,7 @@ def create_app(
             row=row,
             resume=resume,
             return_to=return_to,
+            variants_return_path=_resume_variant_review_return_path(job_id, return_to),
         )
 
     @app.post("/resumes/<job_id>/edit")
@@ -2409,7 +2769,8 @@ def _application_select_columns() -> str:
     """
     manual_passthrough_status = """
         CASE
-            WHEN lower(COALESCE(applications.notes, '')) LIKE '%manual second pass%'
+            WHEN applications.selected_resume_variant = 'manual'
+              OR lower(COALESCE(applications.notes, '')) LIKE '%manual second pass%'
               OR lower(COALESCE(applications.notes, '')) LIKE '%manual passthrough%'
             THEN 'Yes'
             ELSE 'No'
@@ -2953,6 +3314,11 @@ def _resume_edit_return_path(job_id: str, return_to: Any) -> str:
     return f"/resumes/{job_id}/edit?{query}"
 
 
+def _resume_variant_review_return_path(job_id: str, return_to: Any) -> str:
+    query = urlencode({"return_to": _safe_index_return_path(return_to)})
+    return f"/resumes/{job_id}/variants?{query}"
+
+
 def _cover_letter_edit_return_path(job_id: str, return_to: Any) -> str:
     query = urlencode({"return_to": _safe_index_return_path(return_to)})
     return f"/cover-letters/{job_id}/edit?{query}"
@@ -3464,11 +3830,8 @@ INDEX_TEMPLATE = """
       gap: 6px;
       margin-top: 6px;
     }
-    .manual-pass-badge {
-      background: #fff7ed;
-      border: 1px solid #fed7aa;
+    .variant-badge, .manual-pass-badge {
       border-radius: 999px;
-      color: #9a3412;
       display: inline-flex;
       font-size: 11px;
       font-weight: 800;
@@ -3476,6 +3839,26 @@ INDEX_TEMPLATE = """
       padding: 4px 7px;
       text-transform: uppercase;
       white-space: nowrap;
+    }
+    .variant-badge.is-v1 {
+      background: #eef8f6;
+      border: 1px solid #b9d8d3;
+      color: var(--accent-strong);
+    }
+    .variant-badge.is-v2 {
+      background: #eef2ff;
+      border: 1px solid #c7d2fe;
+      color: #3730a3;
+    }
+    .variant-badge.is-manual, .manual-pass-badge {
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      color: #9a3412;
+    }
+    .variant-badge.is-other {
+      background: #f4f4f5;
+      border: 1px solid #d4d4d8;
+      color: #3f3f46;
     }
     .date-col { min-width: 104px; white-space: nowrap; }
     .experience-col { min-width: 126px; white-space: nowrap; }
@@ -3874,14 +4257,25 @@ INDEX_TEMPLATE = """
               <td class="job">
                 {{ row.job_title }}
                 <span class="job-id">{{ row.job_id }}</span>
-                {% if row.manual_passthrough_status == 'Yes' %}
+                {% if row.application_resume_object or row.manual_passthrough_status == 'Yes' %}
+                  {% set selected_variant = row.selected_resume_variant or 'v1' %}
                   <span class="job-badges">
-                    <span
-                      class="manual-pass-badge"
-                      title="Manual second-pass resume review completed"
-                    >
-                      Manual pass
-                    </span>
+                    {% if row.application_resume_object %}
+                      <span
+                        class="variant-badge {{ resume_variant_badge_class(selected_variant) }}"
+                        title="Selected resume variant"
+                      >
+                        {{ resume_variant_label(selected_variant) }}
+                      </span>
+                    {% endif %}
+                    {% if row.manual_passthrough_status == 'Yes' and selected_variant != 'manual' %}
+                      <span
+                        class="manual-pass-badge"
+                        title="Manual second-pass resume review completed"
+                      >
+                        Manual pass
+                      </span>
+                    {% endif %}
                   </span>
                 {% endif %}
               </td>
@@ -3973,6 +4367,14 @@ INDEX_TEMPLATE = """
                         rel="noreferrer"
                       >
                         Edit
+                      </a>
+                      <a
+                        class="preserve-state-link"
+                        href="/resumes/{{ row.job_id }}/variants"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Review
                       </a>
                     {% endif %}
                     <form method="post" action="/resumes/{{ row.job_id }}/copy-to-downloads">
@@ -4890,6 +5292,422 @@ ADD_APPLICATION_TEMPLATE = """
 """
 
 
+RESUME_VARIANTS_TEMPLATE = """
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Resume Variants</title>
+  <style>
+    :root {
+      --bg: #f6f7f8;
+      --surface: #fff;
+      --ink: #14212d;
+      --muted: #617080;
+      --line: #d9e0e4;
+      --accent: #0f766e;
+      --accent-strong: #115e59;
+      --added: #eef8f1;
+      --removed: #fff1f1;
+      --changed: #fff8dd;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 18px 22px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+    h1 { margin: 4px 0 2px; font-size: 20px; }
+    h2 {
+      margin: 0;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      font-size: 14px;
+      font-weight: 750;
+    }
+    main { padding: 18px 22px 30px; }
+    section {
+      margin-bottom: 14px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+    }
+    a { color: var(--accent); font-weight: 650; }
+    button, .button-link {
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      font: inherit;
+      font-weight: 700;
+      padding: 7px 10px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    button:hover, .button-link:hover { background: var(--accent-strong); }
+    button[disabled] {
+      background: #e5e7eb;
+      border-color: #d1d5db;
+      color: #4b5563;
+      cursor: default;
+    }
+    .button-link.secondary {
+      background: #fff;
+      color: var(--accent);
+    }
+    .button-link.secondary:hover {
+      background: #eff7f6;
+      color: var(--accent-strong);
+    }
+    .top-links, .actions-inline {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+    .meta, .muted { color: var(--muted); }
+    .flash {
+      margin: 0 0 12px;
+      padding: 10px 12px;
+      border: 1px solid #c8dfdc;
+      border-radius: 6px;
+      background: #eef8f6;
+      color: var(--accent-strong);
+    }
+    .variant-badge {
+      border-radius: 999px;
+      display: inline-flex;
+      font-size: 11px;
+      font-weight: 850;
+      line-height: 1;
+      padding: 4px 7px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .variant-badge.is-v1 {
+      background: #eef8f6;
+      border: 1px solid #b9d8d3;
+      color: var(--accent-strong);
+    }
+    .variant-badge.is-v2 {
+      background: #eef2ff;
+      border: 1px solid #c7d2fe;
+      color: #3730a3;
+    }
+    .variant-badge.is-manual {
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      color: #9a3412;
+    }
+    .variant-badge.is-other {
+      background: #f4f4f5;
+      border: 1px solid #d4d4d8;
+      color: #3f3f46;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 9px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #fafbfc;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+    .score-grid {
+      display: grid;
+      grid-template-columns: auto auto;
+      gap: 2px 12px;
+      margin-top: 4px;
+      max-width: 260px;
+      font-size: 12px;
+    }
+    .delta-positive { color: #047857; font-weight: 800; }
+    .delta-negative { color: #b91c1c; font-weight: 800; }
+    .delta-neutral { color: var(--muted); font-weight: 800; }
+    pre {
+      margin: 0;
+      overflow: auto;
+      padding: 14px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #fff;
+      color: var(--ink);
+      font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    .diff-pre { max-height: 520px; }
+    .review-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .review-list {
+      margin: 0;
+      padding: 12px 18px 14px 28px;
+    }
+    .review-list li { margin-bottom: 8px; }
+    .issue {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 2px;
+    }
+    @media (max-width: 980px) {
+      header { flex-direction: column; }
+      main { padding: 14px; overflow-x: auto; }
+      .review-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <div class="top-links">
+        <a href="{{ return_to }}">Back to tracker</a>
+        {% if row.linkedin_url %}
+          <a href="{{ row.linkedin_url }}" target="_blank" rel="noreferrer">Job URL</a>
+        {% endif %}
+        {% if row.resume_content %}
+          <a href="/resumes/{{ row.job_id }}" target="_blank" rel="noreferrer">
+            Current PDF
+          </a>
+        {% endif %}
+        {% if row.resume_html_content %}
+          <a href="/resume-html/{{ row.job_id }}" target="_blank" rel="noreferrer">
+            Current HTML
+          </a>
+        {% endif %}
+      </div>
+      <h1>Resume Variants</h1>
+      <div class="meta">{{ row.company }} - {{ row.job_title }} - {{ row.job_id }}</div>
+    </div>
+    {% set selected_variant = row.selected_resume_variant or 'v1' %}
+    <span class="variant-badge {{ resume_variant_badge_class(selected_variant) }}">
+      {{ resume_variant_label(selected_variant) }}
+    </span>
+  </header>
+  <main>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        {% for message in messages %}
+          <p class="flash">{{ message }}</p>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <section>
+      <h2>Variants</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Variant</th>
+            <th>ATS</th>
+            <th>Artifacts</th>
+            <th>Actions</th>
+            <th>Model / Updated</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for variant in variants %}
+            <tr>
+              <td>
+                <span class="variant-badge {{ variant.badge_class }}">
+                  {{ variant.variant_label }}
+                </span>
+                {% if variant.is_selected %}
+                  <div class="muted">Selected</div>
+                {% endif %}
+              </td>
+              <td>
+                <strong>
+                  {{ variant.ats_score if variant.ats_score is not none else '-' }}/100
+                </strong>
+                {% if variant.ats_delta is not none %}
+                  {% if variant.ats_delta > 0 %}
+                    <span class="delta-positive">+{{ variant.ats_delta }}</span>
+                  {% elif variant.ats_delta < 0 %}
+                    <span class="delta-negative">{{ variant.ats_delta }}</span>
+                  {% else %}
+                    <span class="delta-neutral">0</span>
+                  {% endif %}
+                {% endif %}
+                {% set parsing_score = variant.ats_parsing_score %}
+                {% set keyword_score = variant.ats_keyword_score %}
+                {% set semantic_score = variant.ats_semantic_score %}
+                <div class="score-grid">
+                  <span>Parsing</span>
+                  <strong>{{ parsing_score if parsing_score is not none else '-' }}/100</strong>
+                  <span>Keyword</span>
+                  <strong>{{ keyword_score if keyword_score is not none else '-' }}/100</strong>
+                  <span>Semantic</span>
+                  <strong>{{ semantic_score if semantic_score is not none else '-' }}/100</strong>
+                  <span>Risk</span>
+                  <strong>{{ variant.ats_formatting_risk or '-' }}</strong>
+                </div>
+                {% if variant.ats_missing_terms %}
+                  <div class="muted">{{ variant.ats_missing_terms }}</div>
+                {% endif %}
+              </td>
+              <td>
+                <div class="actions-inline">
+                  {% if variant.has_pdf %}
+                    <a
+                      href="/resumes/{{ row.job_id }}/variants/{{ variant.variant_key }}"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      PDF
+                    </a>
+                  {% endif %}
+                  {% if variant.has_html %}
+                    <a
+                      href="/resume-html/{{ row.job_id }}/variants/{{ variant.variant_key }}"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      HTML
+                    </a>
+                  {% endif %}
+                </div>
+              </td>
+              <td>
+                {% if variant.is_selected %}
+                  <button type="button" disabled>Selected</button>
+                {% else %}
+                  <form
+                    method="post"
+                    action="/resumes/{{ row.job_id }}/variants/{{ variant.variant_key }}/use"
+                  >
+                    <input type="hidden" name="return_to" value="{{ return_to }}">
+                    <button type="submit">{{ variant.action_label }}</button>
+                  </form>
+                {% endif %}
+              </td>
+              <td>
+                <div>{{ variant.model or '-' }}</div>
+                <div class="muted">{{ variant.updated_at|display_timestamp }}</div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>v1 / v2 ARO Diff</h2>
+      {% if diff_text %}
+        <pre class="diff-pre">{{ diff_text }}</pre>
+      {% else %}
+        <pre class="diff-pre">No v1/v2 differences detected.</pre>
+      {% endif %}
+    </section>
+
+    <div class="review-grid">
+      <section>
+        <h2>Accepted Changes</h2>
+        {% set accepted_total = namespace(count=0) %}
+        {% for variant in variants %}
+          {% for change in variant.accepted_changes %}
+            {% set accepted_total.count = accepted_total.count + 1 %}
+          {% endfor %}
+        {% endfor %}
+        {% if accepted_total.count %}
+          <ol class="review-list">
+            {% for variant in variants %}
+              {% for change in variant.accepted_changes %}
+                <li>
+                  <strong>{{ change.change_id }}</strong>
+                  {% if change.rationale %}
+                    <span class="issue">{{ change.rationale }}</span>
+                  {% endif %}
+                </li>
+              {% endfor %}
+            {% endfor %}
+          </ol>
+        {% else %}
+          <pre>No accepted changes recorded.</pre>
+        {% endif %}
+      </section>
+
+      <section>
+        <h2>Rejected Changes</h2>
+        {% set rejected_total = namespace(count=0) %}
+        {% for variant in variants %}
+          {% for rejected in variant.rejected_changes %}
+            {% set rejected_total.count = rejected_total.count + 1 %}
+          {% endfor %}
+        {% endfor %}
+        {% if rejected_total.count %}
+          <ol class="review-list">
+            {% for variant in variants %}
+              {% for rejected in variant.rejected_changes %}
+                <li>
+                  <strong>{{ rejected.change_id }}</strong>
+                  {% for issue in rejected.issues or [] %}
+                    <span class="issue">
+                      {{ issue.reason or 'issue' }}
+                      {% if issue.message %}: {{ issue.message }}{% endif %}
+                    </span>
+                  {% endfor %}
+                </li>
+              {% endfor %}
+            {% endfor %}
+          </ol>
+        {% else %}
+          <pre>No rejected changes recorded.</pre>
+        {% endif %}
+      </section>
+
+      <section>
+        <h2>Unsupported Terms</h2>
+        {% set unsupported_total = namespace(count=0) %}
+        {% for variant in variants %}
+          {% for claim in variant.unsupported_claims %}
+            {% set unsupported_total.count = unsupported_total.count + 1 %}
+          {% endfor %}
+        {% endfor %}
+        {% if unsupported_total.count %}
+          <ol class="review-list">
+            {% for variant in variants %}
+              {% for claim in variant.unsupported_claims %}
+                <li>{{ claim }}</li>
+              {% endfor %}
+            {% endfor %}
+          </ol>
+        {% else %}
+          <pre>No unsupported terms recorded.</pre>
+        {% endif %}
+      </section>
+    </div>
+  </main>
+</body>
+</html>
+"""
+
+
 COVER_LETTER_EDIT_TEMPLATE = """
 <!doctype html>
 <html lang="en">
@@ -5353,6 +6171,9 @@ RESUME_EDIT_TEMPLATE = """
             Resume HTML
           </a>
         {% endif %}
+        <a href="{{ variants_return_path }}">
+          Review variants
+        </a>
       </div>
       <h1>Edit Resume</h1>
       <div class="muted">{{ row.company }} - {{ row.job_title }} - {{ row.job_id }}</div>

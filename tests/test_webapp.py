@@ -659,6 +659,147 @@ def test_store_application_resume_first_draft_updates_tracker_row(tmp_path: Path
     assert b'href="/resume-html/123"' in index.data
 
 
+def test_resume_variant_review_selects_v2_and_v1_reversibly(tmp_path: Path):
+    database_path = tmp_path / "applications.sqlite3"
+    webapp.upsert_application_artifact(
+        database_path=database_path,
+        job_id="123",
+        company="Example Co",
+        job_title="Senior Engineer",
+        linkedin_url="https://www.linkedin.com/jobs/view/123",
+        resume_path=None,
+        job_description="Requires Python, AWS, APIs, and observability.",
+        prompt_job_description="Requires Python, AWS, APIs, and observability.",
+    )
+    v1_pdf = _pdf_bytes("Draft v1 Python AWS APIs")
+    v2_pdf = _pdf_bytes("Refined v2 Python AWS APIs observability")
+    webapp.store_application_resume_first_draft(
+        database_path=database_path,
+        job_id="123",
+        application_resume_object="schema_version: test\nsummary: Draft v1\n",
+        resume_html="<html><body><h1>Draft v1</h1></body></html>",
+        resume_pdf=v1_pdf,
+    )
+    webapp.store_application_resume_variant(
+        database_path=database_path,
+        job_id="123",
+        variant_key="v2",
+        variant_label="Refined v2",
+        source="second_pass",
+        parent_variant_key="v1",
+        application_resume_object="schema_version: test\nsummary: Refined v2\n",
+        resume_html="<html><body><h1>Refined v2</h1></body></html>",
+        resume_pdf=v2_pdf,
+        validation={
+            "accepted_change_ids": ["summary-1"],
+            "rejected_changes": [
+                {
+                    "change_id": "skills-1",
+                    "issues": [
+                        {
+                            "reason": "unsupported_target",
+                            "message": "Skill was not backed by evidence.",
+                        }
+                    ],
+                }
+            ],
+            "is_valid": False,
+        },
+        critique={
+            "proposed_changes": [
+                {
+                    "change_id": "summary-1",
+                    "rationale": "Tightens the platform summary.",
+                    "unsupported_claims": [],
+                },
+                {
+                    "change_id": "skills-1",
+                    "rationale": "Adds a tool term.",
+                    "unsupported_claims": ["Kubernetes"],
+                },
+            ],
+        },
+        model_metadata={"model": "z-ai/glm-5.2"},
+    )
+
+    app = create_app(database_path=database_path, output_dir=tmp_path / "output")
+    client = app.test_client()
+
+    index_html = client.get("/").data.decode()
+    index_soup = BeautifulSoup(index_html, "html.parser")
+    assert index_soup.select_one(".variant-badge").get_text(" ", strip=True) == "Draft v1"
+    assert 'href="/resumes/123/variants"' in index_html
+    assert "Review" in index_html
+
+    review = client.get("/resumes/123/variants?return_to=%2F%3Fsort%3Dresume")
+    assert review.status_code == 200
+    review_html = review.data.decode()
+    assert "Resume Variants" in review_html
+    assert "Draft v1" in review_html
+    assert "Refined v2" in review_html
+    assert "Use v2 draft" in review_html
+    assert 'href="/resumes/123/variants/v1"' in review_html
+    assert 'href="/resume-html/123/variants/v2"' in review_html
+    assert "z-ai/glm-5.2" in review_html
+    assert "summary-1" in review_html
+    assert "skills-1" in review_html
+    assert "unsupported_target" in review_html
+    assert "Kubernetes" in review_html
+    assert "-summary: Draft v1" in review_html
+    assert "+summary: Refined v2" in review_html
+
+    v2_pdf_response = client.get("/resumes/123/variants/v2")
+    assert v2_pdf_response.status_code == 200
+    assert v2_pdf_response.data == v2_pdf
+    v2_html_response = client.get("/resume-html/123/variants/v2")
+    assert v2_html_response.status_code == 200
+    assert b"Refined v2" in v2_html_response.data
+
+    use_v2 = client.post(
+        "/resumes/123/variants/v2/use",
+        data={"return_to": "/?sort=resume"},
+    )
+    assert use_v2.status_code == 302
+    assert use_v2.headers["Location"] == (
+        "/resumes/123/variants?return_to=%2F%3Fsort%3Dresume"
+    )
+    with webapp.connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT selected_resume_variant, application_resume_object, resume_content,
+                   resume_html_content
+            FROM applications
+            WHERE job_id = '123'
+            """
+        ).fetchone()
+    assert row["selected_resume_variant"] == "v2"
+    assert "summary: Refined v2" in row["application_resume_object"]
+    assert row["resume_content"] == v2_pdf
+    assert "Refined v2" in row["resume_html_content"]
+    assert client.get("/resumes/123").data == v2_pdf
+    assert b"Refined v2" in client.get("/resume-html/123").data
+    assert "Refined v2" in client.get("/").data.decode()
+
+    use_v1 = client.post(
+        "/resumes/123/variants/v1/use",
+        data={"return_to": "/?sort=resume"},
+    )
+    assert use_v1.status_code == 302
+    with webapp.connect_database(database_path) as connection:
+        reverted = connection.execute(
+            """
+            SELECT selected_resume_variant, application_resume_object, resume_content,
+                   resume_html_content
+            FROM applications
+            WHERE job_id = '123'
+            """
+        ).fetchone()
+    assert reverted["selected_resume_variant"] == "v1"
+    assert "summary: Draft v1" in reverted["application_resume_object"]
+    assert reverted["resume_content"] == v1_pdf
+    assert "Draft v1" in reverted["resume_html_content"]
+
+
 def test_connect_database_backfills_v1_resume_variant_for_existing_aro(tmp_path: Path):
     database_path = tmp_path / "applications.sqlite3"
     webapp.upsert_application_artifact(
