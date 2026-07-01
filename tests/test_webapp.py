@@ -995,6 +995,77 @@ def test_cover_letter_editor_saves_clo_and_pdf(tmp_path: Path, monkeypatch):
     )
 
 
+def test_cover_letter_pdf_renderer_fits_lts_length_manual_letter_on_one_page():
+    from pypdf import PdfReader
+
+    body_html = (
+        "<p><b>Cover Letter: Principal Platform Engineer at LTS</b></p>"
+        "<p><b>To the LTS Engineering Team,</b></p>"
+        "<p>I am writing to express my interest in the Principal Platform Engineer role at "
+        "LTS. The mission you describe, building agents that can read, translate, and "
+        "modernize a consequential legacy system with real users and executive backing, "
+        "lands very close to the direction of my current platform work at Oracle. I tend "
+        "to operate as a force multiplier: building the connective tissue between AI tools "
+        "and production-adjacent enterprise systems so models can help with real operational "
+        "work without blurring ownership, auditability, or safety.</p>"
+        "<p>At Oracle, on the Platform Development and Automation Frameworks team, my work "
+        "sits at the intersection of cloud automation, observability, legacy modernization, "
+        "and AI-native engineering. The strongest match with LTS is not simply that I use "
+        "AI heavily; it is that I have had to make AI-assisted work repeatable enough for "
+        "serious infrastructure environments.</p>"
+        "<p><b>Agentic orchestration and MCP:</b> I built an OLAM MCP server and associated "
+        "Codex skills that turned ad hoc AI investigation into repeatable platform tooling. "
+        "The architecture uses stable tool contracts, read/write separation, explicit "
+        "cluster routing, admin-only control-plane guardrails, secret-bearing argument "
+        "rejection, redacted logs, source-control discipline, and Ruff/unit-test validation. "
+        "That gave Codex a governed way to inspect schedules, classify job outcomes, analyze "
+        "inventory coverage, and produce operational reports against OLAM/AWX.</p>"
+        "<p><b>Production modernization and platform ownership:</b> I helped execute the "
+        "migration from self-hosted ELK to OCI Search Service/OpenSearch, automating "
+        "migration steps, validating document counts, deduplicating data, and preserving "
+        "observability usefulness while the backend changed. I also helped replace fragile "
+        "CMDB dependencies with OCI function/API front-end pieces, managed PostgreSQL "
+        "monitoring, OCI metrics and alarms, notification routing, and service-backed asset "
+        "data. In ONDA, I built and hardened Python utility paths for sanitized SCM-backed "
+        "configuration backups, encrypted secret handling, restore metadata, and "
+        "vendor-extensible data collection across an 11,000+ network-device fleet.</p>"
+        "<p><b>Security, compliance, and restricted-environment thinking:</b> My experience "
+        "includes OLAM-native RBAC boundaries, per-cluster token providers, least-privilege "
+        "operating patterns, human approval workflows, dry-run validation, and careful "
+        "separation between read and write actions. Earlier healthcare roles add a practical "
+        "compliance base: DICOM anonymization, regulated clinical platform support, "
+        "HIPAA-driven infrastructure modernization, incident and change management, disaster "
+        "recovery, and audit-facing security work. I have not treated compliance as "
+        "paperwork after the fact; I have translated it into concrete system behavior.</p>"
+        "<p><b>Developer experience and operational responsibility:</b> I have owned "
+        "production on-call responsibilities across OLAM, OpenSearch, Chef, Logstash/Filebeat, "
+        "and monitoring systems. Much of my work has been turning failure modes into clearer "
+        "alerts, dashboards, runbooks, remediation guides, CI/CD paths, and handoffs that "
+        "other engineers can trust. That is the part of platform engineering I enjoy most: "
+        "making the paved road real enough that the team moves faster without hiding risk.</p>"
+        "<p>I understand LTS is building on commercial AWS and will need clean "
+        "infrastructure-as-code, identity abstraction, observability, portability, and "
+        "deployment paths that can survive movement into regulated or restricted "
+        "environments. My recent production experience has been OCI-heavy, but the "
+        "architectural problems are the ones I have been working through every day: tenancy "
+        "boundaries, managed services, platform observability, secret handling, controlled "
+        "automation, compliance-aware design, and agents that remain accountable to human "
+        "operators.</p>"
+        "<p>I have attached my Principal Platform Engineer resume with more detail on the "
+        "Oracle platform work, the MCP/Codex tooling, and the regulated healthcare "
+        "infrastructure experience. I would welcome the chance to discuss how I can help own "
+        "the architectural shape of the LTS platform and make the AI-native workflow safe, "
+        "inspectable, and durable from the start.</p>"
+        "<p>Best regards,</p>"
+        "<p>Max Perkhounkov</p>"
+    )
+
+    pdf_bytes = webapp.render_cover_letter_pdf_from_clo_html(body_html)
+
+    assert pdf_bytes.startswith(b"%PDF")
+    assert len(PdfReader(BytesIO(pdf_bytes)).pages) == 1
+
+
 def test_actions_run_starts_background_regeneration(tmp_path: Path):
     with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
         webapp._ACTION_RUNS.clear()  # noqa: SLF001

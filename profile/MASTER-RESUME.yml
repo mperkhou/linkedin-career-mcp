@@ -431,6 +431,7 @@ core_technical_skills:
       additional:
       - Claude
       - applied AI tooling
+      - Agentic AI
       - agentic workflows
       - autonomous AI agents
       - MCP server development
@@ -1372,6 +1373,137 @@ professional_experience:
       categories:
         assigned:
         - AI-Assisted Workflows, Codex Skills, and MCP Servers
+        - Agentic AI Runtime Architecture and Security Guardrails
+        matched:
+        - AI Tools
+        - Automation & IaC
+        - Platform & API Engineering
+        - Security & Compliance
+        - Languages & Frameworks
+      skills:
+      - category: AI Tools
+        matched:
+        - Agentic AI
+        - agentic workflows
+        - MCP server development
+        - MCP (Model Context Protocol)
+        - OLAM MCP server
+        - AI governance
+        - Human-in-the-Loop (HITL) guardrails
+        jod_match_count: 0
+      - category: Automation & IaC
+        matched:
+        - Oracle Linux Automation Manager (OLAM)
+        - AWX
+        jod_match_count: 0
+      - category: Platform & API Engineering
+        matched:
+        - Systems Architecture
+        - service orchestration
+        - validation frameworks
+        - API Integration
+        jod_match_count: 0
+      - category: Security & Compliance
+        matched:
+        - Role-Based Access Control (RBAC)
+        - secret redaction
+        - credential redaction
+        - least-privilege operations
+        - production write controls
+        - controlled API access
+        - secret-bearing argument rejection
+        jod_match_count: 0
+      - category: Languages & Frameworks
+        matched:
+        - Python
+        - CLI tooling
+        jod_match_count: 0
+      text: 'Agentic AI Runtime Architecture and Security Guardrails: I advanced
+        agentic AI adoption by helping turn OLAM automation into a controlled, reusable
+        MCP-enabled runtime rather than a one-off assistant script. The architecture
+        treats CLI commands, MCP handlers, future HTTP wrappers, and Python SDK usage
+        as thin adapters over shared runtime logic, so operational behavior can be
+        tested and governed in one place. The design preserves OLAM-native RBAC and
+        credential boundaries through per-cluster token providers, redacted logs,
+        secret-bearing argument rejection, admin-only control-plane actions, explicit
+        multi-cluster routing, and no silent default to production. (Representative
+        Jiras and repo evidence: GPDAF-21090, GPDAF-21091, GPDAF-21112; `~/dev/dev-tools/olam-mcp`,
+        `AGENTS.md`)'
+      bullet_point_total_match_count: 0
+      render: true
+    - order: 21
+      categories:
+        assigned:
+        - AI-Assisted Workflows, Codex Skills, and MCP Servers
+        - Agent-Facing Tool Contracts and Operational SDLC
+        matched:
+        - AI Tools
+        - Automation & IaC
+        - Data & Observability
+        - Platform & API Engineering
+        - Security & Compliance
+        - Languages & Frameworks
+      skills:
+      - category: AI Tools
+        matched:
+        - Agentic AI
+        - Codex
+        - MCP server development
+        - MCP (Model Context Protocol)
+        - AI-assisted operational reporting
+        - AI-assisted workflow reuse
+        - Codex skills
+        jod_match_count: 0
+      - category: Automation & IaC
+        matched:
+        - Oracle Linux Automation Manager (OLAM)
+        - job scheduling automation
+        - CI/CD automation
+        - semantic versioning
+        jod_match_count: 0
+      - category: Data & Observability
+        matched:
+        - automation schedule reporting
+        - resource timing analysis
+        - summary table reporting
+        - workflow log analytics
+        jod_match_count: 0
+      - category: Platform & API Engineering
+        matched:
+        - repository workflow automation
+        - validation frameworks
+        - release engineering
+        - Jira work tracking
+        - technical documentation
+        jod_match_count: 0
+      - category: Security & Compliance
+        matched:
+        - human approval workflows
+        - sensitive path validation
+        - production write controls
+        jod_match_count: 0
+      - category: Languages & Frameworks
+        matched:
+        - Python
+        - CLI tooling
+        jod_match_count: 0
+      text: 'Agent-Facing Tool Contracts and Operational SDLC: I shaped the OLAM
+        MCP tooling around stable DTOs, normalized tool contracts, read/write separation,
+        bounded retries for safe reads, and no automatic retry of write operations.
+        That let AI-assisted workflows support real operations such as job summaries,
+        job outcome classification, schedule reporting, and cluster diagnostics while
+        staying auditable and predictable. I also codified the agent-assisted development
+        path in `AGENTS.md`: updated main branches, scoped feature branches, tracked
+        work items, coherent commits, changelog/version updates, validation gates,
+        and extra caution around security-sensitive OLAM paths. (Representative Jiras
+        and repo evidence: GPDAF-21090, GPDAF-21091, GPDAF-21112; `~/dev/dev-tools/olam-mcp`,
+        `AGENTS.md`)'
+      bullet_point_total_match_count: 0
+      render: true
+    - order: 22
+      categories:
+        assigned:
+        - AI-Assisted Workflows, Codex Skills, and MCP Servers
         - Repository Guardrails, Codex Skills, and Repeatable Release Flow
         matched:
         - AI Tools
@@ -1422,7 +1554,7 @@ professional_experience:
         `~/dev/dev-tools/olam-mcp`)'
       bullet_point_total_match_count: 0
       render: true
-    - order: 21
+    - order: 23
       categories:
         assigned:
         - AI-Assisted Workflows, Codex Skills, and MCP Servers
@@ -1481,7 +1613,7 @@ professional_experience:
         `~/dev/dev-tools/OCI-management`, `~/.codex/skills/jira-gbu-ticket`)'
       bullet_point_total_match_count: 0
       render: true
-    - order: 22
+    - order: 24
       categories:
         assigned:
         - Python Utilities and Internal Tooling
@@ -1535,7 +1667,7 @@ professional_experience:
         environments.'
       bullet_point_total_match_count: 0
       render: true
-    - order: 23
+    - order: 25
       categories:
         assigned:
         - Python Utilities and Internal Tooling
@@ -1584,7 +1716,7 @@ professional_experience:
         and PDAF platform reliability.'
       bullet_point_total_match_count: 0
       render: true
-    - order: 24
+    - order: 26
       categories:
         assigned:
         - OCI, Infrastructure, and Reliability Work
@@ -1633,7 +1765,7 @@ professional_experience:
         especially as monitoring and OpenSearch paths moved across tenancy boundaries.'
       bullet_point_total_match_count: 0
       render: true
-    - order: 25
+    - order: 27
       categories:
         assigned:
         - OCI, Infrastructure, and Reliability Work
@@ -1677,7 +1809,7 @@ professional_experience:
         stakeholders and the newer ONDA production rollout.'
       bullet_point_total_match_count: 0
       render: true
-    - order: 26
+    - order: 28
       categories:
         assigned:
         - Team Support, Stakeholders, and Knowledge Transfer
@@ -1721,7 +1853,7 @@ professional_experience:
         to actual service ownership.'
       bullet_point_total_match_count: 0
       render: true
-    - order: 27
+    - order: 29
       categories:
         assigned:
         - Team Support, Stakeholders, and Knowledge Transfer
@@ -1764,7 +1896,7 @@ professional_experience:
         to team adoption rather than leaving it as isolated code.'
       bullet_point_total_match_count: 0
       render: true
-    - order: 28
+    - order: 30
       categories:
         assigned:
         - ONDA Project Contribution
@@ -1812,7 +1944,7 @@ professional_experience:
         and production feedback loops work.'
       bullet_point_total_match_count: 0
       render: true
-    - order: 29
+    - order: 31
       categories:
         assigned:
         - ONDA Project Contribution
@@ -1869,7 +2001,7 @@ professional_experience:
         fleet.'
       bullet_point_total_match_count: 0
       render: true
-    - order: 30
+    - order: 32
       categories:
         assigned:
         - Overall Contribution Narrative
@@ -1935,7 +2067,7 @@ professional_experience:
         the PDAF team more effective.'
       bullet_point_total_match_count: 0
       render: true
-    - order: 31
+    - order: 33
       categories:
         assigned:
         - Overall Contribution Narrative
