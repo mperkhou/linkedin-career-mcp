@@ -92,6 +92,9 @@ _DRAFT_REGENERATE_MODES = {"draft_resumes"}
 COVER_LETTER_OBJECT_SCHEMA_VERSION = "cover_letter_object.v0.1"
 EMERALD_ACCENT = HexColor("#57ba86")
 RESUME_BODY_COLOR = HexColor("#111827")
+COVER_LETTER_BODY_FONT_SIZE = 9
+COVER_LETTER_BODY_LEADING = 11.5
+COVER_LETTER_PARAGRAPH_SPACE_AFTER = 7
 MAX_ACTION_RUNS = 8
 MAX_ACTION_MESSAGES = 160
 
@@ -1041,9 +1044,9 @@ def render_cover_letter_pdf_from_clo_html(body_html: str) -> bytes:
         "ManualCoverLetterBody",
         parent=styles["BodyText"],
         fontName="Helvetica",
-        fontSize=10.5,
-        leading=14.5,
-        spaceAfter=10,
+        fontSize=COVER_LETTER_BODY_FONT_SIZE,
+        leading=COVER_LETTER_BODY_LEADING,
+        spaceAfter=COVER_LETTER_PARAGRAPH_SPACE_AFTER,
         textColor=RESUME_BODY_COLOR,
     )
     story: list[Any] = [
