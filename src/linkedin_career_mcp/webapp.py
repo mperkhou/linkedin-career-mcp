@@ -3440,7 +3440,13 @@ INDEX_TEMPLATE = """
               </td>
               <td>
                 <div class="actions">
-                  <a class="preserve-state-link" href="/linkedin/{{ row.job_id }}">Job URL</a>
+                  <a
+                    href="{{ row.linkedin_url }}"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Job URL
+                  </a>
                   <a
                     class="preserve-state-link"
                     href="/descriptions/{{ row.job_id }}"

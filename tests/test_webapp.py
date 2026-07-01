@@ -159,6 +159,8 @@ def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypat
     html = index.data.decode()
     assert b"/descriptions/123" in index.data
     assert b"Compare descriptions" in index.data
+    assert b'href="https://www.linkedin.com/jobs/view/123"' in index.data
+    assert b'href="/linkedin/123"' not in index.data
     assert b"Cover Letter" in index.data
     assert b"/cover-letters/123/edit" in index.data
     assert 'action="/resumes/123/copy-to-downloads"' in html
