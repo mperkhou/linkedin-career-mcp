@@ -17,7 +17,7 @@ MASTER_RESUME ?= profile/MASTER-RESUME.yml
 JOD_MODEL ?= z-ai/glm-5.2
 CORE_SKILL_MODEL ?= $(JOD_MODEL)
 SECOND_PASS_MODEL ?= z-ai/glm-5.2
-SECOND_PASS_APPLY ?= 0
+SECOND_PASS_TIMEOUT_SECONDS ?= 120
 CODEX_COMMAND ?= codex
 CODEX_MODEL ?= gpt-5.5
 CODEX_TIMEOUT_SECONDS ?= 900
@@ -105,17 +105,15 @@ sync-draft-to-aro: venv
 	$(VENV_PYTHON) scripts/application_resume_sync_drafts_to_aro.py $$job_args
 
 refine-draft-resumes: venv
-	@if [ "$(JOB_IDS)" = "all" ]; then \
-		echo "Set JOB_IDS=<job_id ...> for refine-draft-resumes"; \
-		exit 2; \
+	@job_args=""; \
+	if [ "$(JOB_IDS)" = "all" ]; then \
+		job_args="--all-active"; \
+	else \
+		for job_id in $(JOB_IDS); do \
+			job_args="$$job_args --job-id $$job_id"; \
+		done; \
 	fi; \
-	apply_arg=""; \
-	if [ "$(SECOND_PASS_APPLY)" = "1" ] || [ "$(SECOND_PASS_APPLY)" = "true" ]; then \
-		apply_arg="--apply"; \
-	fi; \
-	for job_id in $(JOB_IDS); do \
-		$(VENV)/bin/linkedin-career-refine-resume --job-id "$$job_id" --master-resume "$(MASTER_RESUME)" --api-model "$(SECOND_PASS_MODEL)" $$apply_arg; \
-	done
+	$(VENV)/bin/linkedin-career-refine-resume $$job_args --master-resume "$(MASTER_RESUME)" --api-model "$(SECOND_PASS_MODEL)" --api-timeout-seconds "$(SECOND_PASS_TIMEOUT_SECONDS)"
 
 highlight-draft-resumes: venv
 	@job_args=""; \

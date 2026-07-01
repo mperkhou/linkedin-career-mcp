@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import difflib
+import json
 import sqlite3
 import subprocess
 import sys
@@ -50,8 +51,11 @@ APPLICATION_ARCHIVE_FILTERS = {"active", "archived", "all"}
 VIEW_STATE_SORTS = {"company", "matched", "ats", "resume", "cover_letter"}
 VIEW_STATE_DIRECTIONS = {"asc", "desc"}
 VIEW_STATE_QUERY_KEYS = {"q", "status", "archive", "sort", "direction"}
+DEFAULT_RESUME_VARIANT = "v1"
+SECOND_PASS_RESUME_VARIANT = "v2"
 APPLICATION_EXTRA_COLUMNS = {
     "archived_at": "TEXT",
+    "selected_resume_variant": f"TEXT NOT NULL DEFAULT '{DEFAULT_RESUME_VARIANT}'",
     "job_description": "TEXT",
     "prompt_job_description": "TEXT",
     "application_resume_object": "TEXT",
@@ -198,6 +202,8 @@ def init_database(connection: sqlite3.Connection) -> None:
         """
     )
     _ensure_application_columns(connection)
+    _ensure_resume_variant_table(connection)
+    _backfill_v1_resume_variants(connection)
     connection.execute(
         """
         CREATE UNIQUE INDEX IF NOT EXISTS applications_unique_linkedin_job_id
@@ -205,6 +211,93 @@ def init_database(connection: sqlite3.Connection) -> None:
         """
     )
     connection.commit()
+
+
+def _ensure_resume_variant_table(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS application_resume_variants (
+            job_id TEXT NOT NULL,
+            variant_key TEXT NOT NULL,
+            variant_label TEXT NOT NULL,
+            source TEXT NOT NULL,
+            parent_variant_key TEXT,
+            application_resume_object TEXT NOT NULL,
+            resume_html_filename TEXT NOT NULL DEFAULT '',
+            resume_html_content TEXT,
+            resume_html_mime_type TEXT NOT NULL DEFAULT 'text/html; charset=utf-8',
+            source_resume_html_path TEXT NOT NULL DEFAULT '',
+            resume_html_updated_at TEXT,
+            resume_filename TEXT NOT NULL DEFAULT '',
+            resume_content BLOB,
+            resume_mime_type TEXT NOT NULL DEFAULT 'application/pdf',
+            source_resume_path TEXT NOT NULL DEFAULT '',
+            resume_updated_at TEXT,
+            ats_score INTEGER,
+            ats_parsing_score INTEGER,
+            ats_keyword_score INTEGER,
+            ats_semantic_score INTEGER,
+            ats_formatting_risk TEXT,
+            ats_missing_terms TEXT,
+            ats_updated_at TEXT,
+            ats_diagnostics_json TEXT,
+            evidence_packet_json TEXT,
+            external_critique_json TEXT,
+            critique_prompt TEXT,
+            critique_response TEXT,
+            critique_json TEXT,
+            validation_json TEXT,
+            model_metadata_json TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (job_id, variant_key)
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS application_resume_variants_variant_key
+        ON application_resume_variants(variant_key)
+        """
+    )
+
+
+def _backfill_v1_resume_variants(connection: sqlite3.Connection) -> None:
+    now = datetime.now(UTC).isoformat(timespec="seconds")
+    connection.execute(
+        """
+        UPDATE applications
+        SET selected_resume_variant = ?
+        WHERE selected_resume_variant IS NULL
+           OR TRIM(selected_resume_variant) = ''
+        """,
+        (DEFAULT_RESUME_VARIANT,),
+    )
+    connection.execute(
+        """
+        INSERT OR IGNORE INTO application_resume_variants (
+            job_id, variant_key, variant_label, source, parent_variant_key,
+            application_resume_object, resume_html_filename, resume_html_content,
+            resume_html_mime_type, source_resume_html_path, resume_html_updated_at,
+            resume_filename, resume_content, resume_mime_type, source_resume_path,
+            resume_updated_at, ats_score, ats_parsing_score, ats_keyword_score,
+            ats_semantic_score, ats_formatting_risk, ats_missing_terms, ats_updated_at,
+            created_at, updated_at
+        )
+        SELECT
+            job_id, ?, 'Draft v1', 'first_draft', NULL,
+            application_resume_object, resume_html_filename, resume_html_content,
+            resume_html_mime_type, source_resume_html_path, resume_html_updated_at,
+            resume_filename, resume_content, resume_mime_type, source_resume_path,
+            resume_updated_at, ats_score, ats_parsing_score, ats_keyword_score,
+            ats_semantic_score, ats_formatting_risk, ats_missing_terms, ats_updated_at,
+            COALESCE(application_resume_updated_at, resume_updated_at, imported_at, updated_at, ?),
+            COALESCE(application_resume_updated_at, resume_updated_at, updated_at, ?)
+        FROM applications
+        WHERE COALESCE(NULLIF(application_resume_object, ''), '') != ''
+        """,
+        (DEFAULT_RESUME_VARIANT, now, now),
+    )
 
 
 def _ensure_application_columns(connection: sqlite3.Connection) -> None:
@@ -704,7 +797,352 @@ def store_application_resume_first_draft(
                 job_id,
             ),
         )
+        _upsert_application_resume_variant(
+            connection=connection,
+            row=row,
+            variant_key=DEFAULT_RESUME_VARIANT,
+            variant_label="Draft v1",
+            source="first_draft",
+            parent_variant_key=None,
+            application_resume_object=application_resume_object,
+            resume_html=resume_html,
+            resume_pdf=resume_pdf,
+            ats_score=ats_score,
+            resume_html_filename=(
+                resume_html_path.name
+                if resume_html_path is not None
+                else _resume_html_filename(row)
+            ),
+            resume_filename=(
+                resume_pdf_path.name if resume_pdf_path is not None else _resume_pdf_filename(row)
+            ),
+            source_resume_html_path=str(resume_html_path) if resume_html_path is not None else "",
+            source_resume_path=str(resume_pdf_path) if resume_pdf_path is not None else "",
+        )
         connection.commit()
+
+
+def backfill_application_resume_v1_variants(database_path: Path) -> int:
+    with connect_database(database_path) as connection:
+        before = _resume_variant_count(connection, variant_key=DEFAULT_RESUME_VARIANT)
+        _backfill_v1_resume_variants(connection)
+        after = _resume_variant_count(connection, variant_key=DEFAULT_RESUME_VARIANT)
+        connection.commit()
+    return max(0, after - before)
+
+
+def store_application_resume_variant(
+    *,
+    database_path: Path,
+    job_id: str,
+    variant_key: str,
+    variant_label: str,
+    source: str,
+    application_resume_object: str,
+    resume_html: str,
+    resume_pdf: bytes,
+    parent_variant_key: str | None = None,
+    ats_score: AtsProxyScore | None = None,
+    ats_diagnostics: Any | None = None,
+    evidence_packet: Any | None = None,
+    external_critique: Any | None = None,
+    critique_prompt: str | None = None,
+    critique_response: str | None = None,
+    critique: Any | None = None,
+    validation: Any | None = None,
+    model_metadata: Any | None = None,
+) -> AtsProxyScore | None:
+    _parse_application_resume_yaml(application_resume_object)
+    with connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT *
+            FROM applications
+            WHERE job_id = ?
+            """,
+            (job_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"Application row was not found for job_id={job_id}.")
+        if ats_score is None:
+            ats_score = _calculate_ats_score(
+                resume_content=resume_pdf,
+                job_description=row["prompt_job_description"] or row["job_description"],
+            )
+        _upsert_application_resume_variant(
+            connection=connection,
+            row=row,
+            variant_key=variant_key,
+            variant_label=variant_label,
+            source=source,
+            parent_variant_key=parent_variant_key,
+            application_resume_object=application_resume_object,
+            resume_html=resume_html,
+            resume_pdf=resume_pdf,
+            ats_score=ats_score,
+            ats_diagnostics=ats_diagnostics,
+            evidence_packet=evidence_packet,
+            external_critique=external_critique,
+            critique_prompt=critique_prompt,
+            critique_response=critique_response,
+            critique=critique,
+            validation=validation,
+            model_metadata=model_metadata,
+        )
+        connection.commit()
+    return ats_score
+
+
+def fetch_active_resume_refinement_job_ids(database_path: Path) -> list[str]:
+    with connect_database(database_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT job_id
+            FROM applications
+            WHERE archived_at IS NULL
+              AND COALESCE(NULLIF(application_resume_object, ''), '') != ''
+            ORDER BY
+                CASE applied_to
+                    WHEN 'No' THEN 0
+                    WHEN 'Accepted for interview' THEN 1
+                    WHEN 'N/A' THEN 2
+                    WHEN 'Rejected' THEN 3
+                    WHEN 'Yes' THEN 4
+                    ELSE 5
+                END,
+                company COLLATE NOCASE ASC,
+                job_title COLLATE NOCASE ASC
+            """
+        ).fetchall()
+    return [str(row["job_id"]) for row in rows]
+
+
+def fetch_resume_variant_comparisons(
+    *,
+    database_path: Path,
+    job_ids: list[str] | None = None,
+    active_only: bool = False,
+) -> list[dict[str, Any]]:
+    clauses: list[str] = []
+    params: list[str] = []
+    if active_only:
+        clauses.append("applications.archived_at IS NULL")
+    if job_ids:
+        placeholders = ", ".join("?" for _ in job_ids)
+        clauses.append(f"applications.job_id IN ({placeholders})")
+        params.extend(job_ids)
+    where_clause = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    with connect_database(database_path) as connection:
+        rows = connection.execute(
+            f"""
+            SELECT
+                applications.job_id,
+                applications.company,
+                applications.job_title,
+                applications.selected_resume_variant,
+                v1.ats_score AS v1_ats_score,
+                v1.ats_missing_terms AS v1_ats_missing_terms,
+                v1.updated_at AS v1_updated_at,
+                v2.ats_score AS v2_ats_score,
+                v2.ats_missing_terms AS v2_ats_missing_terms,
+                v2.validation_json AS v2_validation_json,
+                v2.model_metadata_json AS v2_model_metadata_json,
+                v2.updated_at AS v2_updated_at
+            FROM applications
+            LEFT JOIN application_resume_variants AS v1
+              ON v1.job_id = applications.job_id
+             AND v1.variant_key = ?
+            LEFT JOIN application_resume_variants AS v2
+              ON v2.job_id = applications.job_id
+             AND v2.variant_key = ?
+            {where_clause}
+            ORDER BY
+                applications.company COLLATE NOCASE ASC,
+                applications.job_title COLLATE NOCASE ASC
+            """,
+            [DEFAULT_RESUME_VARIANT, SECOND_PASS_RESUME_VARIANT, *params],
+        ).fetchall()
+
+    comparisons: list[dict[str, Any]] = []
+    for row in rows:
+        validation = _loads_json_mapping(row["v2_validation_json"])
+        model_metadata = _loads_json_mapping(row["v2_model_metadata_json"])
+        accepted_change_ids = validation.get("accepted_change_ids")
+        rejected_changes = validation.get("rejected_changes")
+        v1_score = row["v1_ats_score"]
+        v2_score = row["v2_ats_score"]
+        comparisons.append(
+            {
+                "job_id": row["job_id"],
+                "company": row["company"],
+                "job_title": row["job_title"],
+                "selected_resume_variant": row["selected_resume_variant"]
+                or DEFAULT_RESUME_VARIANT,
+                "v1": {
+                    "ats_score": v1_score,
+                    "missing_terms": row["v1_ats_missing_terms"],
+                    "updated_at": row["v1_updated_at"],
+                },
+                "v2": {
+                    "ats_score": v2_score,
+                    "missing_terms": row["v2_ats_missing_terms"],
+                    "updated_at": row["v2_updated_at"],
+                    "accepted_changes": (
+                        len(accepted_change_ids) if isinstance(accepted_change_ids, list) else 0
+                    ),
+                    "rejected_changes": (
+                        len(rejected_changes) if isinstance(rejected_changes, list) else 0
+                    ),
+                    "is_valid": validation.get("is_valid"),
+                    "model": model_metadata.get("model"),
+                },
+                "ats_delta": (
+                    int(v2_score) - int(v1_score)
+                    if v1_score is not None and v2_score is not None
+                    else None
+                ),
+            }
+        )
+    return comparisons
+
+
+def _resume_variant_count(connection: sqlite3.Connection, *, variant_key: str) -> int:
+    row = connection.execute(
+        """
+        SELECT COUNT(*) AS count
+        FROM application_resume_variants
+        WHERE variant_key = ?
+        """,
+        (variant_key,),
+    ).fetchone()
+    return int(row["count"] or 0)
+
+
+def _upsert_application_resume_variant(
+    *,
+    connection: sqlite3.Connection,
+    row: sqlite3.Row,
+    variant_key: str,
+    variant_label: str,
+    source: str,
+    parent_variant_key: str | None,
+    application_resume_object: str,
+    resume_html: str,
+    resume_pdf: bytes,
+    ats_score: AtsProxyScore | None,
+    resume_html_filename: str | None = None,
+    resume_filename: str | None = None,
+    source_resume_html_path: str = "",
+    source_resume_path: str = "",
+    ats_diagnostics: Any | None = None,
+    evidence_packet: Any | None = None,
+    external_critique: Any | None = None,
+    critique_prompt: str | None = None,
+    critique_response: str | None = None,
+    critique: Any | None = None,
+    validation: Any | None = None,
+    model_metadata: Any | None = None,
+) -> None:
+    now = datetime.now(UTC).isoformat(timespec="seconds")
+    connection.execute(
+        """
+        INSERT INTO application_resume_variants (
+            job_id, variant_key, variant_label, source, parent_variant_key,
+            application_resume_object, resume_html_filename, resume_html_content,
+            resume_html_mime_type, source_resume_html_path, resume_html_updated_at,
+            resume_filename, resume_content, resume_mime_type, source_resume_path,
+            resume_updated_at, ats_score, ats_parsing_score, ats_keyword_score,
+            ats_semantic_score, ats_formatting_risk, ats_missing_terms, ats_updated_at,
+            ats_diagnostics_json, evidence_packet_json, external_critique_json,
+            critique_prompt, critique_response, critique_json, validation_json,
+            model_metadata_json, created_at, updated_at
+        )
+        VALUES (
+            ?, ?, ?, ?, ?, ?, ?, ?, 'text/html; charset=utf-8', ?, ?, ?, ?,
+            'application/pdf', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        )
+        ON CONFLICT(job_id, variant_key) DO UPDATE SET
+            variant_label = excluded.variant_label,
+            source = excluded.source,
+            parent_variant_key = excluded.parent_variant_key,
+            application_resume_object = excluded.application_resume_object,
+            resume_html_filename = excluded.resume_html_filename,
+            resume_html_content = excluded.resume_html_content,
+            resume_html_mime_type = excluded.resume_html_mime_type,
+            source_resume_html_path = excluded.source_resume_html_path,
+            resume_html_updated_at = excluded.resume_html_updated_at,
+            resume_filename = excluded.resume_filename,
+            resume_content = excluded.resume_content,
+            resume_mime_type = excluded.resume_mime_type,
+            source_resume_path = excluded.source_resume_path,
+            resume_updated_at = excluded.resume_updated_at,
+            ats_score = excluded.ats_score,
+            ats_parsing_score = excluded.ats_parsing_score,
+            ats_keyword_score = excluded.ats_keyword_score,
+            ats_semantic_score = excluded.ats_semantic_score,
+            ats_formatting_risk = excluded.ats_formatting_risk,
+            ats_missing_terms = excluded.ats_missing_terms,
+            ats_updated_at = excluded.ats_updated_at,
+            ats_diagnostics_json = excluded.ats_diagnostics_json,
+            evidence_packet_json = excluded.evidence_packet_json,
+            external_critique_json = excluded.external_critique_json,
+            critique_prompt = excluded.critique_prompt,
+            critique_response = excluded.critique_response,
+            critique_json = excluded.critique_json,
+            validation_json = excluded.validation_json,
+            model_metadata_json = excluded.model_metadata_json,
+            updated_at = excluded.updated_at
+        """,
+        (
+            row["job_id"],
+            variant_key,
+            variant_label,
+            source,
+            parent_variant_key,
+            application_resume_object,
+            resume_html_filename or _variant_resume_html_filename(row, variant_key),
+            resume_html,
+            source_resume_html_path,
+            now,
+            resume_filename or _variant_resume_pdf_filename(row, variant_key),
+            resume_pdf,
+            source_resume_path,
+            now,
+            ats_score.overall_score if ats_score is not None else None,
+            ats_score.parsing_score if ats_score is not None else None,
+            ats_score.keyword_match_score if ats_score is not None else None,
+            ats_score.semantic_match_score if ats_score is not None else None,
+            ats_score.formatting_risk if ats_score is not None else None,
+            _format_missing_terms(ats_score) if ats_score is not None else None,
+            now if ats_score is not None else None,
+            _json_dumps_or_none(ats_diagnostics),
+            _json_dumps_or_none(evidence_packet),
+            _json_dumps_or_none(external_critique),
+            critique_prompt,
+            critique_response,
+            _json_dumps_or_none(critique),
+            _json_dumps_or_none(validation),
+            _json_dumps_or_none(model_metadata),
+            now,
+            now,
+        ),
+    )
+
+
+def _json_dumps_or_none(value: Any | None) -> str | None:
+    if value is None:
+        return None
+    return json.dumps(value, sort_keys=True, ensure_ascii=True)
+
+
+def _loads_json_mapping(value: Any) -> dict[str, Any]:
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(str(value))
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def store_application_resume_object(
@@ -2427,6 +2865,25 @@ def _resume_html_filename(row: sqlite3.Row) -> str:
 
 def _resume_pdf_filename(row: sqlite3.Row) -> str:
     return f"mp_resume_{_filename_part(str(row['job_title'] or row['job_id']))}.pdf"
+
+
+def _variant_resume_html_filename(row: sqlite3.Row, variant_key: str) -> str:
+    filename = _resume_html_filename(row)
+    return filename if variant_key == DEFAULT_RESUME_VARIANT else _filename_with_suffix(
+        filename, variant_key
+    )
+
+
+def _variant_resume_pdf_filename(row: sqlite3.Row, variant_key: str) -> str:
+    filename = _resume_pdf_filename(row)
+    return filename if variant_key == DEFAULT_RESUME_VARIANT else _filename_with_suffix(
+        filename, variant_key
+    )
+
+
+def _filename_with_suffix(filename: str, suffix: str) -> str:
+    path = Path(filename)
+    return f"{path.stem}_{_filename_part(suffix)}{path.suffix}"
 
 
 def _cover_letter_pdf_filename(row: sqlite3.Row) -> str:

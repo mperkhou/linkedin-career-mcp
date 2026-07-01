@@ -17,7 +17,7 @@ from linkedin_career_mcp.resume_refinement_cli import (
 
 
 @pytest.mark.asyncio
-async def test_second_pass_refinement_dry_run_writes_audit_without_updating_sqlite(
+async def test_second_pass_refinement_stores_v2_variant_without_updating_current_links(
     tmp_path: Path,
 ):
     database_path, master_resume_path = _seed_refinement_row(tmp_path)
@@ -40,16 +40,17 @@ async def test_second_pass_refinement_dry_run_writes_audit_without_updating_sqli
         external_critique_text=external_critique_text,
     )
 
-    audit_path = Path(audit["audit_path"])
-    assert audit_path.is_file()
-    saved_audit = json.loads(audit_path.read_text(encoding="utf-8"))
-    assert saved_audit["schema_version"] == SECOND_PASS_RESUME_REFINEMENT_AUDIT_SCHEMA_VERSION
-    assert saved_audit["applied"] is False
-    assert saved_audit["validation"]["accepted_change_ids"] == ["supported-observability"]
-    assert saved_audit["validation"]["rejected_changes"] == []
+    assert "audit_path" not in audit
+    assert not audit_dir.exists()
+    assert audit["schema_version"] == SECOND_PASS_RESUME_REFINEMENT_AUDIT_SCHEMA_VERSION
+    assert audit["stored_variant"] == "v2"
+    assert audit["selected_variant_changed"] is False
+    assert audit["applied"] is False
+    assert audit["validation"]["accepted_change_ids"] == ["supported-observability"]
+    assert audit["validation"]["rejected_changes"] == []
     classifications = {
         suggestion["text"]: suggestion["classification"]
-        for suggestion in saved_audit["external_critique"]["suggestions"]
+        for suggestion in audit["external_critique"]["suggestions"]
     }
     assert (
         classifications["Add observability to the Python platform bullet."]
@@ -67,17 +68,49 @@ async def test_second_pass_refinement_dry_run_writes_audit_without_updating_sqli
 
     with webapp.connect_database(database_path) as connection:
         row = connection.execute(
-            "SELECT application_resume_object FROM applications WHERE job_id = '123'"
+            """
+            SELECT application_resume_object, resume_content, selected_resume_variant
+            FROM applications
+            WHERE job_id = '123'
+            """
         ).fetchone()
+        variants = {
+            variant["variant_key"]: variant
+            for variant in connection.execute(
+                """
+                SELECT variant_key, application_resume_object, resume_content,
+                       critique_prompt, critique_response, validation_json,
+                       external_critique_json, ats_score
+                FROM application_resume_variants
+                WHERE job_id = '123'
+                """
+            ).fetchall()
+        }
     stored_aro = yaml.safe_load(row["application_resume_object"])
     assert (
         stored_aro["professional_experience"]["jobs"][0]["bullet_points"][0]["text"]
         == "Built Python automation for platform reliability."
     )
+    assert row["resume_content"]
+    assert row["selected_resume_variant"] == "v1"
+    assert set(variants) == {"v1", "v2"}
+    v2_aro = yaml.safe_load(variants["v2"]["application_resume_object"])
+    assert (
+        v2_aro["professional_experience"]["jobs"][0]["bullet_points"][0]["text"]
+        == "Built Python automation for platform reliability and observability."
+    )
+    assert variants["v2"]["resume_content"]
+    assert variants["v2"]["ats_score"] is not None
+    assert "Payload:" in variants["v2"]["critique_prompt"]
+    assert variants["v2"]["critique_response"] == _supported_patch_response()
+    validation = json.loads(variants["v2"]["validation_json"])
+    assert validation["accepted_change_ids"] == ["supported-observability"]
+    external_critique = json.loads(variants["v2"]["external_critique_json"])
+    assert len(external_critique["suggestions"]) == 2
 
 
 @pytest.mark.asyncio
-async def test_second_pass_refinement_apply_updates_sqlite_for_accepted_patches(
+async def test_second_pass_refinement_apply_flag_does_not_select_v2(
     tmp_path: Path,
 ):
     database_path, master_resume_path = _seed_refinement_row(tmp_path)
@@ -93,23 +126,42 @@ async def test_second_pass_refinement_apply_updates_sqlite_for_accepted_patches(
         llm=_FakeLlm(_supported_patch_response()),
     )
 
-    assert audit["applied"] is True
-    assert audit["applied_change_ids"] == ["supported-observability"]
+    assert audit["apply_requested"] is True
+    assert audit["applied"] is False
+    assert audit["applied_change_ids"] == []
+    assert audit["stored_variant"] == "v2"
+    assert audit["comparison"]["v2"]["accepted_changes"] == 1
     with webapp.connect_database(database_path) as connection:
         row = connection.execute(
             """
-            SELECT application_resume_object, resume_content, ats_score
+            SELECT application_resume_object, resume_content, ats_score,
+                   selected_resume_variant
             FROM applications
             WHERE job_id = '123'
+            """
+        ).fetchone()
+        variant = connection.execute(
+            """
+            SELECT application_resume_object, resume_content, ats_score
+            FROM application_resume_variants
+            WHERE job_id = '123' AND variant_key = 'v2'
             """
         ).fetchone()
     stored_aro = yaml.safe_load(row["application_resume_object"])
     assert (
         stored_aro["professional_experience"]["jobs"][0]["bullet_points"][0]["text"]
+        == "Built Python automation for platform reliability."
+    )
+    v2_aro = yaml.safe_load(variant["application_resume_object"])
+    assert (
+        v2_aro["professional_experience"]["jobs"][0]["bullet_points"][0]["text"]
         == "Built Python automation for platform reliability and observability."
     )
+    assert row["selected_resume_variant"] == "v1"
     assert row["resume_content"]
     assert row["ats_score"] is not None
+    assert variant["resume_content"]
+    assert variant["ats_score"] is not None
 
 
 class _FakeLlm:

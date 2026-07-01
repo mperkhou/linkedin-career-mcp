@@ -60,16 +60,23 @@ def test_refine_draft_resumes_make_target_uses_glm_second_pass_model() -> None:
     output = _make_dry_run(
         "refine-draft-resumes",
         "JOB_IDS=url-123",
-        "SECOND_PASS_APPLY=1",
     )
 
     assert "linkedin-career-refine-resume" in output
-    assert '--job-id "$job_id"' in output
+    assert 'job_args="$job_args --job-id $job_id"' in output
     assert '--master-resume "profile/MASTER-RESUME.yml"' in output
     assert '--api-model "z-ai/glm-5.2"' in output
-    assert 'apply_arg="--apply"' in output
-    assert "$apply_arg" in output
+    assert '--api-timeout-seconds "120"' in output
     assert "for job_id in url-123" in output
+
+
+def test_refine_draft_resumes_make_target_defaults_to_all_active() -> None:
+    output = _make_dry_run("refine-draft-resumes")
+
+    assert "linkedin-career-refine-resume" in output
+    assert 'job_args="--all-active"' in output
+    assert '--api-model "z-ai/glm-5.2"' in output
+    assert '--api-timeout-seconds "120"' in output
 
 
 def test_highlight_draft_resumes_make_target_uses_codex_workflow() -> None:

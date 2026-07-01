@@ -86,10 +86,21 @@ def test_connect_database_migrates_job_description_columns(tmp_path: Path):
     assert "ats_semantic_score" in columns
     assert "ats_formatting_risk" in columns
     assert "ats_missing_terms" in columns
+    assert "selected_resume_variant" in columns
+    with webapp.connect_database(database_path) as connection:
+        variant_table = connection.execute(
+            """
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'table'
+              AND name = 'application_resume_variants'
+            """
+        ).fetchone()
+    assert variant_table is not None
     with webapp.connect_database(database_path) as connection:
         row = connection.execute(
             """
-            SELECT date_matched, date_posted, archived_at
+            SELECT date_matched, date_posted, archived_at, selected_resume_variant
             FROM applications
             WHERE job_id = '123'
             """
@@ -97,6 +108,7 @@ def test_connect_database_migrates_job_description_columns(tmp_path: Path):
     assert row["date_matched"] == "2026-06-08T10:00:00+00:00"
     assert row["date_posted"] is None
     assert row["archived_at"] is None
+    assert row["selected_resume_variant"] == "v1"
 
 
 def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypatch):
@@ -606,9 +618,18 @@ def test_store_application_resume_first_draft_updates_tracker_row(tmp_path: Path
             """
             SELECT application_resume_object, resume_html_filename, resume_html_content,
                    resume_html_mime_type, resume_filename, resume_content,
-                   source_resume_path, ats_score, ats_missing_terms
+                   source_resume_path, ats_score, ats_missing_terms,
+                   selected_resume_variant
             FROM applications
             WHERE job_id = '123'
+            """
+        ).fetchone()
+        v1_variant = connection.execute(
+            """
+            SELECT application_resume_object, resume_html_filename, resume_html_content,
+                   resume_filename, resume_content, ats_score
+            FROM application_resume_variants
+            WHERE job_id = '123' AND variant_key = 'v1'
             """
         ).fetchone()
     assert row["application_resume_object"] == "schema_version: test\n"
@@ -620,6 +641,13 @@ def test_store_application_resume_first_draft_updates_tracker_row(tmp_path: Path
     assert row["source_resume_path"] == ""
     assert row["ats_score"] is not None
     assert row["ats_missing_terms"] is not None
+    assert row["selected_resume_variant"] == "v1"
+    assert v1_variant["application_resume_object"] == row["application_resume_object"]
+    assert v1_variant["resume_html_filename"] == row["resume_html_filename"]
+    assert v1_variant["resume_html_content"] == row["resume_html_content"]
+    assert v1_variant["resume_filename"] == row["resume_filename"]
+    assert v1_variant["resume_content"] == row["resume_content"]
+    assert v1_variant["ats_score"] == row["ats_score"]
 
     app = create_app(database_path=database_path, output_dir=tmp_path / "output")
     client = app.test_client()
@@ -629,6 +657,46 @@ def test_store_application_resume_first_draft_updates_tracker_row(tmp_path: Path
     assert html_response.mimetype == "text/html"
     index = client.get("/")
     assert b'href="/resume-html/123"' in index.data
+
+
+def test_connect_database_backfills_v1_resume_variant_for_existing_aro(tmp_path: Path):
+    database_path = tmp_path / "applications.sqlite3"
+    webapp.upsert_application_artifact(
+        database_path=database_path,
+        job_id="123",
+        company="Example Co",
+        job_title="Senior Engineer",
+        linkedin_url="https://www.linkedin.com/jobs/view/123",
+        resume_path=None,
+        job_description="Requires Python, AWS, APIs, and observability.",
+        prompt_job_description="Requires Python, AWS, APIs, and observability.",
+    )
+    webapp.store_application_resume_first_draft(
+        database_path=database_path,
+        job_id="123",
+        application_resume_object="schema_version: test\n",
+        resume_html="<html><body><h1>First Draft Resume</h1></body></html>",
+        resume_pdf=_pdf_bytes("Python AWS APIs observability"),
+    )
+    with sqlite3.connect(database_path) as connection:
+        connection.execute("DROP TABLE application_resume_variants")
+        connection.commit()
+
+    with webapp.connect_database(database_path) as connection:
+        variant = connection.execute(
+            """
+            SELECT variant_key, application_resume_object, resume_html_content,
+                   resume_content, ats_score
+            FROM application_resume_variants
+            WHERE job_id = '123' AND variant_key = 'v1'
+            """
+        ).fetchone()
+
+    assert variant is not None
+    assert variant["application_resume_object"] == "schema_version: test\n"
+    assert "First Draft Resume" in variant["resume_html_content"]
+    assert variant["resume_content"] is not None
+    assert variant["ats_score"] is not None
 
 
 def test_application_seed_update_preserves_first_draft_resume_when_aro_exists(

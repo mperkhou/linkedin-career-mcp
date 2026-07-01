@@ -366,10 +366,49 @@ def parse_second_pass_resume_critique_response(response_text: str) -> SecondPass
     except json.JSONDecodeError as exc:
         raise ResumeRefinementError(f"Second-pass critique returned invalid JSON: {exc}") from exc
 
+    payload = _normalize_second_pass_critique_payload(payload)
     try:
         return SecondPassResumeCritique.model_validate(payload)
     except ValueError as exc:
         raise ResumeRefinementError(f"Second-pass critique did not match schema: {exc}") from exc
+
+
+def _normalize_second_pass_critique_payload(payload: object) -> object:
+    if not isinstance(payload, dict):
+        return payload
+    changes = payload.get("proposed_changes")
+    if not isinstance(changes, list):
+        return payload
+    section_aliases = {
+        "summary": "professional_summary",
+        "professional-summary": "professional_summary",
+        "professional summary": "professional_summary",
+        "skills": "core_technical_skills",
+        "core skills": "core_technical_skills",
+        "technical skills": "core_technical_skills",
+        "core_technical_skill": "core_technical_skills",
+        "experience": "professional_experience",
+        "professional experience": "professional_experience",
+    }
+    change_type_aliases = {
+        "add_skill": "emphasize_supported_term",
+        "add_supported_skill": "emphasize_supported_term",
+        "add_supported_alias": "emphasize_supported_term",
+        "rewrite_skills": "reorder_skills",
+    }
+    for change in changes:
+        if not isinstance(change, dict):
+            continue
+        change_type = str(change.get("change_type") or "").strip().casefold()
+        if change_type in change_type_aliases:
+            change["change_type"] = change_type_aliases[change_type]
+        target = change.get("target")
+        if not isinstance(target, dict):
+            continue
+        section = str(target.get("section") or "").strip().casefold().replace("_", " ")
+        if section in section_aliases:
+            target["section"] = section_aliases[section]
+    return payload
 
 
 def assess_second_pass_critique_support(

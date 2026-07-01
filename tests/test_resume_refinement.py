@@ -203,6 +203,48 @@ def test_parse_second_pass_critique_response_accepts_fenced_json():
     assert critique.proposed_changes == []
 
 
+def test_parse_second_pass_critique_response_normalizes_common_model_aliases():
+    critique = parse_second_pass_resume_critique_response(
+        json.dumps(
+            {
+                "schema_version": SECOND_PASS_RESUME_CRITIQUE_SCHEMA_VERSION,
+                "proposed_changes": [
+                    {
+                        "change_id": "summary-1",
+                        "change_type": "rewrite_summary",
+                        "target": {
+                            "section": "summary",
+                            "field": "paragraph",
+                        },
+                        "current_text": "Old summary.",
+                        "proposed_text": "New summary.",
+                        "rationale": "Aligns the summary.",
+                        "evidence_refs": ["mro:summary"],
+                        "unsupported_claims": [],
+                    },
+                    {
+                        "change_id": "skills-1",
+                        "change_type": "add_skill",
+                        "target": {
+                            "section": "skills",
+                            "field": "items",
+                        },
+                        "current_text": "Python",
+                        "proposed_text": "Python, observability",
+                        "rationale": "Uses supported evidence.",
+                        "evidence_refs": ["mro:skills:1"],
+                        "unsupported_claims": [],
+                    },
+                ],
+            }
+        )
+    )
+
+    assert critique.proposed_changes[0].target.section == "professional_summary"
+    assert critique.proposed_changes[1].target.section == "core_technical_skills"
+    assert critique.proposed_changes[1].change_type == "emphasize_supported_term"
+
+
 def test_external_critique_classification_handles_nscale_lts_mismatch(
     tmp_path: Path,
 ):
