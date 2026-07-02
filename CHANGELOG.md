@@ -23,8 +23,8 @@
   pass variant from v1, v2, critique/validation output, ATS diagnostics, JOD
   text, prompt JOD text, and master-resume evidence.
 * Add a tracker Add-popup seeding workflow that runs `make seed-jobs` with a
-  selected job count, then chains selected v1, v2, Codex manual pass, and Codex
-  highlighting steps for the newly seeded rows.
+  selected job count and posting age window, then chains selected v1, v2, Codex
+  manual pass, and Codex highlighting steps for the newly seeded rows.
 * Document the second-pass variant workflow, evidence rules, manual critique
   ingestion, ATS diagnostics, and migration notes in the README and 4.0.0
   release notes.

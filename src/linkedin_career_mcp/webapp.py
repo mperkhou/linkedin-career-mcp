@@ -112,6 +112,12 @@ MAX_ACTION_RUNS = 8
 MAX_ACTION_MESSAGES = 160
 DEFAULT_SEED_MAX_JOBS = 5
 MAX_SEED_JOBS_FROM_UI = 50
+DEFAULT_SEED_DATE_POSTED = "past_week"
+SEED_DATE_POSTED_OPTIONS = (
+    ("past_24_hours", "Last 24 hours"),
+    ("past_week", "Past week"),
+    ("past_month", "Past month"),
+)
 
 
 @dataclass(frozen=True)
@@ -1973,6 +1979,7 @@ def start_background_action(
 def start_seed_background_action(
     *,
     max_jobs: int,
+    date_posted: str,
     run_v1: bool,
     run_v2: bool,
     run_manual: bool,
@@ -1982,6 +1989,7 @@ def start_seed_background_action(
     run = _create_background_action_run(
         title=_seed_background_action_title(
             max_jobs=max_jobs,
+            date_posted=date_posted,
             run_v1=run_v1,
             run_v2=run_v2,
             run_manual=run_manual,
@@ -1994,6 +2002,7 @@ def start_seed_background_action(
         kwargs={
             "run_id": run.run_id,
             "max_jobs": max_jobs,
+            "date_posted": date_posted,
             "run_v1": run_v1,
             "run_v2": run_v2,
             "run_manual": run_manual,
@@ -2127,6 +2136,7 @@ def _run_seed_workflow_action(
     *,
     run_id: str,
     max_jobs: int,
+    date_posted: str,
     run_v1: bool,
     run_v2: bool,
     run_manual: bool,
@@ -2135,7 +2145,7 @@ def _run_seed_workflow_action(
     try:
         seed_output = _run_make_command(
             run_id=run_id,
-            command=_seed_make_command(max_jobs=max_jobs),
+            command=_seed_make_command(max_jobs=max_jobs, date_posted=date_posted),
             output_stream_error="seed command did not provide an output stream",
             failure_label="seed command",
             completion_message="Seed command completed.",
@@ -2234,10 +2244,12 @@ def _highlight_make_command(*, job_ids: list[str]) -> list[str]:
     return ["make", "highlight-draft-resumes", f"JOB_IDS={' '.join(job_ids)}"]
 
 
-def _seed_make_command(*, max_jobs: int) -> list[str]:
+def _seed_make_command(*, max_jobs: int, date_posted: str) -> list[str]:
     if max_jobs < 1:
         raise ValueError("Seed job count must be at least 1.")
-    return ["make", "seed-jobs", f"MAX_JOBS={max_jobs}"]
+    if date_posted not in _seed_date_posted_values():
+        raise ValueError(f"Unsupported seed date posted filter: {date_posted}")
+    return ["make", "seed-jobs", f"MAX_JOBS={max_jobs}", f"DATE_POSTED={date_posted}"]
 
 
 def _extract_seeded_job_ids(output: str) -> list[str]:
@@ -2314,12 +2326,16 @@ def _background_action_title(
 def _seed_background_action_title(
     *,
     max_jobs: int,
+    date_posted: str,
     run_v1: bool,
     run_v2: bool,
     run_manual: bool,
     run_highlight: bool,
 ) -> str:
-    parts = [f"seed up to {max_jobs} job(s)"]
+    parts = [
+        f"seed up to {max_jobs} job(s)",
+        _seed_date_posted_label(date_posted).lower(),
+    ]
     if run_v1:
         parts.append("v1 draft")
     if run_v2:
@@ -2339,6 +2355,21 @@ def _parse_seed_max_jobs(value: Any) -> int:
     if max_jobs < 1 or max_jobs > MAX_SEED_JOBS_FROM_UI:
         raise ValueError(f"Seed job count must be between 1 and {MAX_SEED_JOBS_FROM_UI}.")
     return max_jobs
+
+
+def _parse_seed_date_posted(value: Any) -> str:
+    date_posted = str(value or DEFAULT_SEED_DATE_POSTED).strip()
+    if date_posted not in _seed_date_posted_values():
+        raise ValueError("Choose a valid posting date window.")
+    return date_posted
+
+
+def _seed_date_posted_values() -> set[str]:
+    return {value for value, _ in SEED_DATE_POSTED_OPTIONS}
+
+
+def _seed_date_posted_label(value: str) -> str:
+    return dict(SEED_DATE_POSTED_OPTIONS).get(value, value)
 
 
 def _seed_workflow_validation_error(
@@ -2448,12 +2479,15 @@ def create_app(
             return_to=_safe_index_return_path(request.args.get("return_to")),
             default_seed_max_jobs=DEFAULT_SEED_MAX_JOBS,
             max_seed_jobs=MAX_SEED_JOBS_FROM_UI,
+            seed_date_posted_options=SEED_DATE_POSTED_OPTIONS,
+            default_seed_date_posted=DEFAULT_SEED_DATE_POSTED,
         )
 
     @app.post("/applications/add/seed")
     def add_seeded_applications():
         try:
             max_jobs = _parse_seed_max_jobs(request.form.get("max_jobs"))
+            date_posted = _parse_seed_date_posted(request.form.get("date_posted"))
         except ValueError as exc:
             flash(f"Seed workflow failed: {exc}")
             return redirect(_add_application_return_path(request.form.get("return_to")))
@@ -2474,6 +2508,7 @@ def create_app(
 
         run = start_seed_background_action(
             max_jobs=max_jobs,
+            date_posted=date_posted,
             run_v1=run_v1,
             run_v2=run_v2,
             run_manual=run_manual,
@@ -5529,6 +5564,20 @@ ADD_APPLICATION_TEMPLATE = """
           required
         >
       </label>
+      <fieldset>
+        <legend>Posted</legend>
+        {% for value, label in seed_date_posted_options %}
+          <label class="option-row">
+            <input
+              type="radio"
+              name="date_posted"
+              value="{{ value }}"
+              {% if value == default_seed_date_posted %}checked{% endif %}
+            >
+            <span>{{ label }}</span>
+          </label>
+        {% endfor %}
+      </fieldset>
       <fieldset>
         <legend>Workflow</legend>
         <label class="option-row">

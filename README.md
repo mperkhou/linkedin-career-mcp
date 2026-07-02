@@ -244,9 +244,10 @@ Seed new LinkedIn rows into the database:
 make seed-jobs MAX_JOBS=5
 ```
 
-The tracker Add popup also has a seed widget. Set the job count, then choose
-which steps to run for the newly seeded rows: v1 draft generation, v2
-refinement, Codex manual pass, and Codex highlighting.
+The tracker Add popup also has a seed widget. Set the job count and posting age
+window (last 24 hours, past week, or past month), then choose which steps to run
+for the newly seeded rows: v1 draft generation, v2 refinement, Codex manual
+pass, and Codex highlighting.
 
 Generate or regenerate the main resume workflow for stored jobs. This writes
 the first draft as `v1`, then runs GLM 5.2 refinement and stores `v2` without

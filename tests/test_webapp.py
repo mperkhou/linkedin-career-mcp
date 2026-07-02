@@ -604,13 +604,19 @@ def test_regenerate_make_command_maps_modes_to_make_targets():
 
 
 def test_seed_make_command_and_output_parsing():
-    assert webapp._seed_make_command(max_jobs=5) == [  # noqa: SLF001
+    assert webapp._seed_make_command(  # noqa: SLF001
+        max_jobs=5,
+        date_posted="past_week",
+    ) == [
         "make",
         "seed-jobs",
         "MAX_JOBS=5",
+        "DATE_POSTED=past_week",
     ]
     with pytest.raises(ValueError, match="at least 1"):
-        webapp._seed_make_command(max_jobs=0)  # noqa: SLF001
+        webapp._seed_make_command(max_jobs=0, date_posted="past_week")  # noqa: SLF001
+    with pytest.raises(ValueError, match="Unsupported seed date posted filter"):
+        webapp._seed_make_command(max_jobs=5, date_posted="yesterday")  # noqa: SLF001
 
     output = """
     LLM: planner=z-ai/glm-5.2
@@ -1658,6 +1664,7 @@ def test_seed_workflow_runs_selected_make_targets_for_seeded_jobs(monkeypatch):
     webapp._run_seed_workflow_action(  # noqa: SLF001
         run_id=run.run_id,
         max_jobs=3,
+        date_posted="past_month",
         run_v1=True,
         run_v2=True,
         run_manual=True,
@@ -1665,7 +1672,7 @@ def test_seed_workflow_runs_selected_make_targets_for_seeded_jobs(monkeypatch):
     )
 
     assert commands == [
-        ["make", "seed-jobs", "MAX_JOBS=3"],
+        ["make", "seed-jobs", "MAX_JOBS=3", "DATE_POSTED=past_month"],
         [
             "make",
             "regenerate-draft-resumes",
@@ -1697,13 +1704,14 @@ def test_seed_workflow_skips_selected_steps_when_no_jobs_seeded(monkeypatch):
     webapp._run_seed_workflow_action(  # noqa: SLF001
         run_id=run.run_id,
         max_jobs=3,
+        date_posted="past_week",
         run_v1=True,
         run_v2=True,
         run_manual=False,
         run_highlight=False,
     )
 
-    assert commands == [["make", "seed-jobs", "MAX_JOBS=3"]]
+    assert commands == [["make", "seed-jobs", "MAX_JOBS=3", "DATE_POSTED=past_week"]]
     status = webapp.background_action_snapshots()[0]
     assert status["status"] == "completed"
     assert any("no new job IDs" in line for line in status["messages"])
@@ -1738,6 +1746,7 @@ def test_add_application_seed_starts_seed_workflow(tmp_path: Path):
         "/applications/add/seed",
         data={
             "max_jobs": "5",
+            "date_posted": "past_24_hours",
             "run_v1": "1",
             "run_v2": "1",
             "run_manual": "1",
@@ -1752,6 +1761,7 @@ def test_add_application_seed_starts_seed_workflow(tmp_path: Path):
     )
     assert completed.wait(timeout=2)
     assert calls[0]["max_jobs"] == 5
+    assert calls[0]["date_posted"] == "past_24_hours"
     assert calls[0]["run_v1"] is True
     assert calls[0]["run_v2"] is True
     assert calls[0]["run_manual"] is True
@@ -1760,7 +1770,7 @@ def test_add_application_seed_starts_seed_workflow(tmp_path: Path):
     status = client.get("/actions/status").get_json()
     assert status is not None
     assert status["runs"][0]["title"] == (
-        "seed up to 5 job(s) + v1 draft + v2 refinement + "
+        "seed up to 5 job(s) + last 24 hours + v1 draft + v2 refinement + "
         "Codex manual pass + Codex highlight"
     )
 
@@ -1864,6 +1874,17 @@ def test_add_application_loads_linkedin_job_and_starts_regeneration(
     )
     assert 'name="max_jobs"' in add_html
     assert 'value="5"' in add_html
+    assert 'name="date_posted"' in add_html
+    assert 'value="past_24_hours"' in add_html
+    assert 'value="past_week"' in add_html
+    assert 'value="past_month"' in add_html
+    assert "Last 24 hours" in add_html
+    assert "Past week" in add_html
+    assert "Past month" in add_html
+    add_soup = BeautifulSoup(add_html, "html.parser")
+    checked_date = add_soup.find("input", {"name": "date_posted", "checked": True})
+    assert checked_date is not None
+    assert checked_date["value"] == "past_week"
     assert 'name="run_v1" value="1" checked' in add_html
     assert 'name="run_v2" value="1" checked' in add_html
     assert 'name="run_manual" value="1"' in add_html
