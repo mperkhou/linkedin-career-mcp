@@ -403,6 +403,12 @@ def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypat
     assert update_response.status_code == 302
     refreshed_index = client.get("/")
     assert b'N/A: 1' in refreshed_index.data
+    not_applicable_row = BeautifulSoup(
+        refreshed_index.data.decode(),
+        "html.parser",
+    ).select_one('tbody tr[data-status="N/A"]')
+    assert not_applicable_row is not None
+    assert "is-not-applicable" in not_applicable_row.get("class", [])
 
     interview_response = client.post(
         "/applications/123",
@@ -420,6 +426,12 @@ def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypat
     interview_index = client.get("/")
     assert b"Interview: 1" in interview_index.data
     assert b'data-status="Accepted for interview"' in interview_index.data
+    interview_row = BeautifulSoup(
+        interview_index.data.decode(),
+        "html.parser",
+    ).select_one('tbody tr[data-status="Accepted for interview"]')
+    assert interview_row is not None
+    assert "is-interview" in interview_row.get("class", [])
 
     rejected_response = client.post(
         "/applications/123",
@@ -635,6 +647,16 @@ def test_seed_make_command_and_output_parsing():
         "4432384894",
     ]
     assert webapp._extract_seeded_job_ids("no json here") == []  # noqa: SLF001
+
+
+def test_application_status_row_class_maps_shaded_statuses():
+    assert webapp._application_status_row_class("Yes") == "is-applied"  # noqa: SLF001
+    assert (  # noqa: SLF001
+        webapp._application_status_row_class("Accepted for interview")
+        == "is-interview"
+    )
+    assert webapp._application_status_row_class("N/A") == "is-not-applicable"  # noqa: SLF001
+    assert webapp._application_status_row_class("Rejected") == ""  # noqa: SLF001
 
 
 def test_store_application_resume_first_draft_updates_tracker_row(tmp_path: Path):

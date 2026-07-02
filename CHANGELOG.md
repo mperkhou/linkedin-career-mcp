@@ -25,6 +25,8 @@
 * Add a tracker Add-popup seeding workflow that runs `make seed-jobs` with a
   selected job count and posting age window, then chains selected v1, v2, Codex
   manual pass, and Codex highlighting steps for the newly seeded rows.
+* Shade tracker rows for `Accepted for interview` and `N/A` statuses while
+  preserving the existing applied-row green treatment.
 * Document the second-pass variant workflow, evidence rules, manual critique
   ingestion, ATS diagnostics, and migration notes in the README and 4.0.0
   release notes.

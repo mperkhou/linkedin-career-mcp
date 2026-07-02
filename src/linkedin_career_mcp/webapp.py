@@ -2417,6 +2417,7 @@ def create_app(
     app.jinja_env.globals["job_bulk_bullet_text"] = _job_bulk_bullet_text
     app.jinja_env.globals["resume_variant_label"] = _resume_variant_label
     app.jinja_env.globals["resume_variant_badge_class"] = _resume_variant_badge_class
+    app.jinja_env.globals["application_status_row_class"] = _application_status_row_class
 
     def redirect_to_index_state():
         return redirect(_safe_index_return_path(request.values.get("return_to")))
@@ -3529,6 +3530,14 @@ def _normalize_applied_to(value: Any) -> str:
     return text if text in APPLICATION_STATUSES else "No"
 
 
+def _application_status_row_class(value: Any) -> str:
+    return {
+        "Yes": "is-applied",
+        "Accepted for interview": "is-interview",
+        "N/A": "is-not-applicable",
+    }.get(str(value or ""), "")
+
+
 def _view_state_from_args(args: Any) -> dict[str, str]:
     status = str(args.get("status") or "all").strip()
     if status not in APPLICATION_STATUS_FILTERS:
@@ -4086,6 +4095,8 @@ INDEX_TEMPLATE = """
       z-index: 1;
     }
     tr.is-applied { background: #f3faf8; }
+    tr.is-interview { background: #fff8d7; }
+    tr.is-not-applicable { background: #f3f4f6; }
     .select-col { width: 42px; text-align: center; }
     .company { min-width: 160px; font-weight: 650; }
     .job { min-width: 260px; }
@@ -4514,7 +4525,7 @@ INDEX_TEMPLATE = """
               {{ row.company }} {{ row.job_title }} {{ row.job_id }}
               {{ row.experience_level or '' }}
             {% endset %}
-            <tr class="{{ 'is-applied' if row.applied_to == 'Yes' else '' }}"
+            <tr class="{{ application_status_row_class(row.applied_to) }}"
                 data-status="{{ row.applied_to }}"
                 data-company-sort="{{ row.company }}"
                 data-matched-sort="{{ row.date_matched or '' }}"
