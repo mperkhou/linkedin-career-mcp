@@ -603,6 +603,34 @@ def test_regenerate_make_command_maps_modes_to_make_targets():
         )
 
 
+def test_seed_make_command_and_output_parsing():
+    assert webapp._seed_make_command(max_jobs=5) == [  # noqa: SLF001
+        "make",
+        "seed-jobs",
+        "MAX_JOBS=5",
+    ]
+    with pytest.raises(ValueError, match="at least 1"):
+        webapp._seed_make_command(max_jobs=0)  # noqa: SLF001
+
+    output = """
+    LLM: planner=z-ai/glm-5.2
+    {
+      "jobs_seeded": 2,
+      "seeded_applications": [
+        {"job_id": "4436138555", "company": "Intuitive"},
+        {"job_id": "4432384894", "company": "Matlen Silver"},
+        {"job_id": "4436138555", "company": "Duplicate"}
+      ]
+    }
+    """
+
+    assert webapp._extract_seeded_job_ids(output) == [  # noqa: SLF001
+        "4436138555",
+        "4432384894",
+    ]
+    assert webapp._extract_seeded_job_ids("no json here") == []  # noqa: SLF001
+
+
 def test_store_application_resume_first_draft_updates_tracker_row(tmp_path: Path):
     database_path = tmp_path / "applications.sqlite3"
     webapp.upsert_application_artifact(
@@ -1603,6 +1631,170 @@ def test_background_action_runs_only_requested_new_workflow(
     assert calls == [("regenerate", "manual_pass")]
 
 
+def test_seed_workflow_runs_selected_make_targets_for_seeded_jobs(monkeypatch):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    commands: list[list[str]] = []
+
+    def fake_run_make_command(**kwargs):
+        command = kwargs["command"]
+        commands.append(command)
+        if command[:2] == ["make", "seed-jobs"]:
+            return """
+            {
+              "jobs_seeded": 2,
+              "seeded_applications": [
+                {"job_id": "url-123"},
+                {"job_id": "url-456"}
+              ]
+            }
+            """
+        return ""
+
+    monkeypatch.setattr(webapp, "_run_make_command", fake_run_make_command)
+
+    run = webapp._create_background_action_run(title="seed workflow")  # noqa: SLF001
+    webapp._run_seed_workflow_action(  # noqa: SLF001
+        run_id=run.run_id,
+        max_jobs=3,
+        run_v1=True,
+        run_v2=True,
+        run_manual=True,
+        run_highlight=True,
+    )
+
+    assert commands == [
+        ["make", "seed-jobs", "MAX_JOBS=3"],
+        [
+            "make",
+            "regenerate-draft-resumes",
+            "JOB_IDS=url-123 url-456",
+            "FIRST_DRAFT_FORCE=1",
+        ],
+        ["make", "refine-draft-resumes", "JOB_IDS=url-123 url-456"],
+        ["make", "manual-pass-resumes", "JOB_IDS=url-123 url-456"],
+        ["make", "highlight-draft-resumes", "JOB_IDS=url-123 url-456"],
+    ]
+    status = webapp.background_action_snapshots()[0]
+    assert status["status"] == "completed"
+    assert any("Seeded job IDs: url-123 url-456" in line for line in status["messages"])
+
+
+def test_seed_workflow_skips_selected_steps_when_no_jobs_seeded(monkeypatch):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    commands: list[list[str]] = []
+
+    def fake_run_make_command(**kwargs):
+        commands.append(kwargs["command"])
+        return '{"jobs_seeded": 0, "seeded_applications": []}'
+
+    monkeypatch.setattr(webapp, "_run_make_command", fake_run_make_command)
+
+    run = webapp._create_background_action_run(title="seed workflow")  # noqa: SLF001
+    webapp._run_seed_workflow_action(  # noqa: SLF001
+        run_id=run.run_id,
+        max_jobs=3,
+        run_v1=True,
+        run_v2=True,
+        run_manual=False,
+        run_highlight=False,
+    )
+
+    assert commands == [["make", "seed-jobs", "MAX_JOBS=3"]]
+    status = webapp.background_action_snapshots()[0]
+    assert status["status"] == "completed"
+    assert any("no new job IDs" in line for line in status["messages"])
+
+
+def test_add_application_seed_starts_seed_workflow(tmp_path: Path):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    calls = []
+    completed = threading.Event()
+
+    def runner(**kwargs):
+        calls.append(kwargs)
+        webapp._finish_background_action_run(  # noqa: SLF001
+            kwargs["run_id"],
+            status="completed",
+            return_code=0,
+        )
+        completed.set()
+
+    output_dir = tmp_path / "output"
+    database_path = output_dir / "tracking/applications.sqlite3"
+    app = create_app(
+        database_path=database_path,
+        output_dir=output_dir,
+        background_action_runner=runner,
+    )
+    client = app.test_client()
+
+    response = client.post(
+        "/applications/add/seed",
+        data={
+            "max_jobs": "5",
+            "run_v1": "1",
+            "run_v2": "1",
+            "run_manual": "1",
+            "run_highlight": "1",
+            "return_to": "/?q=Platform",
+        },
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == (
+        "/applications/add?return_to=%2F%3Fq%3DPlatform"
+    )
+    assert completed.wait(timeout=2)
+    assert calls[0]["max_jobs"] == 5
+    assert calls[0]["run_v1"] is True
+    assert calls[0]["run_v2"] is True
+    assert calls[0]["run_manual"] is True
+    assert calls[0]["run_highlight"] is True
+
+    status = client.get("/actions/status").get_json()
+    assert status is not None
+    assert status["runs"][0]["title"] == (
+        "seed up to 5 job(s) + v1 draft + v2 refinement + "
+        "Codex manual pass + Codex highlight"
+    )
+
+
+def test_add_application_seed_rejects_invalid_dependencies(tmp_path: Path):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    calls = []
+
+    def runner(**kwargs):
+        calls.append(kwargs)
+
+    output_dir = tmp_path / "output"
+    database_path = output_dir / "tracking/applications.sqlite3"
+    app = create_app(
+        database_path=database_path,
+        output_dir=output_dir,
+        background_action_runner=runner,
+    )
+    client = app.test_client()
+
+    response = client.post(
+        "/applications/add/seed",
+        data={"max_jobs": "5", "run_v2": "1", "return_to": "/?q=Platform"},
+    )
+
+    assert response.status_code == 302
+    assert calls == []
+    status = client.get("/actions/status").get_json()
+    assert status is not None
+    assert status["runs"] == []
+
+
 def test_add_application_loads_linkedin_job_and_starts_regeneration(
     tmp_path: Path,
     monkeypatch,
@@ -1661,10 +1853,21 @@ def test_add_application_loads_linkedin_job_and_starts_regeneration(
     add_page = client.get("/applications/add?return_to=/?q=Platform")
     add_html = add_page.data.decode()
     assert add_page.status_code == 200
+    assert "Seed jobs" in add_html
     assert "LinkedIn URL" in add_html
     assert "Other" in add_html
+    assert 'action="/applications/add/seed"' in add_html
     assert 'action="/applications/add/linkedin"' in add_html
     assert 'action="/applications/add/other"' in add_html
+    assert add_html.index('action="/applications/add/seed"') < add_html.index(
+        'action="/applications/add/linkedin"'
+    )
+    assert 'name="max_jobs"' in add_html
+    assert 'value="5"' in add_html
+    assert 'name="run_v1" value="1" checked' in add_html
+    assert 'name="run_v2" value="1" checked' in add_html
+    assert 'name="run_manual" value="1"' in add_html
+    assert 'name="run_highlight" value="1"' in add_html
     assert 'name="other_url"' in add_html
     assert "Run Codex bullet highlighting after resume generation" in add_html
     assert 'name="highlight_with_codex" value="1" checked' in add_html

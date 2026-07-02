@@ -110,6 +110,8 @@ COVER_LETTER_BODY_LEADING = 11.5
 COVER_LETTER_PARAGRAPH_SPACE_AFTER = 7
 MAX_ACTION_RUNS = 8
 MAX_ACTION_MESSAGES = 160
+DEFAULT_SEED_MAX_JOBS = 5
+MAX_SEED_JOBS_FROM_UI = 50
 
 
 @dataclass(frozen=True)
@@ -1968,6 +1970,41 @@ def start_background_action(
     return run
 
 
+def start_seed_background_action(
+    *,
+    max_jobs: int,
+    run_v1: bool,
+    run_v2: bool,
+    run_manual: bool,
+    run_highlight: bool,
+    runner: BackgroundActionRunner | None = None,
+) -> BackgroundActionRun:
+    run = _create_background_action_run(
+        title=_seed_background_action_title(
+            max_jobs=max_jobs,
+            run_v1=run_v1,
+            run_v2=run_v2,
+            run_manual=run_manual,
+            run_highlight=run_highlight,
+        )
+    )
+    target = runner or _run_seed_workflow_action
+    thread = threading.Thread(
+        target=target,
+        kwargs={
+            "run_id": run.run_id,
+            "max_jobs": max_jobs,
+            "run_v1": run_v1,
+            "run_v2": run_v2,
+            "run_manual": run_manual,
+            "run_highlight": run_highlight,
+        },
+        daemon=True,
+    )
+    thread.start()
+    return run
+
+
 def background_action_snapshots() -> list[dict[str, object]]:
     with _ACTION_RUN_LOCK:
         runs = sorted(
@@ -2066,27 +2103,96 @@ def _run_regenerate_action(
     job_ids: list[str],
 ) -> None:
     command = _regenerate_make_command(regenerate_mode=regenerate_mode, job_ids=job_ids)
-    _append_background_action_message(run_id, f"Running {' '.join(command)}")
-    process = subprocess.Popen(  # noqa: S603
-        command,
-        cwd=_project_root(),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
+    _run_make_command(
+        run_id=run_id,
+        command=command,
+        output_stream_error="regeneration command did not provide an output stream",
+        failure_label="regeneration command",
+        completion_message="Regeneration command completed.",
     )
-    if process.stdout is None:
-        raise RuntimeError("regeneration command did not provide an output stream")
-    for line in process.stdout:
-        _append_background_action_message(run_id, line)
-    return_code = process.wait()
-    if return_code != 0:
-        raise RuntimeError(f"regeneration command exited with status {return_code}")
-    _append_background_action_message(run_id, "Regeneration command completed.")
 
 
 def _run_highlight_action(*, run_id: str, job_ids: list[str]) -> None:
     command = _highlight_make_command(job_ids=job_ids)
+    _run_make_command(
+        run_id=run_id,
+        command=command,
+        output_stream_error="Codex highlighting command did not provide an output stream",
+        failure_label="Codex highlighting command",
+        completion_message="Codex highlighting command completed.",
+    )
+
+
+def _run_seed_workflow_action(
+    *,
+    run_id: str,
+    max_jobs: int,
+    run_v1: bool,
+    run_v2: bool,
+    run_manual: bool,
+    run_highlight: bool,
+) -> None:
+    try:
+        seed_output = _run_make_command(
+            run_id=run_id,
+            command=_seed_make_command(max_jobs=max_jobs),
+            output_stream_error="seed command did not provide an output stream",
+            failure_label="seed command",
+            completion_message="Seed command completed.",
+            collect_output=True,
+        )
+        job_ids = _extract_seeded_job_ids(seed_output)
+        if not job_ids:
+            _append_background_action_message(
+                run_id,
+                "Seed command returned no new job IDs; skipping selected workflow steps.",
+            )
+        elif run_v1 or run_v2 or run_manual or run_highlight:
+            _append_background_action_message(
+                run_id,
+                f"Seeded job IDs: {' '.join(job_ids)}",
+            )
+            if run_v1:
+                _run_regenerate_action(
+                    run_id=run_id,
+                    regenerate_mode="draft_resumes",
+                    job_ids=job_ids,
+                )
+            if run_v2:
+                _run_regenerate_action(
+                    run_id=run_id,
+                    regenerate_mode="refine_drafts",
+                    job_ids=job_ids,
+                )
+            if run_manual:
+                _run_regenerate_action(
+                    run_id=run_id,
+                    regenerate_mode="manual_pass",
+                    job_ids=job_ids,
+                )
+            if run_highlight:
+                _run_highlight_action(run_id=run_id, job_ids=job_ids)
+        else:
+            _append_background_action_message(
+                run_id,
+                "Seed-only workflow selected; no resume actions requested.",
+            )
+        _append_background_action_message(run_id, "Seed workflow completed.")
+        _finish_background_action_run(run_id, status="completed", return_code=0)
+    except Exception as exc:
+        _append_background_action_message(run_id, f"Seed workflow failed: {exc}")
+        _finish_background_action_run(run_id, status="failed", return_code=1)
+
+
+def _run_make_command(
+    *,
+    run_id: str,
+    command: list[str],
+    output_stream_error: str,
+    failure_label: str,
+    completion_message: str,
+    collect_output: bool = False,
+) -> str:
     _append_background_action_message(run_id, f"Running {' '.join(command)}")
     process = subprocess.Popen(  # noqa: S603
         command,
@@ -2097,13 +2203,17 @@ def _run_highlight_action(*, run_id: str, job_ids: list[str]) -> None:
         bufsize=1,
     )
     if process.stdout is None:
-        raise RuntimeError("Codex highlighting command did not provide an output stream")
+        raise RuntimeError(output_stream_error)
+    collected_output: list[str] = []
     for line in process.stdout:
+        if collect_output:
+            collected_output.append(line)
         _append_background_action_message(run_id, line)
     return_code = process.wait()
     if return_code != 0:
-        raise RuntimeError(f"Codex highlighting command exited with status {return_code}")
-    _append_background_action_message(run_id, "Codex highlighting command completed.")
+        raise RuntimeError(f"{failure_label} exited with status {return_code}")
+    _append_background_action_message(run_id, completion_message)
+    return "".join(collected_output)
 
 
 def _regenerate_make_command(*, regenerate_mode: str, job_ids: list[str]) -> list[str]:
@@ -2122,6 +2232,41 @@ def _highlight_make_command(*, job_ids: list[str]) -> list[str]:
     if not job_ids:
         raise ValueError("At least one job id is required for Codex highlighting.")
     return ["make", "highlight-draft-resumes", f"JOB_IDS={' '.join(job_ids)}"]
+
+
+def _seed_make_command(*, max_jobs: int) -> list[str]:
+    if max_jobs < 1:
+        raise ValueError("Seed job count must be at least 1.")
+    return ["make", "seed-jobs", f"MAX_JOBS={max_jobs}"]
+
+
+def _extract_seeded_job_ids(output: str) -> list[str]:
+    decoder = json.JSONDecoder()
+    payload: dict[str, Any] | None = None
+    for index, char in enumerate(output):
+        if char != "{":
+            continue
+        try:
+            value, _ = decoder.raw_decode(output[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict) and isinstance(value.get("seeded_applications"), list):
+            payload = value
+
+    if payload is None:
+        return []
+
+    job_ids: list[str] = []
+    seen: set[str] = set()
+    for item in payload["seeded_applications"]:
+        if not isinstance(item, dict):
+            continue
+        job_id = str(item.get("job_id") or "").strip()
+        if not job_id or job_id in seen:
+            continue
+        seen.add(job_id)
+        job_ids.append(job_id)
+    return job_ids
 
 
 def _project_root() -> Path:
@@ -2164,6 +2309,52 @@ def _background_action_title(
     if highlight_with_codex and regenerate_mode != "highlight_drafts":
         parts.append(f"Codex highlight draft resume for {len(job_ids)} job(s)")
     return " + ".join(parts) or "background action"
+
+
+def _seed_background_action_title(
+    *,
+    max_jobs: int,
+    run_v1: bool,
+    run_v2: bool,
+    run_manual: bool,
+    run_highlight: bool,
+) -> str:
+    parts = [f"seed up to {max_jobs} job(s)"]
+    if run_v1:
+        parts.append("v1 draft")
+    if run_v2:
+        parts.append("v2 refinement")
+    if run_manual:
+        parts.append("Codex manual pass")
+    if run_highlight:
+        parts.append("Codex highlight")
+    return " + ".join(parts)
+
+
+def _parse_seed_max_jobs(value: Any) -> int:
+    try:
+        max_jobs = int(str(value or DEFAULT_SEED_MAX_JOBS).strip())
+    except ValueError as exc:
+        raise ValueError("Seed job count must be a whole number.") from exc
+    if max_jobs < 1 or max_jobs > MAX_SEED_JOBS_FROM_UI:
+        raise ValueError(f"Seed job count must be between 1 and {MAX_SEED_JOBS_FROM_UI}.")
+    return max_jobs
+
+
+def _seed_workflow_validation_error(
+    *,
+    run_v1: bool,
+    run_v2: bool,
+    run_manual: bool,
+    run_highlight: bool,
+) -> str | None:
+    if run_v2 and not run_v1:
+        return "Run v1 draft must be selected before v2 refinement."
+    if run_manual and (not run_v1 or not run_v2):
+        return "Run v1 draft and v2 refinement must be selected before manual pass."
+    if run_highlight and not run_v1:
+        return "Run v1 draft must be selected before Codex highlighting."
+    return None
 
 
 def create_app(
@@ -2255,7 +2446,42 @@ def create_app(
         return render_template_string(
             ADD_APPLICATION_TEMPLATE,
             return_to=_safe_index_return_path(request.args.get("return_to")),
+            default_seed_max_jobs=DEFAULT_SEED_MAX_JOBS,
+            max_seed_jobs=MAX_SEED_JOBS_FROM_UI,
         )
+
+    @app.post("/applications/add/seed")
+    def add_seeded_applications():
+        try:
+            max_jobs = _parse_seed_max_jobs(request.form.get("max_jobs"))
+        except ValueError as exc:
+            flash(f"Seed workflow failed: {exc}")
+            return redirect(_add_application_return_path(request.form.get("return_to")))
+
+        run_v1 = bool(request.form.get("run_v1"))
+        run_v2 = bool(request.form.get("run_v2"))
+        run_manual = bool(request.form.get("run_manual"))
+        run_highlight = bool(request.form.get("run_highlight"))
+        validation_error = _seed_workflow_validation_error(
+            run_v1=run_v1,
+            run_v2=run_v2,
+            run_manual=run_manual,
+            run_highlight=run_highlight,
+        )
+        if validation_error:
+            flash(f"Seed workflow failed: {validation_error}")
+            return redirect(_add_application_return_path(request.form.get("return_to")))
+
+        run = start_seed_background_action(
+            max_jobs=max_jobs,
+            run_v1=run_v1,
+            run_v2=run_v2,
+            run_manual=run_manual,
+            run_highlight=run_highlight,
+            runner=background_action_runner,
+        )
+        flash(f"Started seed workflow: {run.title}.")
+        return redirect(_add_application_return_path(request.form.get("return_to")))
 
     @app.post("/applications/add/linkedin")
     def add_linkedin_application():
@@ -5084,7 +5310,7 @@ INDEX_TEMPLATE = """
         window.open(
           url.toString(),
           "add-application",
-          "popup,width=560,height=470,noopener,noreferrer",
+          "popup,width=560,height=650,noopener,noreferrer",
         );
       });
     }
@@ -5190,6 +5416,26 @@ ADD_APPLICATION_TEMPLATE = """
       background: var(--surface);
       border: 1px solid var(--line);
     }
+    form h2 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 750;
+    }
+    fieldset {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      border: 0;
+    }
+    legend {
+      margin: 0 0 2px;
+      padding: 0;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
     label {
       display: grid;
       gap: 5px;
@@ -5208,7 +5454,7 @@ ADD_APPLICATION_TEMPLATE = """
       text-transform: none;
     }
     .option-row input { margin: 0; }
-    input[type="url"] {
+    input[type="url"], input[type="number"] {
       width: 100%;
       border: 1px solid var(--line);
       border-radius: 6px;
@@ -5268,6 +5514,42 @@ ADD_APPLICATION_TEMPLATE = """
         {% endfor %}
       {% endif %}
     {% endwith %}
+
+    <form method="post" action="/applications/add/seed">
+      <input type="hidden" name="return_to" value="{{ return_to }}">
+      <h2>Seed jobs</h2>
+      <label>
+        Jobs
+        <input
+          type="number"
+          name="max_jobs"
+          value="{{ default_seed_max_jobs }}"
+          min="1"
+          max="{{ max_seed_jobs }}"
+          required
+        >
+      </label>
+      <fieldset>
+        <legend>Workflow</legend>
+        <label class="option-row">
+          <input type="checkbox" name="run_v1" value="1" checked>
+          <span>Run v1 draft</span>
+        </label>
+        <label class="option-row">
+          <input type="checkbox" name="run_v2" value="1" checked>
+          <span>Run v2 refinement</span>
+        </label>
+        <label class="option-row">
+          <input type="checkbox" name="run_manual" value="1">
+          <span>Run Codex manual pass</span>
+        </label>
+        <label class="option-row">
+          <input type="checkbox" name="run_highlight" value="1">
+          <span>Run Codex highlighting</span>
+        </label>
+      </fieldset>
+      <button type="submit">Load</button>
+    </form>
 
     <form method="post" action="/applications/add/linkedin">
       <input type="hidden" name="return_to" value="{{ return_to }}">
