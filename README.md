@@ -180,16 +180,51 @@ diagnostics, evidence packet, critique prompt/response, parsed critique,
 accepted/rejected validation report, external critique classification, and model
 metadata.
 
-The GLM 5.2 second pass reads v1, the selected JOD/prompt JOD, ATS diagnostics,
-JOD targets, and MRO/ARO evidence. It may propose supported rewording,
-reordering, emphasis, and supported skill aliases. The validator rejects new
-skills, tools, metrics, employers, compliance claims, or responsibilities that
-are not already supported by the MRO/ARO evidence. ATS missing terms are treated
-as semantic signals for review, not as a reason to stuff unsupported keywords.
+Think of v2 as a critique-and-validation pass, not a free rewrite. The critique
+prompt gives GLM 5.2 the job identity, the current v1 ARO, compact JOD targets,
+MRO source evidence, rendered ARO source evidence, ATS diagnostics, and optional
+external critique suggestions that were already classified as `supported`. The
+prompt asks for small recommendations only, and every recommendation must cite
+evidence refs from that payload.
+
+GLM returns structured JSON rather than edited resume text. A proposed change
+looks like this:
+
+```json
+{
+  "change_id": "supported-rest-alias",
+  "change_type": "rewrite_bullet",
+  "target": {
+    "section": "professional_experience",
+    "field": "text",
+    "job_order": "1",
+    "bullet_order": "2"
+  },
+  "current_text": "Existing bullet text.",
+  "proposed_text": "Evidence-backed replacement text.",
+  "rationale": "Why this improves role alignment.",
+  "evidence_refs": ["mro:job:1:bullet:2", "jod:target:1"],
+  "unsupported_claims": []
+}
+```
+
+The validator decides which recommendations become v2. It accepts a
+recommendation only when the evidence refs are known, the target exists in the
+ARO, the `current_text` still matches the v1 field, and the proposed text does
+not introduce unsupported factual terms. Accepted changes are applied to a deep
+copy of v1 and rendered as the `v2` variant.
+
+Rejected recommendations are kept as review metadata but are not applied. For
+example, a supported alias such as "REST APIs" can be accepted when the evidence
+already contains matching RESTful API work. A recommendation to add "Kubernetes
+platform ownership," a certification, a new compliance claim, or a new metric is
+rejected unless the MRO/ARO evidence already supports it. ATS missing terms are
+review signals, not instructions to embellish the resume.
 
 External critique text can be pasted into the refinement workflow. Suggestions
 are classified as `supported`, `needs_user_evidence`, `noisy_or_role_mismatch`,
-or `rejected`. Only supported suggestions may feed the patch validator.
+or `rejected`. Only supported suggestions may feed the patch validator, and the
+validator still has the final say.
 
 The second pass stores `v2` without changing the selected resume. The tracker's
 variant review page can compare v1 and v2, download either HTML/PDF, inspect ATS
@@ -261,10 +296,12 @@ Launch the Flask tracker:
 make launch-website
 ```
 
-Seed new LinkedIn rows into the database:
+Seed new LinkedIn rows into the database. The CLI posting-age default is
+`DATE_POSTED=past_week`; override it with `past_24_hours`, `past_week`, or
+`past_month` when you want a different search window:
 
 ```bash
-make seed-jobs MAX_JOBS=5
+make seed-jobs MAX_JOBS=5 DATE_POSTED=past_week
 ```
 
 The tracker Add popup also has a seed widget. Set the job count and posting age
@@ -430,6 +467,20 @@ The important local files are:
 - `profile/MASTER-RESUME.yml`
 - `output/tracking/applications.sqlite3`
 - `templates/resume/master_resume.html.j2`
+
+## Operational Limits
+
+The workflow depends on public LinkedIn pages and external LLM APIs. LinkedIn
+can throttle guest traffic, return `429 Too Many Requests`, or omit job-detail
+content. OpenRouter-compatible calls can fail because of provider credits,
+timeouts, token limits, or transient empty responses. The Make targets are meant
+to be rerun safely, and tracker background actions keep the command output
+visible so failures can be inspected before retrying.
+
+The requested job count is a cap, not a guarantee. A seed run may find fewer
+usable postings than requested, skip duplicates already in SQLite, or stop a
+follow-up stage when an upstream JOD or LLM call fails. The tracker database and
+stored variants remain the source of truth for what actually completed.
 
 ## Development
 
