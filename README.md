@@ -208,6 +208,14 @@ The tracker is the daily operating surface. The main page shows job status, ATS 
 
 ![Annotated main tracker](docs/assets/tracker-main-annotated.png)
 
+The Add page can seed a batch of public postings and chain the selected stages
+for the newly seeded rows. The main Actions menu runs the same workflow family
+against selected tracker rows.
+
+![Annotated add seed workflow](docs/assets/tracker-add-seed-annotated.png)
+
+![Annotated tracker actions menu](docs/assets/tracker-actions-menu-annotated.png)
+
 The JOD editor keeps the source text and prompt text visible side by side. Saving
 this view updates the JOD fields and recalculates ATS values from the current
 resume. The second image is the same page scrolled below the raw text panes,
@@ -228,6 +236,8 @@ rejected changes, unsupported claims, ARO diff, and variant-specific HTML/PDF
 links. The `Use v1 draft`, `Use v2 draft`, and `Use manual pass` actions are
 reversible because they only copy the selected variant into the active resume
 fields.
+
+![Annotated resume variant review](docs/assets/resume-variant-review-annotated.png)
 
 Cover letters are manual for now. The edit page provides a rich-text area for pasted content, then renders the emerald-style PDF on save.
 

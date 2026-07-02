@@ -201,10 +201,10 @@ def draw_progress_panel(target: str) -> None:
 
     panel = (pad, pad, pad + panel_w, height - pad)
     draw_rounded(draw, panel, PANEL, BORDER, width=2, radius=14)
-    draw.text((panel[0] + 68, panel[1] + 24), "Background progress", fill=TEXT, font=FONT_LEGEND)
+    draw.text((panel[0] + 68, panel[1] + 24), "Background action", fill=TEXT, font=FONT_LEGEND)
     draw.text(
         (panel[0] + 68, panel[1] + 55),
-        "Resume regeneration is running",
+        "run v1 and v2 resume workflow for 4 job(s)",
         fill=MUTED,
         font=FONT_SMALL,
     )
@@ -219,22 +219,31 @@ def draw_progress_panel(target: str) -> None:
     draw.text((panel[2] - 204, panel[1] + 32), "Running", fill=ACCENT, font=FONT_SMALL)
     draw_rounded(
         draw,
-        (panel[2] - 98, panel[1] + 24, panel[2] - 28, panel[1] + 58),
+        (panel[2] - 98, panel[1] + 24, panel[2] - 62, panel[1] + 58),
         (241, 245, 249, 255),
         color_for(4),
         width=2,
         radius=17,
     )
-    draw.text((panel[2] - 78, panel[1] + 32), "Hide", fill=MUTED, font=FONT_SMALL)
+    draw.text((panel[2] - 84, panel[1] + 32), "v", fill=MUTED, font=FONT_SMALL)
+    draw_rounded(
+        draw,
+        (panel[2] - 52, panel[1] + 24, panel[2] - 16, panel[1] + 58),
+        (241, 245, 249, 255),
+        color_for(5),
+        width=2,
+        radius=17,
+    )
+    draw.text((panel[2] - 40, panel[1] + 32), "x", fill=MUTED, font=FONT_SMALL)
 
     console = (panel[0] + 24, panel[1] + 88, panel[2] - 24, panel[3] - 22)
     draw_rounded(draw, console, (15, 23, 42, 255), (51, 65, 85, 255), width=2, radius=10)
     console_lines = [
-        "[aro] Loading job row lts-4284753009",
-        "[jod] Prompt JOD ready: 1,785 words",
-        "[targets] Generated 9 compact requirement targets with GLM 5.2",
-        "[experience] Rewriting prior-role bullets from ARO evidence",
-        "[render] Stored ARO, resume HTML/PDF, and refreshed ATS fields",
+        "[v1] Generating Draft v1 for 4432391802",
+        "[v1] Stored ARO YAML, resume HTML/PDF, and ATS fields",
+        "[v2] Running GLM 5.2 second-pass refinement",
+        "[v2] Stored Refined v2 with critique and validation metadata",
+        "[tracker] Active resume links remain on the selected variant",
     ]
     y = console[1] + 20
     for line in console_lines:
@@ -244,14 +253,17 @@ def draw_progress_panel(target: str) -> None:
     callouts = [
         Callout("Live command output", console),
         Callout(
-            "Current action summary",
+            "Current workflow summary",
             (panel[0] + 24, panel[1] + 18, panel[0] + 340, panel[1] + 50),
         ),
         Callout(
             "Running/completed state",
             (panel[2] - 226, panel[1] + 24, panel[2] - 112, panel[1] + 58),
         ),
-        Callout("Collapse control", (panel[2] - 98, panel[1] + 24, panel[2] - 28, panel[1] + 58)),
+        Callout(
+            "Collapse and close controls",
+            (panel[2] - 98, panel[1] + 24, panel[2] - 16, panel[1] + 58),
+        ),
     ]
 
     overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
@@ -288,15 +300,49 @@ def main() -> None:
         "tracker-main.png",
         "tracker-main-annotated.png",
         "Tracker Table",
-        "Daily review starts here: status, ATS, source links, generated resumes, "
-        "sync state, and manual cover-letter actions.",
+        "Daily review starts here: status colors, selected variants, ATS, source "
+        "links, generated resumes, sync state, and cover-letter actions.",
         [
-            Callout("Search, filtering, and workflow actions", (18, 76, 1500, 124)),
-            Callout("ATS score from the current rendered resume", (802, 144, 914, 296)),
-            Callout("JOD and source job links", (918, 144, 1110, 296)),
-            Callout("Resume view, edit, and download actions", (1112, 144, 1294, 296)),
-            Callout("ARO-to-rendered-resume sync state", (1306, 144, 1416, 296)),
-            Callout("Manual cover-letter actions", (1418, 144, 1576, 296)),
+            Callout("Search, filters, Add, and Actions menu", (18, 76, 1458, 118)),
+            Callout("Draft v1, Refined v2, and Manual pass badges", (228, 258, 404, 606)),
+            Callout("Interview and N/A status row shading", (18, 310, 1538, 506)),
+            Callout("ATS score from the selected resume variant", (812, 210, 876, 546)),
+            Callout("JOD and source job links", (916, 210, 1068, 572)),
+            Callout("Resume, HTML, Edit, Review, and Download actions", (1102, 210, 1238, 578)),
+            Callout("ARO-to-rendered-resume sync state", (1288, 210, 1358, 546)),
+            Callout("Manual cover-letter actions", (1400, 210, 1526, 546)),
+        ],
+    )
+    annotate_screenshot(
+        "tracker-add-seed.png",
+        "tracker-add-seed-annotated.png",
+        "Add And Seed Jobs",
+        "The Add page can seed a batch, choose a posting-age window, and chain "
+        "the selected local workflow stages for the new rows.",
+        [
+            Callout("Seed widget for batch loading", (20, 134, 1534, 530)),
+            Callout("Job count maps to MAX_JOBS", (34, 202, 1520, 238)),
+            Callout("Posting-age radio choices", (34, 254, 182, 338)),
+            Callout("Default v1 plus v2 workflow toggles", (34, 352, 260, 410)),
+            Callout("Optional manual pass and highlighting stages", (34, 424, 300, 466)),
+            Callout(
+                "Single LinkedIn or external URL fallbacks remain available",
+                (20, 544, 1534, 888),
+            ),
+        ],
+    )
+    annotate_screenshot(
+        "tracker-actions-menu.png",
+        "tracker-actions-menu-annotated.png",
+        "Tracker Actions Menu",
+        "Selected rows can run the main v1 plus v2 path, a v1-only path, v2 "
+        "reruns, Codex manual pass, highlighting, or ARO sync.",
+        [
+            Callout("Actions menu trigger", (1384, 78, 1458, 116)),
+            Callout("Resume workflow choices", (1196, 146, 1438, 354)),
+            Callout("Optional highlighting chain after draft generation", (1196, 370, 1438, 404)),
+            Callout("Selected-row count and Run button", (1196, 420, 1448, 452)),
+            Callout("Actions operate on checked tracker rows", (36, 152, 58, 532)),
         ],
     )
     annotate_screenshot(
@@ -337,6 +383,22 @@ def main() -> None:
             Callout("Rich-text controls for editable sections", (800, 342, 884, 386)),
             Callout("Rendered resume sections available for review", (18, 660, 1568, 892)),
             Callout("Live ATS proxy summary", (1278, 18, 1564, 176)),
+        ],
+    )
+    annotate_screenshot(
+        "resume-variant-review.png",
+        "resume-variant-review-annotated.png",
+        "Resume Variant Review",
+        "The review page compares stored variants, variant-specific artifacts, "
+        "ATS movement, ARO diff, accepted/rejected changes, and unsupported terms.",
+        [
+            Callout("Selected variant badge", (1452, 18, 1526, 40)),
+            Callout("Draft v1, Refined v2, and Manual pass variants", (20, 126, 1532, 548)),
+            Callout("ATS component scores and deltas per variant", (316, 214, 494, 532)),
+            Callout("Variant-specific PDF/HTML artifacts", (600, 214, 678, 464)),
+            Callout("Reversible selection actions", (886, 212, 1080, 502)),
+            Callout("v1/v2 ARO diff", (20, 562, 1532, 1094)),
+            Callout("Accepted, rejected, and unsupported review details", (20, 1108, 1450, 1654)),
         ],
     )
     annotate_screenshot(
