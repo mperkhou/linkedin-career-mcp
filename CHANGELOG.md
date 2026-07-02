@@ -27,6 +27,8 @@
   manual pass, and Codex highlighting steps for the newly seeded rows.
 * Shade tracker rows for `Accepted for interview` and `N/A` statuses while
   preserving the existing applied-row green treatment.
+* Keep in-app tracker review and edit links in the current window while leaving
+  external job and artifact links in new tabs.
 * Document the second-pass variant workflow, evidence rules, manual critique
   ingestion, ATS diagnostics, and migration notes in the README and 4.0.0
   release notes.

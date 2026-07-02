@@ -262,6 +262,38 @@ def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypat
     assert "Resume" in cells[8].get_text(" ", strip=True)
     assert cells[9].select_one(".sync-status") is not None
     assert "Edit" in cells[10].get_text(" ", strip=True)
+
+    def cell_link(cell, label: str):
+        return next(
+            (
+                link
+                for link in cell.find_all("a")
+                if link.get_text(" ", strip=True) == label
+            ),
+            None,
+        )
+
+    job_url_link = cell_link(cells[7], "Job URL")
+    compare_link = cell_link(cells[7], "Compare descriptions")
+    resume_link = cell_link(cells[8], "Resume")
+    resume_html_link = cell_link(cells[8], "HTML")
+    resume_edit_link = cell_link(cells[8], "Edit")
+    resume_review_link = cell_link(cells[8], "Review")
+    cover_letter_edit_link = cell_link(cells[10], "Edit")
+    assert job_url_link is not None
+    assert job_url_link.get("target") == "_blank"
+    assert compare_link is not None
+    assert compare_link.get("target") is None
+    assert resume_link is not None
+    assert resume_link.get("target") == "_blank"
+    assert resume_html_link is not None
+    assert resume_html_link.get("target") == "_blank"
+    assert resume_edit_link is not None
+    assert resume_edit_link.get("target") is None
+    assert resume_review_link is not None
+    assert resume_review_link.get("target") is None
+    assert cover_letter_edit_link is not None
+    assert cover_letter_edit_link.get("target") is None
     manual_badge = cells[2].select_one(".manual-pass-badge")
     assert manual_badge is not None
     assert manual_badge.get_text(" ", strip=True) == "Manual pass"

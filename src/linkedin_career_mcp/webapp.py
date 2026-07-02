@@ -4630,8 +4630,6 @@ INDEX_TEMPLATE = """
                   <a
                     class="preserve-state-link"
                     href="/descriptions/{{ row.job_id }}"
-                    target="_blank"
-                    rel="noreferrer"
                   >
                     Compare descriptions
                   </a>
@@ -4653,16 +4651,12 @@ INDEX_TEMPLATE = """
                       <a
                         class="preserve-state-link"
                         href="/resumes/{{ row.job_id }}/edit"
-                        target="_blank"
-                        rel="noreferrer"
                       >
                         Edit
                       </a>
                       <a
                         class="preserve-state-link"
                         href="/resumes/{{ row.job_id }}/variants"
-                        target="_blank"
-                        rel="noreferrer"
                       >
                         Review
                       </a>
@@ -4703,8 +4697,6 @@ INDEX_TEMPLATE = """
                     <a
                       class="preserve-state-link"
                       href="/cover-letters/{{ row.job_id }}/edit"
-                      target="_blank"
-                      rel="noreferrer"
                     >
                       Edit
                     </a>
