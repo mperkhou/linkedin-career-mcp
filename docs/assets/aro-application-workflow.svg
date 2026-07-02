@@ -1,141 +1,172 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="620" viewBox="0 0 1280 620" role="img" aria-labelledby="title desc">
-  <title id="title">ARO application workflow</title>
-  <desc id="desc">A card-based map of the application resume workflow, from discovery and JOD preparation through ARO generation, rendering, ATS scoring, and Flask review.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">ARO resume variant workflow</title>
+  <desc id="desc">A map of the default application resume workflow: seed a tracker row, generate the v1 draft, run GLM 5.2 v2 refinement, optionally run Codex manual pass or highlighting, then compare and reversibly select variants in the Flask tracker.</desc>
   <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b" />
+    </marker>
     <style>
       .bg { fill: #f8fafc; }
       .lane { fill: #ffffff; stroke: #cbd5e1; stroke-width: 1.5; }
-      .step1 { fill: #ccfbf1; stroke: #0f766e; stroke-width: 2; }
-      .step2 { fill: #dbeafe; stroke: #2563eb; stroke-width: 2; }
-      .step3 { fill: #ede9fe; stroke: #7c3aed; stroke-width: 2; }
-      .step4 { fill: #fce7f3; stroke: #be185d; stroke-width: 2; }
-      .step5 { fill: #fef3c7; stroke: #b45309; stroke-width: 2; }
-      .step6 { fill: #dcfce7; stroke: #166534; stroke-width: 2; }
-      .step7 { fill: #e0f2fe; stroke: #0284c7; stroke-width: 2; }
-      .step8 { fill: #e0e7ff; stroke: #4338ca; stroke-width: 2; }
-      .step9 { fill: #ffedd5; stroke: #c2410c; stroke-width: 2; }
-      .step10 { fill: #cffafe; stroke: #0891b2; stroke-width: 2; }
-      .step11 { fill: #ecfccb; stroke: #4d7c0f; stroke-width: 2; }
-      .step12 { fill: #fae8ff; stroke: #a21caf; stroke-width: 2; }
-      .step13 { fill: #fee2e2; stroke: #b91c1c; stroke-width: 2; }
-      .num1 { fill: #0f766e; }
-      .num2 { fill: #2563eb; }
-      .num3 { fill: #7c3aed; }
-      .num4 { fill: #be185d; }
-      .num5 { fill: #b45309; }
-      .num6 { fill: #166534; }
-      .num7 { fill: #0284c7; }
-      .num8 { fill: #4338ca; }
-      .num9 { fill: #c2410c; }
-      .num10 { fill: #0891b2; }
-      .num11 { fill: #4d7c0f; }
-      .num12 { fill: #a21caf; }
-      .num13 { fill: #b91c1c; }
-      .numText { font: 700 14px Arial, sans-serif; fill: #ffffff; dominant-baseline: central; text-anchor: middle; }
+      .laneMain { fill: #f0fdfa; stroke: #0f766e; stroke-width: 1.5; }
+      .laneReview { fill: #eef2ff; stroke: #4f46e5; stroke-width: 1.5; }
+      .seed { fill: #ccfbf1; stroke: #0f766e; stroke-width: 2; }
+      .draft { fill: #dbeafe; stroke: #2563eb; stroke-width: 2; }
+      .refine { fill: #ede9fe; stroke: #7c3aed; stroke-width: 2; }
+      .optional { fill: #fef3c7; stroke: #b45309; stroke-width: 2; }
+      .review { fill: #e0e7ff; stroke: #4338ca; stroke-width: 2; }
+      .select { fill: #dcfce7; stroke: #166534; stroke-width: 2; }
+      .store { fill: #f1f5f9; stroke: #475569; stroke-width: 2; }
+      .numSeed { fill: #0f766e; }
+      .numDraft { fill: #2563eb; }
+      .numRefine { fill: #7c3aed; }
+      .numOptional { fill: #b45309; }
+      .numReview { fill: #4338ca; }
+      .numSelect { fill: #166534; }
+      .numStore { fill: #475569; }
+      .arrow { stroke: #64748b; stroke-width: 2; fill: none; marker-end: url(#arrow); }
+      .softArrow { stroke: #94a3b8; stroke-width: 2; stroke-dasharray: 6 6; fill: none; marker-end: url(#arrow); }
       .title { font: 700 22px Arial, sans-serif; fill: #0f172a; }
       .subtitle { font: 15px Arial, sans-serif; fill: #475569; }
-      .laneTitle { font: 700 16px Arial, sans-serif; fill: #334155; letter-spacing: .2px; }
+      .laneTitle { font: 700 16px Arial, sans-serif; fill: #334155; letter-spacing: 0; }
       .cardTitle { font: 700 15px Arial, sans-serif; fill: #0f172a; }
       .body { font: 13px Arial, sans-serif; fill: #475569; }
-      .note { font: 13px Arial, sans-serif; fill: #64748b; }
+      .tiny { font: 12px Arial, sans-serif; fill: #64748b; }
+      .badge { font: 700 12px Arial, sans-serif; fill: #ffffff; }
+      .numText { font: 700 14px Arial, sans-serif; fill: #ffffff; dominant-baseline: central; text-anchor: middle; }
     </style>
   </defs>
 
-  <rect class="bg" x="0" y="0" width="1280" height="620" />
-  <text class="title" x="36" y="42">Database-Backed ARO Workflow</text>
-  <text class="subtitle" x="36" y="68">A job becomes structured data first, then an ARO, then rendered artifacts that stay editable in the Flask tracker.</text>
+  <rect class="bg" x="0" y="0" width="1280" height="720" />
+  <text class="title" x="36" y="42">Database-Backed Resume Variant Workflow</text>
+  <text class="subtitle" x="36" y="68">Default path: seed rows, generate Draft v1, run Refined v2, then compare and select in the tracker.</text>
+  <text class="subtitle" x="36" y="88">Manual pass and highlighting are deliberate add-on stages; selection only updates the active resume links.</text>
 
-  <rect class="lane" x="34" y="102" width="1212" height="132" rx="18" />
-  <text class="laneTitle" x="58" y="132">1. Discovery And JOD Preparation</text>
+  <rect class="lane" x="34" y="116" width="1212" height="112" rx="18" />
+  <text class="laneTitle" x="58" y="146">1. Discover And Seed Tracker Rows</text>
 
-  <rect class="step1" x="58" y="154" width="260" height="56" rx="12" />
-  <circle class="num1" cx="84" cy="182" r="15" />
-  <text class="numText" x="84" y="183">1</text>
-  <text class="cardTitle" x="108" y="176">Search plan</text>
-  <text class="body" x="108" y="194">OpenRouter planner</text>
-  <text class="body" x="108" y="207">proposes searches</text>
+  <rect class="seed" x="58" y="166" width="240" height="42" rx="12" />
+  <circle class="numSeed" cx="82" cy="187" r="14" />
+  <text class="numText" x="82" y="188">1</text>
+  <text class="cardTitle" x="108" y="192">Plan public searches</text>
 
-  <rect class="step2" x="338" y="154" width="260" height="56" rx="12" />
-  <circle class="num2" cx="364" cy="182" r="15" />
-  <text class="numText" x="364" y="183">2</text>
-  <text class="cardTitle" x="388" y="176">Fetch posting</text>
-  <text class="body" x="388" y="194">LinkedIn or job URL</text>
-  <text class="body" x="388" y="207">source text</text>
+  <path class="arrow" d="M 304 187 L 342 187" />
 
-  <rect class="step3" x="618" y="154" width="260" height="56" rx="12" />
-  <circle class="num3" cx="644" cy="182" r="15" />
-  <text class="numText" x="644" y="183">3</text>
-  <text class="cardTitle" x="668" y="176">Trim JOD</text>
-  <text class="body" x="668" y="194">Keep requirements;</text>
-  <text class="body" x="668" y="207">drop boilerplate</text>
+  <rect class="seed" x="350" y="166" width="240" height="42" rx="12" />
+  <circle class="numSeed" cx="374" cy="187" r="14" />
+  <text class="numText" x="374" y="188">2</text>
+  <text class="cardTitle" x="400" y="192">Fetch postings</text>
 
-  <rect class="step4" x="898" y="154" width="300" height="56" rx="12" />
-  <circle class="num4" cx="924" cy="182" r="15" />
-  <text class="numText" x="924" y="183">4</text>
-  <text class="cardTitle" x="948" y="176">Seed tracker row</text>
-  <text class="body" x="948" y="194">Store raw/prompt JOD,</text>
-  <text class="body" x="948" y="207">URL, and status</text>
+  <path class="arrow" d="M 596 187 L 634 187" />
 
-  <rect class="lane" x="34" y="260" width="1212" height="174" rx="18" />
-  <text class="laneTitle" x="58" y="290">2. ARO Creation And Draft Writing</text>
+  <rect class="seed" x="642" y="166" width="240" height="42" rx="12" />
+  <circle class="numSeed" cx="666" cy="187" r="14" />
+  <text class="numText" x="666" y="188">3</text>
+  <text class="cardTitle" x="692" y="192">Trim raw/prompt JOD</text>
 
-  <rect class="step5" x="58" y="314" width="210" height="76" rx="12" />
-  <circle class="num5" cx="84" cy="343" r="15" />
-  <text class="numText" x="84" y="344">5</text>
-  <text class="cardTitle" x="108" y="337">Clone MRO</text>
-  <text class="body" x="108" y="357">Copy MASTER-</text>
-  <text class="body" x="108" y="374">RESUME.yml into ARO</text>
+  <path class="arrow" d="M 888 187 L 926 187" />
 
-  <rect class="step6" x="292" y="314" width="210" height="76" rx="12" />
-  <circle class="num6" cx="318" cy="343" r="15" />
-  <text class="numText" x="318" y="344">6</text>
-  <text class="cardTitle" x="342" y="337">Match skills</text>
-  <text class="body" x="342" y="357">GLM 5.2 matches</text>
-  <text class="body" x="342" y="374">skills to prompt JOD</text>
+  <rect class="store" x="934" y="154" width="264" height="66" rx="12" />
+  <circle class="numStore" cx="958" cy="187" r="14" />
+  <text class="numText" x="958" y="188">4</text>
+  <text class="cardTitle" x="984" y="178">Seed SQLite row</text>
+  <text class="body" x="984" y="196">Store URL, status, raw JOD,</text>
+  <text class="body" x="984" y="211">and prompt-ready JOD</text>
 
-  <rect class="step7" x="526" y="314" width="210" height="76" rx="12" />
-  <circle class="num7" cx="552" cy="343" r="15" />
-  <text class="numText" x="552" y="344">7</text>
-  <text class="cardTitle" x="576" y="337">Build targets</text>
-  <text class="body" x="576" y="357">Distill JOD into</text>
-  <text class="body" x="576" y="374">requirement targets</text>
+  <rect class="laneMain" x="34" y="252" width="1212" height="136" rx="18" />
+  <text class="laneTitle" x="58" y="282">2. Generate Draft v1</text>
 
-  <rect class="step8" x="760" y="314" width="210" height="76" rx="12" />
-  <circle class="num8" cx="786" cy="343" r="15" />
-  <text class="numText" x="786" y="344">8</text>
-  <text class="cardTitle" x="810" y="337">Rewrite experience</text>
-  <text class="body" x="810" y="357">Use ARO evidence</text>
-  <text class="body" x="810" y="374">plus JOD targets</text>
+  <rect class="draft" x="58" y="306" width="250" height="58" rx="12" />
+  <circle class="numDraft" cx="84" cy="335" r="15" />
+  <text class="numText" x="84" y="336">5</text>
+  <text class="cardTitle" x="110" y="329">Clone MRO into ARO</text>
+  <text class="body" x="110" y="347">Start from structured evidence</text>
 
-  <rect class="step9" x="994" y="314" width="204" height="76" rx="12" />
-  <circle class="num9" cx="1020" cy="343" r="15" />
-  <text class="numText" x="1020" y="344">9</text>
-  <text class="cardTitle" x="1044" y="337">Store ARO</text>
-  <text class="body" x="1044" y="357">Persist YAML, bullets,</text>
-  <text class="body" x="1044" y="374">and timestamps</text>
+  <path class="arrow" d="M 314 335 L 348 335" />
 
-  <text class="note" x="58" y="414">Prompts and responses are cached during generation so JOD targets, raw experience, and generated bullets remain inspectable.</text>
+  <rect class="draft" x="356" y="306" width="250" height="58" rx="12" />
+  <circle class="numDraft" cx="382" cy="335" r="15" />
+  <text class="numText" x="382" y="336">6</text>
+  <text class="cardTitle" x="408" y="329">Match skills and targets</text>
+  <text class="body" x="408" y="347">GLM 5.2 reads prompt JOD</text>
 
-  <rect class="lane" x="34" y="460" width="1212" height="118" rx="18" />
-  <text class="laneTitle" x="58" y="490">3. Render, Score, Review, Edit</text>
+  <path class="arrow" d="M 612 335 L 646 335" />
 
-  <rect class="step10" x="58" y="512" width="250" height="42" rx="12" />
-  <circle class="num10" cx="84" cy="533" r="15" />
-  <text class="numText" x="84" y="534">10</text>
-  <text class="cardTitle" x="112" y="538">Render HTML and PDF</text>
+  <rect class="draft" x="654" y="306" width="250" height="58" rx="12" />
+  <circle class="numDraft" cx="680" cy="335" r="15" />
+  <text class="numText" x="680" y="336">7</text>
+  <text class="cardTitle" x="706" y="329">Rewrite from evidence</text>
+  <text class="body" x="706" y="347">Render role-specific bullets</text>
 
-  <rect class="step11" x="334" y="512" width="250" height="42" rx="12" />
-  <circle class="num11" cx="360" cy="533" r="15" />
-  <text class="numText" x="360" y="534">11</text>
-  <text class="cardTitle" x="388" y="538">Refresh ATS fields</text>
+  <path class="arrow" d="M 910 335 L 944 335" />
 
-  <rect class="step12" x="610" y="512" width="250" height="42" rx="12" />
-  <circle class="num12" cx="636" cy="533" r="15" />
-  <text class="numText" x="636" y="534">12</text>
-  <text class="cardTitle" x="664" y="538">Review in Flask</text>
+  <rect class="store" x="952" y="294" width="246" height="82" rx="12" />
+  <circle class="numStore" cx="978" cy="335" r="15" />
+  <text class="numText" x="978" y="336">8</text>
+  <text class="cardTitle" x="1004" y="320">Store Draft v1</text>
+  <text class="body" x="1004" y="338">ARO YAML, HTML, PDF,</text>
+  <text class="body" x="1004" y="353">ATS fields, and diagnostics</text>
+  <text class="tiny" x="1004" y="368">Variant key: v1</text>
 
-  <rect class="step13" x="886" y="512" width="312" height="42" rx="12" />
-  <circle class="num13" cx="912" cy="533" r="15" />
-  <text class="numText" x="912" y="534">13</text>
-  <text class="cardTitle" x="940" y="538">Manual edits update the ARO</text>
+  <rect class="laneMain" x="34" y="420" width="1212" height="142" rx="18" />
+  <text class="laneTitle" x="58" y="450">3. Default v2 Refinement And Optional Review Passes</text>
+
+  <rect class="refine" x="58" y="474" width="268" height="66" rx="12" />
+  <circle class="numRefine" cx="84" cy="507" r="15" />
+  <text class="numText" x="84" y="508">9</text>
+  <text class="cardTitle" x="110" y="498">Run GLM 5.2 second pass</text>
+  <text class="body" x="110" y="516">Critique v1 and validate patches</text>
+  <text class="tiny" x="110" y="531">Default in regenerate-resumes</text>
+
+  <path class="arrow" d="M 332 507 L 366 507" />
+
+  <rect class="store" x="374" y="474" width="230" height="66" rx="12" />
+  <circle class="numStore" cx="400" cy="507" r="15" />
+  <text class="numText" x="400" y="508">10</text>
+  <text class="cardTitle" x="426" y="498">Store Refined v2</text>
+  <text class="body" x="426" y="516">Keep critique, validation, ATS</text>
+  <text class="tiny" x="426" y="531">Variant key: v2</text>
+
+  <path class="softArrow" d="M 612 507 L 646 507" />
+
+  <rect class="optional" x="654" y="474" width="234" height="66" rx="12" />
+  <circle class="numOptional" cx="680" cy="507" r="15" />
+  <text class="numText" x="680" y="508">11</text>
+  <text class="cardTitle" x="706" y="498">Optional manual pass</text>
+  <text class="body" x="706" y="516">Codex reviews v1, v2, JOD,</text>
+  <text class="tiny" x="706" y="531">and evidence into manual variant</text>
+
+  <path class="softArrow" d="M 896 507 L 930 507" />
+
+  <rect class="optional" x="938" y="474" width="260" height="66" rx="12" />
+  <circle class="numOptional" cx="964" cy="507" r="15" />
+  <text class="numText" x="964" y="508">12</text>
+  <text class="cardTitle" x="990" y="498">Optional highlighting</text>
+  <text class="body" x="990" y="516">Validated Codex patches add only</text>
+  <text class="tiny" x="990" y="531">selective strong tags</text>
+
+  <rect class="laneReview" x="34" y="592" width="1212" height="102" rx="18" />
+  <text class="laneTitle" x="58" y="622">4. Review, Select, And Keep It Reversible</text>
+
+  <rect class="review" x="58" y="640" width="318" height="42" rx="12" />
+  <circle class="numReview" cx="82" cy="661" r="13" />
+  <text class="numText" x="82" y="662">13</text>
+  <text class="cardTitle" x="108" y="656">Compare variants</text>
+  <text class="body" x="108" y="674">ATS deltas, gaps, and ARO diff</text>
+
+  <path class="arrow" d="M 382 661 L 418 661" />
+
+  <rect class="select" x="426" y="640" width="296" height="42" rx="12" />
+  <circle class="numSelect" cx="450" cy="661" r="13" />
+  <text class="numText" x="450" y="662">14</text>
+  <text class="cardTitle" x="476" y="656">Select active draft</text>
+  <text class="body" x="476" y="674">Draft v1, Refined v2, or Manual</text>
+
+  <path class="arrow" d="M 728 661 L 764 661" />
+
+  <rect class="select" x="772" y="640" width="426" height="42" rx="12" />
+  <circle class="numSelect" cx="796" cy="661" r="13" />
+  <text class="numText" x="796" y="662">15</text>
+  <text class="cardTitle" x="822" y="656">Update active resume links</text>
+  <text class="body" x="822" y="674">Stored variants remain available</text>
 </svg>
