@@ -75,8 +75,9 @@ class ApiLlmClient:
             "X-Title": "linkedin-career-mcp",
         }
 
-        data: Mapping[str, Any] = {}
+        last_completion_error: LlmError | None = None
         for attempt in range(1, self._retry_attempts + 1):
+            data: Mapping[str, Any] = {}
             try:
                 response = await self._client.post(
                     f"{self._base_url}/chat/completions",
@@ -85,7 +86,6 @@ class ApiLlmClient:
                 )
                 data = _response_json(response)
                 response.raise_for_status()
-                break
             except httpx.HTTPStatusError as exc:
                 status_code = exc.response.status_code
                 detail = _http_error_detail(data, exc)
@@ -107,16 +107,43 @@ class ApiLlmClient:
             except httpx.HTTPError as exc:
                 raise LlmError(f"API LLM generation failed: {exc}") from exc
 
-        choices = data.get("choices")
-        if not isinstance(choices, list) or not choices:
-            raise LlmError("API LLM returned no completion choices.")
+            text, last_completion_error = _completion_text(data)
+            if last_completion_error is None:
+                return text
 
-        choice = choices[0]
-        message = choice.get("message") or {}
-        text = message.get("content") or ""
-        if not isinstance(text, str) or not text.strip():
-            raise LlmError("API LLM returned an empty generation.")
-        return _strip_thinking(text.strip())
+            if attempt < self._retry_attempts:
+                await self._sleep(
+                    _retry_delay_seconds(
+                        response,
+                        attempt,
+                        self._retry_backoff_seconds,
+                    )
+                )
+                continue
+
+        if last_completion_error is not None:
+            raise last_completion_error
+        raise LlmError("API LLM returned no completion choices.")
+
+
+def _completion_text(data: Mapping[str, Any]) -> tuple[str, LlmError | None]:
+    choices = data.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return "", LlmError("API LLM returned no completion choices.")
+
+    choice = choices[0]
+    if not isinstance(choice, Mapping):
+        return "", LlmError("API LLM returned no completion choices.")
+    message = choice.get("message") or {}
+    if not isinstance(message, Mapping):
+        return "", LlmError("API LLM returned an empty generation.")
+    text = message.get("content") or ""
+    if not isinstance(text, str):
+        return "", LlmError("API LLM returned an empty generation.")
+    stripped_text = _strip_thinking(text.strip())
+    if not stripped_text:
+        return "", LlmError("API LLM returned an empty generation.")
+    return stripped_text, None
 
 
 def _response_json(response: httpx.Response) -> Mapping[str, Any]:

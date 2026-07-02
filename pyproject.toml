@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "linkedin-career-mcp"
-version = "3.5.0"
+version = "4.0.0"
 description = "Python-centric MCP server for LinkedIn public job search and future career workflows."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -49,6 +49,7 @@ browser = [
 linkedin-career-mcp = "linkedin_career_mcp.__main__:main"
 linkedin-career-seed-jobs = "linkedin_career_mcp.workflows.matching:main"
 linkedin-career-audit-jods = "linkedin_career_mcp.jod_cleaner_audit:main"
+linkedin-career-refine-resume = "linkedin_career_mcp.resume_refinement_cli:main"
 linkedin-career-webapp = "linkedin_career_mcp.webapp:main"
 
 [project.urls]

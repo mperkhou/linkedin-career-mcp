@@ -53,12 +53,44 @@ The current tools search public LinkedIn job listings and fetch public job detai
 
 - Before LinkedIn search planning or resume drafting, use the `master-resume-yaml` skill to create or refine `profile/MASTER-RESUME.yml` from `profile/MP-MASTER-RESUME.txt`.
 - The master resume YAML is the Master Resume Object (MRO). It stores header fields, section render flags, core technical skill categories, and professional-experience bullets with category/skill linkages.
-- Use `make seed-jobs MAX_JOBS=<n>` for capped LinkedIn discovery runs. This plans search terms from the master resume, searches public LinkedIn jobs, fetches public job details, trims JOD text, and seeds rows into `output/tracking/applications.sqlite3`.
-- Use `make regenerate-draft-resumes JOB_IDS=<job_id>` to create first-draft ARO resume artifacts for stored rows. This deep-copies the MRO, uses the draft-generation model default (`z-ai/glm-5.2`) to match Core Technical Skills to the trimmed JOD, generates compact JOD targets, rewrites rendered experience bullets from ARO source evidence, stores the ARO YAML, renders HTML/PDF, and recalculates ATS fields.
+- Use `make seed-jobs MAX_JOBS=<n> DATE_POSTED=<window>` for capped
+  LinkedIn discovery runs. This plans search terms from the master resume,
+  searches public LinkedIn jobs, fetches public job details, trims JOD text,
+  and seeds rows into `output/tracking/applications.sqlite3`. The default
+  posting-age window is `past_week`; supported windows include `past_24_hours`,
+  `past_week`, and `past_month`.
+- Use `make regenerate-resumes JOB_IDS=<job_id>` for the main resume workflow. It creates or refreshes the first-draft ARO as `v1`, then runs the GLM 5.2 second-pass refinement and stores `v2` without selecting it.
+- Use `make regenerate-draft-resumes JOB_IDS=<job_id>` only when you intentionally want the v1 first-draft ARO artifacts without v2. This deep-copies the MRO, uses the draft-generation model default (`z-ai/glm-5.2`) to match Core Technical Skills to the trimmed JOD, generates compact JOD targets, rewrites rendered experience bullets from ARO source evidence, stores the ARO YAML, renders HTML/PDF, and recalculates ATS fields.
+- Use `make refine-draft-resumes JOB_IDS=<job_id>` to create or rerun the v2 refinement for existing v1 drafts.
+- V2 refinement is critique-driven and evidence-validated. GLM 5.2 receives
+  the v1 ARO, selected JOD text, ATS diagnostics, JOD targets, and MRO/ARO
+  evidence; it can recommend supported rewording, ordering, emphasis, or
+  aliases, but unsupported skills, tools, metrics, employers, or
+  responsibilities are rejected instead of added.
+- Resume variants are DB-backed. `v1` is the first draft, `v2` is the GLM
+  refinement, and `manual` is the Codex manual pass. Selecting a variant only
+  updates the active resume HTML/PDF and ATS columns on the application row; it
+  does not delete the other variants, so selection is reversible from the
+  tracker review page.
 - Use `make regenerate-aro-objects JOB_IDS=<job_id>` when `profile/MASTER-RESUME.yml` changed and stored ARO objects should be recreated from the latest MRO without API calls from existing Core Technical Skills match lists.
 - Use `make sync-draft-to-aro JOB_IDS=<job_id>` to render the stored ARO object into the database-backed draft HTML/PDF and refresh ATS scoring without re-querying the LLM.
+- Use `make manual-pass-resumes JOB_IDS=<job_id>` after `v1` and `v2` exist to
+  store a Codex-reviewed `manual` variant. The command does not select the
+  manual variant automatically.
+- Use `make highlight-draft-resumes JOB_IDS=<job_id>` for the guarded Codex
+  highlighting workflow. It is a polish step and is separate from v2
+  refinement.
 - Cover letters are manual Cover Letter Objects (CLOs) edited in the Flask tracker and rendered to stored PDF blobs on save.
-- The Flask tracker is launched with `make launch-website`. Resume, cover-letter, description, and Add-job workflows read/write the SQLite database directly.
+- The Flask tracker is launched with `make launch-website`. Resume,
+  cover-letter, description, Add popup, and workflow actions read/write the
+  SQLite database directly.
+- The tracker Add popup can seed a batch with a job count and posting-age
+  window, then chain selected stages for the newly seeded rows: v1 draft
+  generation, v2 refinement, Codex manual pass, and Codex highlighting.
+- The tracker Actions menu runs the same workflow family on selected rows:
+  main v1-plus-v2 resume generation, v1-only draft generation, v2
+  create/rerun, manual pass, highlighting, ARO regeneration, and draft-to-ARO
+  sync.
 - Long-running tracker actions stream progress through the collapsible status panel in the Flask UI.
 
 ## Local Conventions

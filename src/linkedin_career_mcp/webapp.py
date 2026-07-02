@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import difflib
+import json
 import sqlite3
 import subprocess
 import sys
@@ -50,8 +51,17 @@ APPLICATION_ARCHIVE_FILTERS = {"active", "archived", "all"}
 VIEW_STATE_SORTS = {"company", "matched", "ats", "resume", "cover_letter"}
 VIEW_STATE_DIRECTIONS = {"asc", "desc"}
 VIEW_STATE_QUERY_KEYS = {"q", "status", "archive", "sort", "direction"}
+DEFAULT_RESUME_VARIANT = "v1"
+SECOND_PASS_RESUME_VARIANT = "v2"
+MANUAL_PASS_RESUME_VARIANT = "manual"
+RESUME_VARIANT_LABELS = {
+    DEFAULT_RESUME_VARIANT: "Draft v1",
+    SECOND_PASS_RESUME_VARIANT: "Refined v2",
+    MANUAL_PASS_RESUME_VARIANT: "Manual pass",
+}
 APPLICATION_EXTRA_COLUMNS = {
     "archived_at": "TEXT",
+    "selected_resume_variant": f"TEXT NOT NULL DEFAULT '{DEFAULT_RESUME_VARIANT}'",
     "job_description": "TEXT",
     "prompt_job_description": "TEXT",
     "application_resume_object": "TEXT",
@@ -84,11 +94,14 @@ APPLICATION_EXTRA_COLUMNS = {
 }
 REGENERATE_ACTION_TARGETS = {
     "draft_resumes": "regenerate-draft-resumes",
+    "resume_variants": "regenerate-resumes",
+    "refine_drafts": "refine-draft-resumes",
     "aro_objects": "regenerate-aro-objects",
     "sync_draft_to_aro": "sync-draft-to-aro",
     "highlight_drafts": "highlight-draft-resumes",
+    "manual_pass": "manual-pass-resumes",
 }
-_DRAFT_REGENERATE_MODES = {"draft_resumes"}
+_DRAFT_REGENERATE_MODES = {"draft_resumes", "resume_variants"}
 COVER_LETTER_OBJECT_SCHEMA_VERSION = "cover_letter_object.v0.1"
 EMERALD_ACCENT = HexColor("#57ba86")
 RESUME_BODY_COLOR = HexColor("#111827")
@@ -97,6 +110,14 @@ COVER_LETTER_BODY_LEADING = 11.5
 COVER_LETTER_PARAGRAPH_SPACE_AFTER = 7
 MAX_ACTION_RUNS = 8
 MAX_ACTION_MESSAGES = 160
+DEFAULT_SEED_MAX_JOBS = 5
+MAX_SEED_JOBS_FROM_UI = 50
+DEFAULT_SEED_DATE_POSTED = "past_week"
+SEED_DATE_POSTED_OPTIONS = (
+    ("past_24_hours", "Last 24 hours"),
+    ("past_week", "Past week"),
+    ("past_month", "Past month"),
+)
 
 
 @dataclass(frozen=True)
@@ -198,6 +219,8 @@ def init_database(connection: sqlite3.Connection) -> None:
         """
     )
     _ensure_application_columns(connection)
+    _ensure_resume_variant_table(connection)
+    _backfill_v1_resume_variants(connection)
     connection.execute(
         """
         CREATE UNIQUE INDEX IF NOT EXISTS applications_unique_linkedin_job_id
@@ -205,6 +228,93 @@ def init_database(connection: sqlite3.Connection) -> None:
         """
     )
     connection.commit()
+
+
+def _ensure_resume_variant_table(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS application_resume_variants (
+            job_id TEXT NOT NULL,
+            variant_key TEXT NOT NULL,
+            variant_label TEXT NOT NULL,
+            source TEXT NOT NULL,
+            parent_variant_key TEXT,
+            application_resume_object TEXT NOT NULL,
+            resume_html_filename TEXT NOT NULL DEFAULT '',
+            resume_html_content TEXT,
+            resume_html_mime_type TEXT NOT NULL DEFAULT 'text/html; charset=utf-8',
+            source_resume_html_path TEXT NOT NULL DEFAULT '',
+            resume_html_updated_at TEXT,
+            resume_filename TEXT NOT NULL DEFAULT '',
+            resume_content BLOB,
+            resume_mime_type TEXT NOT NULL DEFAULT 'application/pdf',
+            source_resume_path TEXT NOT NULL DEFAULT '',
+            resume_updated_at TEXT,
+            ats_score INTEGER,
+            ats_parsing_score INTEGER,
+            ats_keyword_score INTEGER,
+            ats_semantic_score INTEGER,
+            ats_formatting_risk TEXT,
+            ats_missing_terms TEXT,
+            ats_updated_at TEXT,
+            ats_diagnostics_json TEXT,
+            evidence_packet_json TEXT,
+            external_critique_json TEXT,
+            critique_prompt TEXT,
+            critique_response TEXT,
+            critique_json TEXT,
+            validation_json TEXT,
+            model_metadata_json TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (job_id, variant_key)
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS application_resume_variants_variant_key
+        ON application_resume_variants(variant_key)
+        """
+    )
+
+
+def _backfill_v1_resume_variants(connection: sqlite3.Connection) -> None:
+    now = datetime.now(UTC).isoformat(timespec="seconds")
+    connection.execute(
+        """
+        UPDATE applications
+        SET selected_resume_variant = ?
+        WHERE selected_resume_variant IS NULL
+           OR TRIM(selected_resume_variant) = ''
+        """,
+        (DEFAULT_RESUME_VARIANT,),
+    )
+    connection.execute(
+        """
+        INSERT OR IGNORE INTO application_resume_variants (
+            job_id, variant_key, variant_label, source, parent_variant_key,
+            application_resume_object, resume_html_filename, resume_html_content,
+            resume_html_mime_type, source_resume_html_path, resume_html_updated_at,
+            resume_filename, resume_content, resume_mime_type, source_resume_path,
+            resume_updated_at, ats_score, ats_parsing_score, ats_keyword_score,
+            ats_semantic_score, ats_formatting_risk, ats_missing_terms, ats_updated_at,
+            created_at, updated_at
+        )
+        SELECT
+            job_id, ?, 'Draft v1', 'first_draft', NULL,
+            application_resume_object, resume_html_filename, resume_html_content,
+            resume_html_mime_type, source_resume_html_path, resume_html_updated_at,
+            resume_filename, resume_content, resume_mime_type, source_resume_path,
+            resume_updated_at, ats_score, ats_parsing_score, ats_keyword_score,
+            ats_semantic_score, ats_formatting_risk, ats_missing_terms, ats_updated_at,
+            COALESCE(application_resume_updated_at, resume_updated_at, imported_at, updated_at, ?),
+            COALESCE(application_resume_updated_at, resume_updated_at, updated_at, ?)
+        FROM applications
+        WHERE COALESCE(NULLIF(application_resume_object, ''), '') != ''
+        """,
+        (DEFAULT_RESUME_VARIANT, now, now),
+    )
 
 
 def _ensure_application_columns(connection: sqlite3.Connection) -> None:
@@ -704,7 +814,666 @@ def store_application_resume_first_draft(
                 job_id,
             ),
         )
+        _upsert_application_resume_variant(
+            connection=connection,
+            row=row,
+            variant_key=DEFAULT_RESUME_VARIANT,
+            variant_label="Draft v1",
+            source="first_draft",
+            parent_variant_key=None,
+            application_resume_object=application_resume_object,
+            resume_html=resume_html,
+            resume_pdf=resume_pdf,
+            ats_score=ats_score,
+            resume_html_filename=(
+                resume_html_path.name
+                if resume_html_path is not None
+                else _resume_html_filename(row)
+            ),
+            resume_filename=(
+                resume_pdf_path.name if resume_pdf_path is not None else _resume_pdf_filename(row)
+            ),
+            source_resume_html_path=str(resume_html_path) if resume_html_path is not None else "",
+            source_resume_path=str(resume_pdf_path) if resume_pdf_path is not None else "",
+        )
         connection.commit()
+
+
+def backfill_application_resume_v1_variants(database_path: Path) -> int:
+    with connect_database(database_path) as connection:
+        before = _resume_variant_count(connection, variant_key=DEFAULT_RESUME_VARIANT)
+        _backfill_v1_resume_variants(connection)
+        after = _resume_variant_count(connection, variant_key=DEFAULT_RESUME_VARIANT)
+        connection.commit()
+    return max(0, after - before)
+
+
+def store_application_resume_variant(
+    *,
+    database_path: Path,
+    job_id: str,
+    variant_key: str,
+    variant_label: str,
+    source: str,
+    application_resume_object: str,
+    resume_html: str,
+    resume_pdf: bytes,
+    parent_variant_key: str | None = None,
+    ats_score: AtsProxyScore | None = None,
+    ats_diagnostics: Any | None = None,
+    evidence_packet: Any | None = None,
+    external_critique: Any | None = None,
+    critique_prompt: str | None = None,
+    critique_response: str | None = None,
+    critique: Any | None = None,
+    validation: Any | None = None,
+    model_metadata: Any | None = None,
+) -> AtsProxyScore | None:
+    _parse_application_resume_yaml(application_resume_object)
+    with connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT *
+            FROM applications
+            WHERE job_id = ?
+            """,
+            (job_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"Application row was not found for job_id={job_id}.")
+        if ats_score is None:
+            ats_score = _calculate_ats_score(
+                resume_content=resume_pdf,
+                job_description=row["prompt_job_description"] or row["job_description"],
+            )
+        _upsert_application_resume_variant(
+            connection=connection,
+            row=row,
+            variant_key=variant_key,
+            variant_label=variant_label,
+            source=source,
+            parent_variant_key=parent_variant_key,
+            application_resume_object=application_resume_object,
+            resume_html=resume_html,
+            resume_pdf=resume_pdf,
+            ats_score=ats_score,
+            ats_diagnostics=ats_diagnostics,
+            evidence_packet=evidence_packet,
+            external_critique=external_critique,
+            critique_prompt=critique_prompt,
+            critique_response=critique_response,
+            critique=critique,
+            validation=validation,
+            model_metadata=model_metadata,
+        )
+        connection.commit()
+    return ats_score
+
+
+def fetch_active_resume_refinement_job_ids(database_path: Path) -> list[str]:
+    with connect_database(database_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT job_id
+            FROM applications
+            WHERE archived_at IS NULL
+              AND COALESCE(NULLIF(application_resume_object, ''), '') != ''
+            ORDER BY
+                CASE applied_to
+                    WHEN 'No' THEN 0
+                    WHEN 'Accepted for interview' THEN 1
+                    WHEN 'N/A' THEN 2
+                    WHEN 'Rejected' THEN 3
+                    WHEN 'Yes' THEN 4
+                    ELSE 5
+                END,
+                company COLLATE NOCASE ASC,
+                job_title COLLATE NOCASE ASC
+            """
+        ).fetchall()
+    return [str(row["job_id"]) for row in rows]
+
+
+def fetch_resume_variant_comparisons(
+    *,
+    database_path: Path,
+    job_ids: list[str] | None = None,
+    active_only: bool = False,
+) -> list[dict[str, Any]]:
+    clauses: list[str] = []
+    params: list[str] = []
+    if active_only:
+        clauses.append("applications.archived_at IS NULL")
+    if job_ids:
+        placeholders = ", ".join("?" for _ in job_ids)
+        clauses.append(f"applications.job_id IN ({placeholders})")
+        params.extend(job_ids)
+    where_clause = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    with connect_database(database_path) as connection:
+        rows = connection.execute(
+            f"""
+            SELECT
+                applications.job_id,
+                applications.company,
+                applications.job_title,
+                applications.selected_resume_variant,
+                v1.ats_score AS v1_ats_score,
+                v1.ats_missing_terms AS v1_ats_missing_terms,
+                v1.updated_at AS v1_updated_at,
+                v2.ats_score AS v2_ats_score,
+                v2.ats_missing_terms AS v2_ats_missing_terms,
+                v2.validation_json AS v2_validation_json,
+                v2.model_metadata_json AS v2_model_metadata_json,
+                v2.updated_at AS v2_updated_at
+            FROM applications
+            LEFT JOIN application_resume_variants AS v1
+              ON v1.job_id = applications.job_id
+             AND v1.variant_key = ?
+            LEFT JOIN application_resume_variants AS v2
+              ON v2.job_id = applications.job_id
+             AND v2.variant_key = ?
+            {where_clause}
+            ORDER BY
+                applications.company COLLATE NOCASE ASC,
+                applications.job_title COLLATE NOCASE ASC
+            """,
+            [DEFAULT_RESUME_VARIANT, SECOND_PASS_RESUME_VARIANT, *params],
+        ).fetchall()
+
+    comparisons: list[dict[str, Any]] = []
+    for row in rows:
+        validation = _loads_json_mapping(row["v2_validation_json"])
+        model_metadata = _loads_json_mapping(row["v2_model_metadata_json"])
+        accepted_change_ids = validation.get("accepted_change_ids")
+        rejected_changes = validation.get("rejected_changes")
+        v1_score = row["v1_ats_score"]
+        v2_score = row["v2_ats_score"]
+        comparisons.append(
+            {
+                "job_id": row["job_id"],
+                "company": row["company"],
+                "job_title": row["job_title"],
+                "selected_resume_variant": row["selected_resume_variant"]
+                or DEFAULT_RESUME_VARIANT,
+                "v1": {
+                    "ats_score": v1_score,
+                    "missing_terms": row["v1_ats_missing_terms"],
+                    "updated_at": row["v1_updated_at"],
+                },
+                "v2": {
+                    "ats_score": v2_score,
+                    "missing_terms": row["v2_ats_missing_terms"],
+                    "updated_at": row["v2_updated_at"],
+                    "accepted_changes": (
+                        len(accepted_change_ids) if isinstance(accepted_change_ids, list) else 0
+                    ),
+                    "rejected_changes": (
+                        len(rejected_changes) if isinstance(rejected_changes, list) else 0
+                    ),
+                    "is_valid": validation.get("is_valid"),
+                    "model": model_metadata.get("model"),
+                },
+                "ats_delta": (
+                    int(v2_score) - int(v1_score)
+                    if v1_score is not None and v2_score is not None
+                    else None
+                ),
+            }
+        )
+    return comparisons
+
+
+def fetch_application_resume_variants(
+    *,
+    database_path: Path,
+    job_id: str,
+) -> list[dict[str, Any]]:
+    application = _fetch_application(database_path, job_id)
+    if application is None:
+        return []
+    selected_variant = str(
+        application["selected_resume_variant"] or DEFAULT_RESUME_VARIANT
+    )
+    with connect_database(database_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT *
+            FROM application_resume_variants
+            WHERE job_id = ?
+            ORDER BY
+                CASE variant_key
+                    WHEN ? THEN 0
+                    WHEN ? THEN 1
+                    WHEN ? THEN 2
+                    ELSE 3
+                END,
+                updated_at DESC,
+                variant_key COLLATE NOCASE ASC
+            """,
+            (
+                job_id,
+                DEFAULT_RESUME_VARIANT,
+                SECOND_PASS_RESUME_VARIANT,
+                MANUAL_PASS_RESUME_VARIANT,
+            ),
+        ).fetchall()
+    baseline_score = next(
+        (
+            row["ats_score"]
+            for row in rows
+            if row["variant_key"] == DEFAULT_RESUME_VARIANT
+        ),
+        None,
+    )
+    return [
+        _resume_variant_summary(
+            row=row,
+            selected_variant=selected_variant,
+            baseline_score=baseline_score,
+        )
+        for row in rows
+    ]
+
+
+def fetch_application_resume_variant(
+    *,
+    database_path: Path,
+    job_id: str,
+    variant_key: str,
+) -> sqlite3.Row | None:
+    with connect_database(database_path) as connection:
+        return connection.execute(
+            """
+            SELECT *
+            FROM application_resume_variants
+            WHERE job_id = ?
+              AND variant_key = ?
+            """,
+            (job_id, variant_key),
+        ).fetchone()
+
+
+def select_application_resume_variant(
+    *,
+    database_path: Path,
+    job_id: str,
+    variant_key: str,
+) -> dict[str, Any]:
+    now = datetime.now(UTC).isoformat(timespec="seconds")
+    with connect_database(database_path) as connection:
+        application = connection.execute(
+            """
+            SELECT job_id
+            FROM applications
+            WHERE job_id = ?
+            """,
+            (job_id,),
+        ).fetchone()
+        if application is None:
+            raise ValueError(f"Application row was not found for job_id={job_id}.")
+        variant = connection.execute(
+            """
+            SELECT *
+            FROM application_resume_variants
+            WHERE job_id = ?
+              AND variant_key = ?
+            """,
+            (job_id, variant_key),
+        ).fetchone()
+        if variant is None:
+            raise ValueError(
+                f"Resume variant {variant_key!r} was not found for job_id={job_id}."
+            )
+        connection.execute(
+            """
+            UPDATE applications
+            SET selected_resume_variant = ?,
+                application_resume_object = ?,
+                application_resume_updated_at = ?,
+                resume_html_filename = ?,
+                resume_html_content = ?,
+                resume_html_mime_type = ?,
+                source_resume_html_path = ?,
+                resume_html_updated_at = ?,
+                resume_filename = ?,
+                resume_content = ?,
+                resume_mime_type = ?,
+                source_resume_path = ?,
+                resume_updated_at = ?,
+                ats_score = ?,
+                ats_parsing_score = ?,
+                ats_keyword_score = ?,
+                ats_semantic_score = ?,
+                ats_formatting_risk = ?,
+                ats_missing_terms = ?,
+                ats_updated_at = ?,
+                updated_at = ?
+            WHERE job_id = ?
+            """,
+            (
+                variant_key,
+                variant["application_resume_object"],
+                variant["updated_at"] or now,
+                variant["resume_html_filename"] or "",
+                variant["resume_html_content"],
+                variant["resume_html_mime_type"] or "text/html; charset=utf-8",
+                variant["source_resume_html_path"] or "",
+                variant["resume_html_updated_at"] or variant["updated_at"] or now,
+                variant["resume_filename"] or "",
+                variant["resume_content"],
+                variant["resume_mime_type"] or "application/pdf",
+                variant["source_resume_path"] or "",
+                variant["resume_updated_at"] or variant["updated_at"] or now,
+                variant["ats_score"],
+                variant["ats_parsing_score"],
+                variant["ats_keyword_score"],
+                variant["ats_semantic_score"],
+                variant["ats_formatting_risk"],
+                variant["ats_missing_terms"],
+                variant["ats_updated_at"] or variant["updated_at"],
+                now,
+                job_id,
+            ),
+        )
+        connection.commit()
+    return {
+        "variant_key": variant_key,
+        "variant_label": _resume_variant_label(variant_key, variant["variant_label"]),
+    }
+
+
+def _resume_variant_summary(
+    *,
+    row: sqlite3.Row,
+    selected_variant: str,
+    baseline_score: Any,
+) -> dict[str, Any]:
+    validation = _loads_json_mapping(row["validation_json"])
+    critique = _loads_json_mapping(row["critique_json"])
+    model_metadata = _loads_json_mapping(row["model_metadata_json"])
+    accepted_change_ids = _string_list(validation.get("accepted_change_ids"))
+    rejected_changes = _dict_list(validation.get("rejected_changes"))
+    proposed_changes = _dict_list(critique.get("proposed_changes"))
+    proposed_change_by_id = {
+        str(change.get("change_id") or ""): change for change in proposed_changes
+    }
+    accepted_changes = [
+        {
+            **proposed_change_by_id.get(change_id, {}),
+            "change_id": change_id,
+        }
+        for change_id in accepted_change_ids
+    ]
+    unsupported_claims = sorted(
+        {
+            claim
+            for change in proposed_changes
+            for claim in _string_list(change.get("unsupported_claims"))
+        }
+    )
+    ats_score = row["ats_score"]
+    ats_delta = (
+        int(ats_score) - int(baseline_score)
+        if ats_score is not None and baseline_score is not None
+        else None
+    )
+    variant_key = str(row["variant_key"])
+    return {
+        "variant_key": variant_key,
+        "variant_label": _resume_variant_label(variant_key, row["variant_label"]),
+        "action_label": _resume_variant_action_label(variant_key, row["variant_label"]),
+        "badge_class": _resume_variant_badge_class(variant_key),
+        "source": row["source"],
+        "parent_variant_key": row["parent_variant_key"],
+        "is_selected": variant_key == selected_variant,
+        "resume_filename": row["resume_filename"],
+        "resume_html_filename": row["resume_html_filename"],
+        "has_pdf": row["resume_content"] is not None,
+        "has_html": bool(row["resume_html_content"]),
+        "ats_score": ats_score,
+        "ats_delta": ats_delta,
+        "ats_parsing_score": row["ats_parsing_score"],
+        "ats_keyword_score": row["ats_keyword_score"],
+        "ats_semantic_score": row["ats_semantic_score"],
+        "ats_formatting_risk": row["ats_formatting_risk"],
+        "ats_missing_terms": row["ats_missing_terms"],
+        "updated_at": row["updated_at"],
+        "model": model_metadata.get("model"),
+        "accepted_changes": accepted_changes,
+        "rejected_changes": rejected_changes,
+        "unsupported_claims": unsupported_claims,
+        "validation_is_valid": validation.get("is_valid"),
+    }
+
+
+def _resume_variant_review_details(variants: list[dict[str, Any]]) -> dict[str, Any]:
+    accepted_changes: list[dict[str, Any]] = []
+    rejected_changes: list[dict[str, Any]] = []
+    unsupported_claims: list[str] = []
+    seen_accepted: set[str] = set()
+    seen_rejected: set[str] = set()
+    seen_claims: set[str] = set()
+
+    for variant in variants:
+        for change in variant["accepted_changes"]:
+            key = _stable_review_key(change)
+            if key in seen_accepted:
+                continue
+            seen_accepted.add(key)
+            accepted_changes.append(change)
+        for rejected in variant["rejected_changes"]:
+            key = _stable_review_key(rejected)
+            if key in seen_rejected:
+                continue
+            seen_rejected.add(key)
+            rejected_changes.append(rejected)
+        for claim in variant["unsupported_claims"]:
+            if claim in seen_claims:
+                continue
+            seen_claims.add(claim)
+            unsupported_claims.append(claim)
+
+    return {
+        "accepted_changes": accepted_changes,
+        "rejected_changes": rejected_changes,
+        "unsupported_claims": unsupported_claims,
+    }
+
+
+def _stable_review_key(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, ensure_ascii=True, default=str)
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _dict_list(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _resume_variant_label(variant_key: str, fallback: Any = None) -> str:
+    return RESUME_VARIANT_LABELS.get(variant_key, str(fallback or variant_key))
+
+
+def _resume_variant_action_label(variant_key: str, fallback: Any = None) -> str:
+    return {
+        DEFAULT_RESUME_VARIANT: "Use v1 draft",
+        SECOND_PASS_RESUME_VARIANT: "Use v2 draft",
+        MANUAL_PASS_RESUME_VARIANT: "Use manual pass",
+    }.get(variant_key, f"Use {_resume_variant_label(variant_key, fallback)}")
+
+
+def _resume_variant_badge_class(variant_key: str) -> str:
+    return {
+        DEFAULT_RESUME_VARIANT: "is-v1",
+        SECOND_PASS_RESUME_VARIANT: "is-v2",
+        MANUAL_PASS_RESUME_VARIANT: "is-manual",
+    }.get(variant_key, "is-other")
+
+
+def _resume_variant_unified_diff(
+    first_variant: sqlite3.Row | None,
+    second_variant: sqlite3.Row | None,
+) -> str:
+    if first_variant is None or second_variant is None:
+        return ""
+    first_text = str(first_variant["application_resume_object"] or "")
+    second_text = str(second_variant["application_resume_object"] or "")
+    if first_text == second_text:
+        return ""
+    return "\n".join(
+        difflib.unified_diff(
+            first_text.splitlines(),
+            second_text.splitlines(),
+            fromfile=_resume_variant_label(str(first_variant["variant_key"])),
+            tofile=_resume_variant_label(str(second_variant["variant_key"])),
+            lineterm="",
+        )
+    )
+
+
+def _resume_variant_count(connection: sqlite3.Connection, *, variant_key: str) -> int:
+    row = connection.execute(
+        """
+        SELECT COUNT(*) AS count
+        FROM application_resume_variants
+        WHERE variant_key = ?
+        """,
+        (variant_key,),
+    ).fetchone()
+    return int(row["count"] or 0)
+
+
+def _upsert_application_resume_variant(
+    *,
+    connection: sqlite3.Connection,
+    row: sqlite3.Row,
+    variant_key: str,
+    variant_label: str,
+    source: str,
+    parent_variant_key: str | None,
+    application_resume_object: str,
+    resume_html: str,
+    resume_pdf: bytes,
+    ats_score: AtsProxyScore | None,
+    resume_html_filename: str | None = None,
+    resume_filename: str | None = None,
+    source_resume_html_path: str = "",
+    source_resume_path: str = "",
+    ats_diagnostics: Any | None = None,
+    evidence_packet: Any | None = None,
+    external_critique: Any | None = None,
+    critique_prompt: str | None = None,
+    critique_response: str | None = None,
+    critique: Any | None = None,
+    validation: Any | None = None,
+    model_metadata: Any | None = None,
+) -> None:
+    now = datetime.now(UTC).isoformat(timespec="seconds")
+    connection.execute(
+        """
+        INSERT INTO application_resume_variants (
+            job_id, variant_key, variant_label, source, parent_variant_key,
+            application_resume_object, resume_html_filename, resume_html_content,
+            resume_html_mime_type, source_resume_html_path, resume_html_updated_at,
+            resume_filename, resume_content, resume_mime_type, source_resume_path,
+            resume_updated_at, ats_score, ats_parsing_score, ats_keyword_score,
+            ats_semantic_score, ats_formatting_risk, ats_missing_terms, ats_updated_at,
+            ats_diagnostics_json, evidence_packet_json, external_critique_json,
+            critique_prompt, critique_response, critique_json, validation_json,
+            model_metadata_json, created_at, updated_at
+        )
+        VALUES (
+            ?, ?, ?, ?, ?, ?, ?, ?, 'text/html; charset=utf-8', ?, ?, ?, ?,
+            'application/pdf', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        )
+        ON CONFLICT(job_id, variant_key) DO UPDATE SET
+            variant_label = excluded.variant_label,
+            source = excluded.source,
+            parent_variant_key = excluded.parent_variant_key,
+            application_resume_object = excluded.application_resume_object,
+            resume_html_filename = excluded.resume_html_filename,
+            resume_html_content = excluded.resume_html_content,
+            resume_html_mime_type = excluded.resume_html_mime_type,
+            source_resume_html_path = excluded.source_resume_html_path,
+            resume_html_updated_at = excluded.resume_html_updated_at,
+            resume_filename = excluded.resume_filename,
+            resume_content = excluded.resume_content,
+            resume_mime_type = excluded.resume_mime_type,
+            source_resume_path = excluded.source_resume_path,
+            resume_updated_at = excluded.resume_updated_at,
+            ats_score = excluded.ats_score,
+            ats_parsing_score = excluded.ats_parsing_score,
+            ats_keyword_score = excluded.ats_keyword_score,
+            ats_semantic_score = excluded.ats_semantic_score,
+            ats_formatting_risk = excluded.ats_formatting_risk,
+            ats_missing_terms = excluded.ats_missing_terms,
+            ats_updated_at = excluded.ats_updated_at,
+            ats_diagnostics_json = excluded.ats_diagnostics_json,
+            evidence_packet_json = excluded.evidence_packet_json,
+            external_critique_json = excluded.external_critique_json,
+            critique_prompt = excluded.critique_prompt,
+            critique_response = excluded.critique_response,
+            critique_json = excluded.critique_json,
+            validation_json = excluded.validation_json,
+            model_metadata_json = excluded.model_metadata_json,
+            updated_at = excluded.updated_at
+        """,
+        (
+            row["job_id"],
+            variant_key,
+            variant_label,
+            source,
+            parent_variant_key,
+            application_resume_object,
+            resume_html_filename or _variant_resume_html_filename(row, variant_key),
+            resume_html,
+            source_resume_html_path,
+            now,
+            resume_filename or _variant_resume_pdf_filename(row, variant_key),
+            resume_pdf,
+            source_resume_path,
+            now,
+            ats_score.overall_score if ats_score is not None else None,
+            ats_score.parsing_score if ats_score is not None else None,
+            ats_score.keyword_match_score if ats_score is not None else None,
+            ats_score.semantic_match_score if ats_score is not None else None,
+            ats_score.formatting_risk if ats_score is not None else None,
+            _format_missing_terms(ats_score) if ats_score is not None else None,
+            now if ats_score is not None else None,
+            _json_dumps_or_none(ats_diagnostics),
+            _json_dumps_or_none(evidence_packet),
+            _json_dumps_or_none(external_critique),
+            critique_prompt,
+            critique_response,
+            _json_dumps_or_none(critique),
+            _json_dumps_or_none(validation),
+            _json_dumps_or_none(model_metadata),
+            now,
+            now,
+        ),
+    )
+
+
+def _json_dumps_or_none(value: Any | None) -> str | None:
+    if value is None:
+        return None
+    return json.dumps(value, sort_keys=True, ensure_ascii=True)
+
+
+def _loads_json_mapping(value: Any) -> dict[str, Any]:
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(str(value))
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def store_application_resume_object(
@@ -1245,6 +2014,44 @@ def start_background_action(
     return run
 
 
+def start_seed_background_action(
+    *,
+    max_jobs: int,
+    date_posted: str,
+    run_v1: bool,
+    run_v2: bool,
+    run_manual: bool,
+    run_highlight: bool,
+    runner: BackgroundActionRunner | None = None,
+) -> BackgroundActionRun:
+    run = _create_background_action_run(
+        title=_seed_background_action_title(
+            max_jobs=max_jobs,
+            date_posted=date_posted,
+            run_v1=run_v1,
+            run_v2=run_v2,
+            run_manual=run_manual,
+            run_highlight=run_highlight,
+        )
+    )
+    target = runner or _run_seed_workflow_action
+    thread = threading.Thread(
+        target=target,
+        kwargs={
+            "run_id": run.run_id,
+            "max_jobs": max_jobs,
+            "date_posted": date_posted,
+            "run_v1": run_v1,
+            "run_v2": run_v2,
+            "run_manual": run_manual,
+            "run_highlight": run_highlight,
+        },
+        daemon=True,
+    )
+    thread.start()
+    return run
+
+
 def background_action_snapshots() -> list[dict[str, object]]:
     with _ACTION_RUN_LOCK:
         runs = sorted(
@@ -1343,27 +2150,97 @@ def _run_regenerate_action(
     job_ids: list[str],
 ) -> None:
     command = _regenerate_make_command(regenerate_mode=regenerate_mode, job_ids=job_ids)
-    _append_background_action_message(run_id, f"Running {' '.join(command)}")
-    process = subprocess.Popen(  # noqa: S603
-        command,
-        cwd=_project_root(),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
+    _run_make_command(
+        run_id=run_id,
+        command=command,
+        output_stream_error="regeneration command did not provide an output stream",
+        failure_label="regeneration command",
+        completion_message="Regeneration command completed.",
     )
-    if process.stdout is None:
-        raise RuntimeError("regeneration command did not provide an output stream")
-    for line in process.stdout:
-        _append_background_action_message(run_id, line)
-    return_code = process.wait()
-    if return_code != 0:
-        raise RuntimeError(f"regeneration command exited with status {return_code}")
-    _append_background_action_message(run_id, "Regeneration command completed.")
 
 
 def _run_highlight_action(*, run_id: str, job_ids: list[str]) -> None:
     command = _highlight_make_command(job_ids=job_ids)
+    _run_make_command(
+        run_id=run_id,
+        command=command,
+        output_stream_error="Codex highlighting command did not provide an output stream",
+        failure_label="Codex highlighting command",
+        completion_message="Codex highlighting command completed.",
+    )
+
+
+def _run_seed_workflow_action(
+    *,
+    run_id: str,
+    max_jobs: int,
+    date_posted: str,
+    run_v1: bool,
+    run_v2: bool,
+    run_manual: bool,
+    run_highlight: bool,
+) -> None:
+    try:
+        seed_output = _run_make_command(
+            run_id=run_id,
+            command=_seed_make_command(max_jobs=max_jobs, date_posted=date_posted),
+            output_stream_error="seed command did not provide an output stream",
+            failure_label="seed command",
+            completion_message="Seed command completed.",
+            collect_output=True,
+        )
+        job_ids = _extract_seeded_job_ids(seed_output)
+        if not job_ids:
+            _append_background_action_message(
+                run_id,
+                "Seed command returned no new job IDs; skipping selected workflow steps.",
+            )
+        elif run_v1 or run_v2 or run_manual or run_highlight:
+            _append_background_action_message(
+                run_id,
+                f"Seeded job IDs: {' '.join(job_ids)}",
+            )
+            if run_v1:
+                _run_regenerate_action(
+                    run_id=run_id,
+                    regenerate_mode="draft_resumes",
+                    job_ids=job_ids,
+                )
+            if run_v2:
+                _run_regenerate_action(
+                    run_id=run_id,
+                    regenerate_mode="refine_drafts",
+                    job_ids=job_ids,
+                )
+            if run_manual:
+                _run_regenerate_action(
+                    run_id=run_id,
+                    regenerate_mode="manual_pass",
+                    job_ids=job_ids,
+                )
+            if run_highlight:
+                _run_highlight_action(run_id=run_id, job_ids=job_ids)
+        else:
+            _append_background_action_message(
+                run_id,
+                "Seed-only workflow selected; no resume actions requested.",
+            )
+        _append_background_action_message(run_id, "Seed workflow completed.")
+        _finish_background_action_run(run_id, status="completed", return_code=0)
+    except Exception as exc:
+        _append_background_action_message(run_id, f"Seed workflow failed: {exc}")
+        _finish_background_action_run(run_id, status="failed", return_code=1)
+
+
+def _run_make_command(
+    *,
+    run_id: str,
+    command: list[str],
+    output_stream_error: str,
+    failure_label: str,
+    completion_message: str,
+    collect_output: bool = False,
+) -> str:
     _append_background_action_message(run_id, f"Running {' '.join(command)}")
     process = subprocess.Popen(  # noqa: S603
         command,
@@ -1374,13 +2251,17 @@ def _run_highlight_action(*, run_id: str, job_ids: list[str]) -> None:
         bufsize=1,
     )
     if process.stdout is None:
-        raise RuntimeError("Codex highlighting command did not provide an output stream")
+        raise RuntimeError(output_stream_error)
+    collected_output: list[str] = []
     for line in process.stdout:
+        if collect_output:
+            collected_output.append(line)
         _append_background_action_message(run_id, line)
     return_code = process.wait()
     if return_code != 0:
-        raise RuntimeError(f"Codex highlighting command exited with status {return_code}")
-    _append_background_action_message(run_id, "Codex highlighting command completed.")
+        raise RuntimeError(f"{failure_label} exited with status {return_code}")
+    _append_background_action_message(run_id, completion_message)
+    return "".join(collected_output)
 
 
 def _regenerate_make_command(*, regenerate_mode: str, job_ids: list[str]) -> list[str]:
@@ -1399,6 +2280,43 @@ def _highlight_make_command(*, job_ids: list[str]) -> list[str]:
     if not job_ids:
         raise ValueError("At least one job id is required for Codex highlighting.")
     return ["make", "highlight-draft-resumes", f"JOB_IDS={' '.join(job_ids)}"]
+
+
+def _seed_make_command(*, max_jobs: int, date_posted: str) -> list[str]:
+    if max_jobs < 1:
+        raise ValueError("Seed job count must be at least 1.")
+    if date_posted not in _seed_date_posted_values():
+        raise ValueError(f"Unsupported seed date posted filter: {date_posted}")
+    return ["make", "seed-jobs", f"MAX_JOBS={max_jobs}", f"DATE_POSTED={date_posted}"]
+
+
+def _extract_seeded_job_ids(output: str) -> list[str]:
+    decoder = json.JSONDecoder()
+    payload: dict[str, Any] | None = None
+    for index, char in enumerate(output):
+        if char != "{":
+            continue
+        try:
+            value, _ = decoder.raw_decode(output[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict) and isinstance(value.get("seeded_applications"), list):
+            payload = value
+
+    if payload is None:
+        return []
+
+    job_ids: list[str] = []
+    seen: set[str] = set()
+    for item in payload["seeded_applications"]:
+        if not isinstance(item, dict):
+            continue
+        job_id = str(item.get("job_id") or "").strip()
+        if not job_id or job_id in seen:
+            continue
+        seen.add(job_id)
+        job_ids.append(job_id)
+    return job_ids
 
 
 def _project_root() -> Path:
@@ -1429,15 +2347,83 @@ def _background_action_title(
     parts: list[str] = []
     if regenerate_mode:
         label = {
-            "draft_resumes": "regenerate draft resume",
+            "draft_resumes": "regenerate draft v1 only",
+            "resume_variants": "run v1 and v2 resume workflow",
+            "refine_drafts": "run v2 resume refinement",
             "aro_objects": "regenerate ARO object(s)",
             "sync_draft_to_aro": "sync draft to ARO",
             "highlight_drafts": "Codex highlight draft resume",
+            "manual_pass": "Codex manual pass resume",
         }.get(regenerate_mode, "regenerate docs")
         parts.append(f"{label} for {len(job_ids)} job(s)")
     if highlight_with_codex and regenerate_mode != "highlight_drafts":
         parts.append(f"Codex highlight draft resume for {len(job_ids)} job(s)")
     return " + ".join(parts) or "background action"
+
+
+def _seed_background_action_title(
+    *,
+    max_jobs: int,
+    date_posted: str,
+    run_v1: bool,
+    run_v2: bool,
+    run_manual: bool,
+    run_highlight: bool,
+) -> str:
+    parts = [
+        f"seed up to {max_jobs} job(s)",
+        _seed_date_posted_label(date_posted).lower(),
+    ]
+    if run_v1:
+        parts.append("v1 draft")
+    if run_v2:
+        parts.append("v2 refinement")
+    if run_manual:
+        parts.append("Codex manual pass")
+    if run_highlight:
+        parts.append("Codex highlight")
+    return " + ".join(parts)
+
+
+def _parse_seed_max_jobs(value: Any) -> int:
+    try:
+        max_jobs = int(str(value or DEFAULT_SEED_MAX_JOBS).strip())
+    except ValueError as exc:
+        raise ValueError("Seed job count must be a whole number.") from exc
+    if max_jobs < 1 or max_jobs > MAX_SEED_JOBS_FROM_UI:
+        raise ValueError(f"Seed job count must be between 1 and {MAX_SEED_JOBS_FROM_UI}.")
+    return max_jobs
+
+
+def _parse_seed_date_posted(value: Any) -> str:
+    date_posted = str(value or DEFAULT_SEED_DATE_POSTED).strip()
+    if date_posted not in _seed_date_posted_values():
+        raise ValueError("Choose a valid posting date window.")
+    return date_posted
+
+
+def _seed_date_posted_values() -> set[str]:
+    return {value for value, _ in SEED_DATE_POSTED_OPTIONS}
+
+
+def _seed_date_posted_label(value: str) -> str:
+    return dict(SEED_DATE_POSTED_OPTIONS).get(value, value)
+
+
+def _seed_workflow_validation_error(
+    *,
+    run_v1: bool,
+    run_v2: bool,
+    run_manual: bool,
+    run_highlight: bool,
+) -> str | None:
+    if run_v2 and not run_v1:
+        return "Run v1 draft must be selected before v2 refinement."
+    if run_manual and (not run_v1 or not run_v2):
+        return "Run v1 draft and v2 refinement must be selected before manual pass."
+    if run_highlight and not run_v1:
+        return "Run v1 draft must be selected before Codex highlighting."
+    return None
 
 
 def create_app(
@@ -1467,6 +2453,9 @@ def create_app(
     app.jinja_env.filters["rich_text"] = rich_text
     app.jinja_env.globals["bullet_text_for_editing"] = _bullet_text_for_editing
     app.jinja_env.globals["job_bulk_bullet_text"] = _job_bulk_bullet_text
+    app.jinja_env.globals["resume_variant_label"] = _resume_variant_label
+    app.jinja_env.globals["resume_variant_badge_class"] = _resume_variant_badge_class
+    app.jinja_env.globals["application_status_row_class"] = _application_status_row_class
 
     def redirect_to_index_state():
         return redirect(_safe_index_return_path(request.values.get("return_to")))
@@ -1527,7 +2516,46 @@ def create_app(
         return render_template_string(
             ADD_APPLICATION_TEMPLATE,
             return_to=_safe_index_return_path(request.args.get("return_to")),
+            default_seed_max_jobs=DEFAULT_SEED_MAX_JOBS,
+            max_seed_jobs=MAX_SEED_JOBS_FROM_UI,
+            seed_date_posted_options=SEED_DATE_POSTED_OPTIONS,
+            default_seed_date_posted=DEFAULT_SEED_DATE_POSTED,
         )
+
+    @app.post("/applications/add/seed")
+    def add_seeded_applications():
+        try:
+            max_jobs = _parse_seed_max_jobs(request.form.get("max_jobs"))
+            date_posted = _parse_seed_date_posted(request.form.get("date_posted"))
+        except ValueError as exc:
+            flash(f"Seed workflow failed: {exc}")
+            return redirect(_add_application_return_path(request.form.get("return_to")))
+
+        run_v1 = bool(request.form.get("run_v1"))
+        run_v2 = bool(request.form.get("run_v2"))
+        run_manual = bool(request.form.get("run_manual"))
+        run_highlight = bool(request.form.get("run_highlight"))
+        validation_error = _seed_workflow_validation_error(
+            run_v1=run_v1,
+            run_v2=run_v2,
+            run_manual=run_manual,
+            run_highlight=run_highlight,
+        )
+        if validation_error:
+            flash(f"Seed workflow failed: {validation_error}")
+            return redirect(_add_application_return_path(request.form.get("return_to")))
+
+        run = start_seed_background_action(
+            max_jobs=max_jobs,
+            date_posted=date_posted,
+            run_v1=run_v1,
+            run_v2=run_v2,
+            run_manual=run_manual,
+            run_highlight=run_highlight,
+            runner=background_action_runner,
+        )
+        flash(f"Started seed workflow: {run.title}.")
+        return redirect(_add_application_return_path(request.form.get("return_to")))
 
     @app.post("/applications/add/linkedin")
     def add_linkedin_application():
@@ -1662,6 +2690,82 @@ def create_app(
             mimetype=row["resume_html_mime_type"] or "text/html; charset=utf-8",
         )
 
+    @app.get("/resumes/<job_id>/variants")
+    def resume_variants_review(job_id: str):
+        row = _fetch_application(database_path, job_id)
+        if row is None:
+            abort(404)
+        variants = fetch_application_resume_variants(
+            database_path=database_path,
+            job_id=job_id,
+        )
+        if not variants:
+            return Response("Resume variants were not found in the database.", status=404)
+        v1_variant = fetch_application_resume_variant(
+            database_path=database_path,
+            job_id=job_id,
+            variant_key=DEFAULT_RESUME_VARIANT,
+        )
+        v2_variant = fetch_application_resume_variant(
+            database_path=database_path,
+            job_id=job_id,
+            variant_key=SECOND_PASS_RESUME_VARIANT,
+        )
+        return render_template_string(
+            RESUME_VARIANTS_TEMPLATE,
+            row=row,
+            variants=variants,
+            review_details=_resume_variant_review_details(variants),
+            diff_text=_resume_variant_unified_diff(v1_variant, v2_variant),
+            return_to=_safe_index_return_path(request.args.get("return_to")),
+        )
+
+    @app.get("/resumes/<job_id>/variants/<variant_key>")
+    def resume_variant_pdf(job_id: str, variant_key: str):
+        variant = fetch_application_resume_variant(
+            database_path=database_path,
+            job_id=job_id,
+            variant_key=variant_key,
+        )
+        if variant is None or variant["resume_content"] is None:
+            return Response("Resume variant PDF was not found in the database.", status=404)
+        return send_file(
+            BytesIO(variant["resume_content"]),
+            mimetype=variant["resume_mime_type"] or "application/pdf",
+            download_name=variant["resume_filename"] or f"{job_id}_{variant_key}.pdf",
+            as_attachment=False,
+        )
+
+    @app.get("/resume-html/<job_id>/variants/<variant_key>")
+    def resume_variant_html(job_id: str, variant_key: str):
+        variant = fetch_application_resume_variant(
+            database_path=database_path,
+            job_id=job_id,
+            variant_key=variant_key,
+        )
+        if variant is None or not variant["resume_html_content"]:
+            return Response("Resume variant HTML was not found in the database.", status=404)
+        return Response(
+            variant["resume_html_content"],
+            mimetype=variant["resume_html_mime_type"] or "text/html; charset=utf-8",
+        )
+
+    @app.post("/resumes/<job_id>/variants/<variant_key>/use")
+    def resume_variant_use(job_id: str, variant_key: str):
+        try:
+            selected = select_application_resume_variant(
+                database_path=database_path,
+                job_id=job_id,
+                variant_key=variant_key,
+            )
+        except ValueError as exc:
+            flash(str(exc))
+        else:
+            flash(f"Using {selected['variant_label']} for resume HTML/PDF links.")
+        return redirect(
+            _resume_variant_review_return_path(job_id, request.form.get("return_to"))
+        )
+
     @app.get("/resumes/<job_id>/edit")
     def resume_edit(job_id: str):
         row = _fetch_application(database_path, job_id)
@@ -1677,6 +2781,7 @@ def create_app(
             row=row,
             resume=resume,
             return_to=return_to,
+            variants_return_path=_resume_variant_review_return_path(job_id, return_to),
         )
 
     @app.post("/resumes/<job_id>/edit")
@@ -1971,7 +3076,8 @@ def _application_select_columns() -> str:
     """
     manual_passthrough_status = """
         CASE
-            WHEN lower(COALESCE(applications.notes, '')) LIKE '%manual second pass%'
+            WHEN applications.selected_resume_variant = 'manual'
+              OR lower(COALESCE(applications.notes, '')) LIKE '%manual second pass%'
               OR lower(COALESCE(applications.notes, '')) LIKE '%manual passthrough%'
             THEN 'Yes'
             ELSE 'No'
@@ -2429,6 +3535,25 @@ def _resume_pdf_filename(row: sqlite3.Row) -> str:
     return f"mp_resume_{_filename_part(str(row['job_title'] or row['job_id']))}.pdf"
 
 
+def _variant_resume_html_filename(row: sqlite3.Row, variant_key: str) -> str:
+    filename = _resume_html_filename(row)
+    return filename if variant_key == DEFAULT_RESUME_VARIANT else _filename_with_suffix(
+        filename, variant_key
+    )
+
+
+def _variant_resume_pdf_filename(row: sqlite3.Row, variant_key: str) -> str:
+    filename = _resume_pdf_filename(row)
+    return filename if variant_key == DEFAULT_RESUME_VARIANT else _filename_with_suffix(
+        filename, variant_key
+    )
+
+
+def _filename_with_suffix(filename: str, suffix: str) -> str:
+    path = Path(filename)
+    return f"{path.stem}_{_filename_part(suffix)}{path.suffix}"
+
+
 def _cover_letter_pdf_filename(row: sqlite3.Row) -> str:
     return f"mp_cover_letter_{_filename_part(str(row['job_title'] or row['job_id']))}.pdf"
 
@@ -2442,6 +3567,14 @@ def _filename_part(value: str) -> str:
 def _normalize_applied_to(value: Any) -> str:
     text = str(value or "").strip()
     return text if text in APPLICATION_STATUSES else "No"
+
+
+def _application_status_row_class(value: Any) -> str:
+    return {
+        "Yes": "is-applied",
+        "Accepted for interview": "is-interview",
+        "N/A": "is-not-applicable",
+    }.get(str(value or ""), "")
 
 
 def _view_state_from_args(args: Any) -> dict[str, str]:
@@ -2494,6 +3627,11 @@ def _safe_index_return_path(value: Any) -> str:
 def _resume_edit_return_path(job_id: str, return_to: Any) -> str:
     query = urlencode({"return_to": _safe_index_return_path(return_to)})
     return f"/resumes/{job_id}/edit?{query}"
+
+
+def _resume_variant_review_return_path(job_id: str, return_to: Any) -> str:
+    query = urlencode({"return_to": _safe_index_return_path(return_to)})
+    return f"/resumes/{job_id}/variants?{query}"
 
 
 def _cover_letter_edit_return_path(job_id: str, return_to: Any) -> str:
@@ -2996,6 +4134,8 @@ INDEX_TEMPLATE = """
       z-index: 1;
     }
     tr.is-applied { background: #f3faf8; }
+    tr.is-interview { background: #fff8d7; }
+    tr.is-not-applicable { background: #f3f4f6; }
     .select-col { width: 42px; text-align: center; }
     .company { min-width: 160px; font-weight: 650; }
     .job { min-width: 260px; }
@@ -3007,11 +4147,8 @@ INDEX_TEMPLATE = """
       gap: 6px;
       margin-top: 6px;
     }
-    .manual-pass-badge {
-      background: #fff7ed;
-      border: 1px solid #fed7aa;
+    .variant-badge, .manual-pass-badge {
       border-radius: 999px;
-      color: #9a3412;
       display: inline-flex;
       font-size: 11px;
       font-weight: 800;
@@ -3019,6 +4156,26 @@ INDEX_TEMPLATE = """
       padding: 4px 7px;
       text-transform: uppercase;
       white-space: nowrap;
+    }
+    .variant-badge.is-v1 {
+      background: #eef8f6;
+      border: 1px solid #b9d8d3;
+      color: var(--accent-strong);
+    }
+    .variant-badge.is-v2 {
+      background: #eef2ff;
+      border: 1px solid #c7d2fe;
+      color: #3730a3;
+    }
+    .variant-badge.is-manual, .manual-pass-badge {
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      color: #9a3412;
+    }
+    .variant-badge.is-other {
+      background: #f4f4f5;
+      border: 1px solid #d4d4d8;
+      color: #3f3f46;
     }
     .date-col { min-width: 104px; white-space: nowrap; }
     .experience-col { min-width: 126px; white-space: nowrap; }
@@ -3245,11 +4402,23 @@ INDEX_TEMPLATE = """
             </label>
             <label>
               <input type="radio" name="regenerate_mode" value="draft_resumes">
-              <span>Regenerate Draft Resume</span>
+              <span>Regenerate Draft v1 Only</span>
+            </label>
+            <label>
+              <input type="radio" name="regenerate_mode" value="resume_variants">
+              <span>Run v1 + v2 Resume Workflow</span>
+            </label>
+            <label>
+              <input type="radio" name="regenerate_mode" value="refine_drafts">
+              <span>Run v2 Refinement</span>
             </label>
             <label>
               <input type="radio" name="regenerate_mode" value="highlight_drafts">
               <span>Codex Highlight Draft Resume</span>
+            </label>
+            <label>
+              <input type="radio" name="regenerate_mode" value="manual_pass">
+              <span>Codex Manual Pass Variant</span>
             </label>
             <label>
               <input type="radio" name="regenerate_mode" value="sync_draft_to_aro">
@@ -3395,7 +4564,7 @@ INDEX_TEMPLATE = """
               {{ row.company }} {{ row.job_title }} {{ row.job_id }}
               {{ row.experience_level or '' }}
             {% endset %}
-            <tr class="{{ 'is-applied' if row.applied_to == 'Yes' else '' }}"
+            <tr class="{{ application_status_row_class(row.applied_to) }}"
                 data-status="{{ row.applied_to }}"
                 data-company-sort="{{ row.company }}"
                 data-matched-sort="{{ row.date_matched or '' }}"
@@ -3417,14 +4586,25 @@ INDEX_TEMPLATE = """
               <td class="job">
                 {{ row.job_title }}
                 <span class="job-id">{{ row.job_id }}</span>
-                {% if row.manual_passthrough_status == 'Yes' %}
+                {% if row.application_resume_object or row.manual_passthrough_status == 'Yes' %}
+                  {% set selected_variant = row.selected_resume_variant or 'v1' %}
                   <span class="job-badges">
-                    <span
-                      class="manual-pass-badge"
-                      title="Manual second-pass resume review completed"
-                    >
-                      Manual pass
-                    </span>
+                    {% if row.application_resume_object %}
+                      <span
+                        class="variant-badge {{ resume_variant_badge_class(selected_variant) }}"
+                        title="Selected resume variant"
+                      >
+                        {{ resume_variant_label(selected_variant) }}
+                      </span>
+                    {% endif %}
+                    {% if row.manual_passthrough_status == 'Yes' and selected_variant != 'manual' %}
+                      <span
+                        class="manual-pass-badge"
+                        title="Manual second-pass resume review completed"
+                      >
+                        Manual pass
+                      </span>
+                    {% endif %}
                   </span>
                 {% endif %}
               </td>
@@ -3489,8 +4669,6 @@ INDEX_TEMPLATE = """
                   <a
                     class="preserve-state-link"
                     href="/descriptions/{{ row.job_id }}"
-                    target="_blank"
-                    rel="noreferrer"
                   >
                     Compare descriptions
                   </a>
@@ -3512,10 +4690,14 @@ INDEX_TEMPLATE = """
                       <a
                         class="preserve-state-link"
                         href="/resumes/{{ row.job_id }}/edit"
-                        target="_blank"
-                        rel="noreferrer"
                       >
                         Edit
+                      </a>
+                      <a
+                        class="preserve-state-link"
+                        href="/resumes/{{ row.job_id }}/variants"
+                      >
+                        Review
                       </a>
                     {% endif %}
                     <form method="post" action="/resumes/{{ row.job_id }}/copy-to-downloads">
@@ -3554,8 +4736,6 @@ INDEX_TEMPLATE = """
                     <a
                       class="preserve-state-link"
                       href="/cover-letters/{{ row.job_id }}/edit"
-                      target="_blank"
-                      rel="noreferrer"
                     >
                       Edit
                     </a>
@@ -4207,7 +5387,7 @@ INDEX_TEMPLATE = """
         window.open(
           url.toString(),
           "add-application",
-          "popup,width=560,height=470,noopener,noreferrer",
+          "popup,width=560,height=650,noopener,noreferrer",
         );
       });
     }
@@ -4313,6 +5493,26 @@ ADD_APPLICATION_TEMPLATE = """
       background: var(--surface);
       border: 1px solid var(--line);
     }
+    form h2 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 750;
+    }
+    fieldset {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      border: 0;
+    }
+    legend {
+      margin: 0 0 2px;
+      padding: 0;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
     label {
       display: grid;
       gap: 5px;
@@ -4331,7 +5531,7 @@ ADD_APPLICATION_TEMPLATE = """
       text-transform: none;
     }
     .option-row input { margin: 0; }
-    input[type="url"] {
+    input[type="url"], input[type="number"] {
       width: 100%;
       border: 1px solid var(--line);
       border-radius: 6px;
@@ -4392,6 +5592,56 @@ ADD_APPLICATION_TEMPLATE = """
       {% endif %}
     {% endwith %}
 
+    <form method="post" action="/applications/add/seed">
+      <input type="hidden" name="return_to" value="{{ return_to }}">
+      <h2>Seed jobs</h2>
+      <label>
+        Jobs
+        <input
+          type="number"
+          name="max_jobs"
+          value="{{ default_seed_max_jobs }}"
+          min="1"
+          max="{{ max_seed_jobs }}"
+          required
+        >
+      </label>
+      <fieldset>
+        <legend>Posted</legend>
+        {% for value, label in seed_date_posted_options %}
+          <label class="option-row">
+            <input
+              type="radio"
+              name="date_posted"
+              value="{{ value }}"
+              {% if value == default_seed_date_posted %}checked{% endif %}
+            >
+            <span>{{ label }}</span>
+          </label>
+        {% endfor %}
+      </fieldset>
+      <fieldset>
+        <legend>Workflow</legend>
+        <label class="option-row">
+          <input type="checkbox" name="run_v1" value="1" checked>
+          <span>Run v1 draft</span>
+        </label>
+        <label class="option-row">
+          <input type="checkbox" name="run_v2" value="1" checked>
+          <span>Run v2 refinement</span>
+        </label>
+        <label class="option-row">
+          <input type="checkbox" name="run_manual" value="1">
+          <span>Run Codex manual pass</span>
+        </label>
+        <label class="option-row">
+          <input type="checkbox" name="run_highlight" value="1">
+          <span>Run Codex highlighting</span>
+        </label>
+      </fieldset>
+      <button type="submit">Load</button>
+    </form>
+
     <form method="post" action="/applications/add/linkedin">
       <input type="hidden" name="return_to" value="{{ return_to }}">
       <label>
@@ -4427,6 +5677,398 @@ ADD_APPLICATION_TEMPLATE = """
       </label>
       <button type="submit">Load</button>
     </form>
+  </main>
+</body>
+</html>
+"""
+
+
+RESUME_VARIANTS_TEMPLATE = """
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Resume Variants</title>
+  <style>
+    :root {
+      --bg: #f6f7f8;
+      --surface: #fff;
+      --ink: #14212d;
+      --muted: #617080;
+      --line: #d9e0e4;
+      --accent: #0f766e;
+      --accent-strong: #115e59;
+      --added: #eef8f1;
+      --removed: #fff1f1;
+      --changed: #fff8dd;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 18px 22px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+    h1 { margin: 4px 0 2px; font-size: 20px; }
+    h2 {
+      margin: 0;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      font-size: 14px;
+      font-weight: 750;
+    }
+    main { padding: 18px 22px 30px; }
+    section {
+      margin-bottom: 14px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+    }
+    a { color: var(--accent); font-weight: 650; }
+    button, .button-link {
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      font: inherit;
+      font-weight: 700;
+      padding: 7px 10px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    button:hover, .button-link:hover { background: var(--accent-strong); }
+    button[disabled] {
+      background: #e5e7eb;
+      border-color: #d1d5db;
+      color: #4b5563;
+      cursor: default;
+    }
+    .button-link.secondary {
+      background: #fff;
+      color: var(--accent);
+    }
+    .button-link.secondary:hover {
+      background: #eff7f6;
+      color: var(--accent-strong);
+    }
+    .top-links, .actions-inline {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+    .meta, .muted { color: var(--muted); }
+    .flash {
+      margin: 0 0 12px;
+      padding: 10px 12px;
+      border: 1px solid #c8dfdc;
+      border-radius: 6px;
+      background: #eef8f6;
+      color: var(--accent-strong);
+    }
+    .variant-badge {
+      border-radius: 999px;
+      display: inline-flex;
+      font-size: 11px;
+      font-weight: 850;
+      line-height: 1;
+      padding: 4px 7px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .variant-badge.is-v1 {
+      background: #eef8f6;
+      border: 1px solid #b9d8d3;
+      color: var(--accent-strong);
+    }
+    .variant-badge.is-v2 {
+      background: #eef2ff;
+      border: 1px solid #c7d2fe;
+      color: #3730a3;
+    }
+    .variant-badge.is-manual {
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      color: #9a3412;
+    }
+    .variant-badge.is-other {
+      background: #f4f4f5;
+      border: 1px solid #d4d4d8;
+      color: #3f3f46;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 9px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #fafbfc;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+    .score-grid {
+      display: grid;
+      grid-template-columns: auto auto;
+      gap: 2px 12px;
+      margin-top: 4px;
+      max-width: 260px;
+      font-size: 12px;
+    }
+    .delta-positive { color: #047857; font-weight: 800; }
+    .delta-negative { color: #b91c1c; font-weight: 800; }
+    .delta-neutral { color: var(--muted); font-weight: 800; }
+    pre {
+      margin: 0;
+      overflow: auto;
+      padding: 14px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #fff;
+      color: var(--ink);
+      font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    .diff-pre { max-height: 520px; }
+    .review-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .review-list {
+      margin: 0;
+      padding: 12px 18px 14px 28px;
+    }
+    .review-list li { margin-bottom: 8px; }
+    .issue {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 2px;
+    }
+    @media (max-width: 980px) {
+      header { flex-direction: column; }
+      main { padding: 14px; overflow-x: auto; }
+      .review-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <div class="top-links">
+        <a href="{{ return_to }}">Back to tracker</a>
+        {% if row.linkedin_url %}
+          <a href="{{ row.linkedin_url }}" target="_blank" rel="noreferrer">Job URL</a>
+        {% endif %}
+        {% if row.resume_content %}
+          <a href="/resumes/{{ row.job_id }}" target="_blank" rel="noreferrer">
+            Current PDF
+          </a>
+        {% endif %}
+        {% if row.resume_html_content %}
+          <a href="/resume-html/{{ row.job_id }}" target="_blank" rel="noreferrer">
+            Current HTML
+          </a>
+        {% endif %}
+      </div>
+      <h1>Resume Variants</h1>
+      <div class="meta">{{ row.company }} - {{ row.job_title }} - {{ row.job_id }}</div>
+    </div>
+    {% set selected_variant = row.selected_resume_variant or 'v1' %}
+    <span class="variant-badge {{ resume_variant_badge_class(selected_variant) }}">
+      {{ resume_variant_label(selected_variant) }}
+    </span>
+  </header>
+  <main>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        {% for message in messages %}
+          <p class="flash">{{ message }}</p>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <section>
+      <h2>Variants</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Variant</th>
+            <th>ATS</th>
+            <th>Artifacts</th>
+            <th>Actions</th>
+            <th>Model / Updated</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for variant in variants %}
+            <tr>
+              <td>
+                <span class="variant-badge {{ variant.badge_class }}">
+                  {{ variant.variant_label }}
+                </span>
+                {% if variant.is_selected %}
+                  <div class="muted">Selected</div>
+                {% endif %}
+              </td>
+              <td>
+                <strong>
+                  {{ variant.ats_score if variant.ats_score is not none else '-' }}/100
+                </strong>
+                {% if variant.ats_delta is not none %}
+                  {% if variant.ats_delta > 0 %}
+                    <span class="delta-positive">+{{ variant.ats_delta }}</span>
+                  {% elif variant.ats_delta < 0 %}
+                    <span class="delta-negative">{{ variant.ats_delta }}</span>
+                  {% else %}
+                    <span class="delta-neutral">0</span>
+                  {% endif %}
+                {% endif %}
+                {% set parsing_score = variant.ats_parsing_score %}
+                {% set keyword_score = variant.ats_keyword_score %}
+                {% set semantic_score = variant.ats_semantic_score %}
+                <div class="score-grid">
+                  <span>Parsing</span>
+                  <strong>{{ parsing_score if parsing_score is not none else '-' }}/100</strong>
+                  <span>Keyword</span>
+                  <strong>{{ keyword_score if keyword_score is not none else '-' }}/100</strong>
+                  <span>Semantic</span>
+                  <strong>{{ semantic_score if semantic_score is not none else '-' }}/100</strong>
+                  <span>Risk</span>
+                  <strong>{{ variant.ats_formatting_risk or '-' }}</strong>
+                </div>
+                {% if variant.ats_missing_terms %}
+                  <div class="muted">{{ variant.ats_missing_terms }}</div>
+                {% endif %}
+              </td>
+              <td>
+                <div class="actions-inline">
+                  {% if variant.has_pdf %}
+                    <a
+                      href="/resumes/{{ row.job_id }}/variants/{{ variant.variant_key }}"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      PDF
+                    </a>
+                  {% endif %}
+                  {% if variant.has_html %}
+                    <a
+                      href="/resume-html/{{ row.job_id }}/variants/{{ variant.variant_key }}"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      HTML
+                    </a>
+                  {% endif %}
+                </div>
+              </td>
+              <td>
+                {% if variant.is_selected %}
+                  <button type="button" disabled>Selected</button>
+                {% else %}
+                  <form
+                    method="post"
+                    action="/resumes/{{ row.job_id }}/variants/{{ variant.variant_key }}/use"
+                  >
+                    <input type="hidden" name="return_to" value="{{ return_to }}">
+                    <button type="submit">{{ variant.action_label }}</button>
+                  </form>
+                {% endif %}
+              </td>
+              <td>
+                <div>{{ variant.model or '-' }}</div>
+                <div class="muted">{{ variant.updated_at|display_timestamp }}</div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>v1 / v2 ARO Diff</h2>
+      {% if diff_text %}
+        <pre class="diff-pre">{{ diff_text }}</pre>
+      {% else %}
+        <pre class="diff-pre">No v1/v2 differences detected.</pre>
+      {% endif %}
+    </section>
+
+    <div class="review-grid">
+      <section>
+        <h2>Accepted Changes</h2>
+        {% if review_details.accepted_changes %}
+          <ol class="review-list">
+            {% for change in review_details.accepted_changes %}
+              <li>
+                <strong>{{ change.change_id }}</strong>
+                {% if change.rationale %}
+                  <span class="issue">{{ change.rationale }}</span>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ol>
+        {% else %}
+          <pre>No accepted changes recorded.</pre>
+        {% endif %}
+      </section>
+
+      <section>
+        <h2>Rejected Changes</h2>
+        {% if review_details.rejected_changes %}
+          <ol class="review-list">
+            {% for rejected in review_details.rejected_changes %}
+              <li>
+                <strong>{{ rejected.change_id }}</strong>
+                {% for issue in rejected.issues or [] %}
+                  <span class="issue">
+                    {{ issue.reason or 'issue' }}
+                    {% if issue.message %}: {{ issue.message }}{% endif %}
+                  </span>
+                {% endfor %}
+              </li>
+            {% endfor %}
+          </ol>
+        {% else %}
+          <pre>No rejected changes recorded.</pre>
+        {% endif %}
+      </section>
+
+      <section>
+        <h2>Unsupported Terms</h2>
+        {% if review_details.unsupported_claims %}
+          <ol class="review-list">
+            {% for claim in review_details.unsupported_claims %}
+              <li>{{ claim }}</li>
+            {% endfor %}
+          </ol>
+        {% else %}
+          <pre>No unsupported terms recorded.</pre>
+        {% endif %}
+      </section>
+    </div>
   </main>
 </body>
 </html>
@@ -4896,6 +6538,9 @@ RESUME_EDIT_TEMPLATE = """
             Resume HTML
           </a>
         {% endif %}
+        <a href="{{ variants_return_path }}">
+          Review variants
+        </a>
       </div>
       <h1>Edit Resume</h1>
       <div class="muted">{{ row.company }} - {{ row.job_title }} - {{ row.job_id }}</div>

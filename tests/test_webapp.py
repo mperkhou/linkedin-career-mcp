@@ -86,10 +86,21 @@ def test_connect_database_migrates_job_description_columns(tmp_path: Path):
     assert "ats_semantic_score" in columns
     assert "ats_formatting_risk" in columns
     assert "ats_missing_terms" in columns
+    assert "selected_resume_variant" in columns
+    with webapp.connect_database(database_path) as connection:
+        variant_table = connection.execute(
+            """
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'table'
+              AND name = 'application_resume_variants'
+            """
+        ).fetchone()
+    assert variant_table is not None
     with webapp.connect_database(database_path) as connection:
         row = connection.execute(
             """
-            SELECT date_matched, date_posted, archived_at
+            SELECT date_matched, date_posted, archived_at, selected_resume_variant
             FROM applications
             WHERE job_id = '123'
             """
@@ -97,6 +108,7 @@ def test_connect_database_migrates_job_description_columns(tmp_path: Path):
     assert row["date_matched"] == "2026-06-08T10:00:00+00:00"
     assert row["date_posted"] is None
     assert row["archived_at"] is None
+    assert row["selected_resume_variant"] == "v1"
 
 
 def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypatch):
@@ -196,13 +208,19 @@ def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypat
     assert "actionSync" not in html
     assert "Sync from output" not in html
     assert "Regenerate ARO Objects" in html
-    assert "Regenerate Draft Resume" in html
+    assert "Regenerate Draft v1 Only" in html
+    assert "Run v1 + v2 Resume Workflow" in html
+    assert "Run v2 Refinement" in html
     assert "Codex Highlight Draft Resume" in html
+    assert "Codex Manual Pass Variant" in html
     assert "Run Codex highlighting after draft generation" in html
     assert "Sync Draft to ARO" in html
     assert 'name="regenerate_mode" value="aro_objects"' in html
     assert 'name="regenerate_mode" value="draft_resumes"' in html
+    assert 'name="regenerate_mode" value="resume_variants"' in html
+    assert 'name="regenerate_mode" value="refine_drafts"' in html
     assert 'name="regenerate_mode" value="highlight_drafts"' in html
+    assert 'name="regenerate_mode" value="manual_pass"' in html
     assert 'name="highlight_with_codex" value="1"' in html
     assert 'name="regenerate_mode" value="sync_draft_to_aro"' in html
     assert "ARO/Resume Sync" in html
@@ -244,6 +262,38 @@ def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypat
     assert "Resume" in cells[8].get_text(" ", strip=True)
     assert cells[9].select_one(".sync-status") is not None
     assert "Edit" in cells[10].get_text(" ", strip=True)
+
+    def cell_link(cell, label: str):
+        return next(
+            (
+                link
+                for link in cell.find_all("a")
+                if link.get_text(" ", strip=True) == label
+            ),
+            None,
+        )
+
+    job_url_link = cell_link(cells[7], "Job URL")
+    compare_link = cell_link(cells[7], "Compare descriptions")
+    resume_link = cell_link(cells[8], "Resume")
+    resume_html_link = cell_link(cells[8], "HTML")
+    resume_edit_link = cell_link(cells[8], "Edit")
+    resume_review_link = cell_link(cells[8], "Review")
+    cover_letter_edit_link = cell_link(cells[10], "Edit")
+    assert job_url_link is not None
+    assert job_url_link.get("target") == "_blank"
+    assert compare_link is not None
+    assert compare_link.get("target") is None
+    assert resume_link is not None
+    assert resume_link.get("target") == "_blank"
+    assert resume_html_link is not None
+    assert resume_html_link.get("target") == "_blank"
+    assert resume_edit_link is not None
+    assert resume_edit_link.get("target") is None
+    assert resume_review_link is not None
+    assert resume_review_link.get("target") is None
+    assert cover_letter_edit_link is not None
+    assert cover_letter_edit_link.get("target") is None
     manual_badge = cells[2].select_one(".manual-pass-badge")
     assert manual_badge is not None
     assert manual_badge.get_text(" ", strip=True) == "Manual pass"
@@ -385,6 +435,12 @@ def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypat
     assert update_response.status_code == 302
     refreshed_index = client.get("/")
     assert b'N/A: 1' in refreshed_index.data
+    not_applicable_row = BeautifulSoup(
+        refreshed_index.data.decode(),
+        "html.parser",
+    ).select_one('tbody tr[data-status="N/A"]')
+    assert not_applicable_row is not None
+    assert "is-not-applicable" in not_applicable_row.get("class", [])
 
     interview_response = client.post(
         "/applications/123",
@@ -402,6 +458,12 @@ def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypat
     interview_index = client.get("/")
     assert b"Interview: 1" in interview_index.data
     assert b'data-status="Accepted for interview"' in interview_index.data
+    interview_row = BeautifulSoup(
+        interview_index.data.decode(),
+        "html.parser",
+    ).select_one('tbody tr[data-status="Accepted for interview"]')
+    assert interview_row is not None
+    assert "is-interview" in interview_row.get("class", [])
 
     rejected_response = client.post(
         "/applications/123",
@@ -544,6 +606,19 @@ def test_regenerate_make_command_maps_modes_to_make_targets():
         "FIRST_DRAFT_FORCE=1",
     ]
     assert webapp._regenerate_make_command(  # noqa: SLF001
+        regenerate_mode="resume_variants",
+        job_ids=["url-123"],
+    ) == [
+        "make",
+        "regenerate-resumes",
+        "JOB_IDS=url-123",
+        "FIRST_DRAFT_FORCE=1",
+    ]
+    assert webapp._regenerate_make_command(  # noqa: SLF001
+        regenerate_mode="refine_drafts",
+        job_ids=["url-123"],
+    ) == ["make", "refine-draft-resumes", "JOB_IDS=url-123"]
+    assert webapp._regenerate_make_command(  # noqa: SLF001
         regenerate_mode="sync_draft_to_aro",
         job_ids=["url-123"],
     ) == ["make", "sync-draft-to-aro", "JOB_IDS=url-123"]
@@ -551,6 +626,10 @@ def test_regenerate_make_command_maps_modes_to_make_targets():
         regenerate_mode="highlight_drafts",
         job_ids=["url-123"],
     ) == ["make", "highlight-draft-resumes", "JOB_IDS=url-123"]
+    assert webapp._regenerate_make_command(  # noqa: SLF001
+        regenerate_mode="manual_pass",
+        job_ids=["url-123"],
+    ) == ["make", "manual-pass-resumes", "JOB_IDS=url-123"]
     assert webapp._highlight_make_command(job_ids=["url-123"]) == [  # noqa: SLF001
         "make",
         "highlight-draft-resumes",
@@ -566,6 +645,50 @@ def test_regenerate_make_command_maps_modes_to_make_targets():
             regenerate_mode="first_draft_resumes",
             job_ids=["123"],
         )
+
+
+def test_seed_make_command_and_output_parsing():
+    assert webapp._seed_make_command(  # noqa: SLF001
+        max_jobs=5,
+        date_posted="past_week",
+    ) == [
+        "make",
+        "seed-jobs",
+        "MAX_JOBS=5",
+        "DATE_POSTED=past_week",
+    ]
+    with pytest.raises(ValueError, match="at least 1"):
+        webapp._seed_make_command(max_jobs=0, date_posted="past_week")  # noqa: SLF001
+    with pytest.raises(ValueError, match="Unsupported seed date posted filter"):
+        webapp._seed_make_command(max_jobs=5, date_posted="yesterday")  # noqa: SLF001
+
+    output = """
+    LLM: planner=z-ai/glm-5.2
+    {
+      "jobs_seeded": 2,
+      "seeded_applications": [
+        {"job_id": "4436138555", "company": "Intuitive"},
+        {"job_id": "4432384894", "company": "Matlen Silver"},
+        {"job_id": "4436138555", "company": "Duplicate"}
+      ]
+    }
+    """
+
+    assert webapp._extract_seeded_job_ids(output) == [  # noqa: SLF001
+        "4436138555",
+        "4432384894",
+    ]
+    assert webapp._extract_seeded_job_ids("no json here") == []  # noqa: SLF001
+
+
+def test_application_status_row_class_maps_shaded_statuses():
+    assert webapp._application_status_row_class("Yes") == "is-applied"  # noqa: SLF001
+    assert (  # noqa: SLF001
+        webapp._application_status_row_class("Accepted for interview")
+        == "is-interview"
+    )
+    assert webapp._application_status_row_class("N/A") == "is-not-applicable"  # noqa: SLF001
+    assert webapp._application_status_row_class("Rejected") == ""  # noqa: SLF001
 
 
 def test_store_application_resume_first_draft_updates_tracker_row(tmp_path: Path):
@@ -606,9 +729,18 @@ def test_store_application_resume_first_draft_updates_tracker_row(tmp_path: Path
             """
             SELECT application_resume_object, resume_html_filename, resume_html_content,
                    resume_html_mime_type, resume_filename, resume_content,
-                   source_resume_path, ats_score, ats_missing_terms
+                   source_resume_path, ats_score, ats_missing_terms,
+                   selected_resume_variant
             FROM applications
             WHERE job_id = '123'
+            """
+        ).fetchone()
+        v1_variant = connection.execute(
+            """
+            SELECT application_resume_object, resume_html_filename, resume_html_content,
+                   resume_filename, resume_content, ats_score
+            FROM application_resume_variants
+            WHERE job_id = '123' AND variant_key = 'v1'
             """
         ).fetchone()
     assert row["application_resume_object"] == "schema_version: test\n"
@@ -620,6 +752,13 @@ def test_store_application_resume_first_draft_updates_tracker_row(tmp_path: Path
     assert row["source_resume_path"] == ""
     assert row["ats_score"] is not None
     assert row["ats_missing_terms"] is not None
+    assert row["selected_resume_variant"] == "v1"
+    assert v1_variant["application_resume_object"] == row["application_resume_object"]
+    assert v1_variant["resume_html_filename"] == row["resume_html_filename"]
+    assert v1_variant["resume_html_content"] == row["resume_html_content"]
+    assert v1_variant["resume_filename"] == row["resume_filename"]
+    assert v1_variant["resume_content"] == row["resume_content"]
+    assert v1_variant["ats_score"] == row["ats_score"]
 
     app = create_app(database_path=database_path, output_dir=tmp_path / "output")
     client = app.test_client()
@@ -629,6 +768,233 @@ def test_store_application_resume_first_draft_updates_tracker_row(tmp_path: Path
     assert html_response.mimetype == "text/html"
     index = client.get("/")
     assert b'href="/resume-html/123"' in index.data
+
+
+def test_resume_variant_review_selects_v2_and_v1_reversibly(tmp_path: Path):
+    database_path = tmp_path / "applications.sqlite3"
+    webapp.upsert_application_artifact(
+        database_path=database_path,
+        job_id="123",
+        company="Example Co",
+        job_title="Senior Engineer",
+        linkedin_url="https://www.linkedin.com/jobs/view/123",
+        resume_path=None,
+        job_description="Requires Python, AWS, APIs, and observability.",
+        prompt_job_description="Requires Python, AWS, APIs, and observability.",
+    )
+    v1_pdf = _pdf_bytes("Draft v1 Python AWS APIs")
+    v2_pdf = _pdf_bytes("Refined v2 Python AWS APIs observability")
+    webapp.store_application_resume_first_draft(
+        database_path=database_path,
+        job_id="123",
+        application_resume_object="schema_version: test\nsummary: Draft v1\n",
+        resume_html="<html><body><h1>Draft v1</h1></body></html>",
+        resume_pdf=v1_pdf,
+    )
+    webapp.store_application_resume_variant(
+        database_path=database_path,
+        job_id="123",
+        variant_key="v2",
+        variant_label="Refined v2",
+        source="second_pass",
+        parent_variant_key="v1",
+        application_resume_object="schema_version: test\nsummary: Refined v2\n",
+        resume_html="<html><body><h1>Refined v2</h1></body></html>",
+        resume_pdf=v2_pdf,
+        validation={
+            "accepted_change_ids": ["summary-1"],
+            "rejected_changes": [
+                {
+                    "change_id": "skills-1",
+                    "issues": [
+                        {
+                            "reason": "unsupported_target",
+                            "message": "Skill was not backed by evidence.",
+                        }
+                    ],
+                }
+            ],
+            "is_valid": False,
+        },
+        critique={
+            "proposed_changes": [
+                {
+                    "change_id": "summary-1",
+                    "rationale": "Tightens the platform summary.",
+                    "unsupported_claims": [],
+                },
+                {
+                    "change_id": "skills-1",
+                    "rationale": "Adds a tool term.",
+                    "unsupported_claims": ["Kubernetes"],
+                },
+            ],
+        },
+        model_metadata={"model": "z-ai/glm-5.2"},
+    )
+    webapp.store_application_resume_variant(
+        database_path=database_path,
+        job_id="123",
+        variant_key="manual",
+        variant_label="Manual pass",
+        source="manual_pass",
+        parent_variant_key="v2",
+        application_resume_object="schema_version: test\nsummary: Manual pass\n",
+        resume_html="<html><body><h1>Manual pass</h1></body></html>",
+        resume_pdf=v2_pdf,
+        validation={
+            "accepted_change_ids": ["summary-1"],
+            "rejected_changes": [
+                {
+                    "change_id": "skills-1",
+                    "issues": [
+                        {
+                            "reason": "unsupported_target",
+                            "message": "Skill was not backed by evidence.",
+                        }
+                    ],
+                }
+            ],
+            "is_valid": False,
+        },
+        critique={
+            "proposed_changes": [
+                {
+                    "change_id": "summary-1",
+                    "rationale": "Tightens the platform summary.",
+                    "unsupported_claims": [],
+                },
+                {
+                    "change_id": "skills-1",
+                    "rationale": "Adds a tool term.",
+                    "unsupported_claims": ["Kubernetes"],
+                },
+            ],
+        },
+        model_metadata={"model": "z-ai/glm-5.2"},
+    )
+
+    app = create_app(database_path=database_path, output_dir=tmp_path / "output")
+    client = app.test_client()
+
+    index_html = client.get("/").data.decode()
+    index_soup = BeautifulSoup(index_html, "html.parser")
+    assert index_soup.select_one(".variant-badge").get_text(" ", strip=True) == "Draft v1"
+    assert 'href="/resumes/123/variants"' in index_html
+    assert "Review" in index_html
+
+    review = client.get("/resumes/123/variants?return_to=%2F%3Fsort%3Dresume")
+    assert review.status_code == 200
+    review_html = review.data.decode()
+    assert "Resume Variants" in review_html
+    assert "Draft v1" in review_html
+    assert "Refined v2" in review_html
+    assert "Manual pass" in review_html
+    assert "Use v2 draft" in review_html
+    assert 'href="/resumes/123/variants/v1"' in review_html
+    assert 'href="/resume-html/123/variants/v2"' in review_html
+    assert "z-ai/glm-5.2" in review_html
+    assert "summary-1" in review_html
+    assert "skills-1" in review_html
+    assert "unsupported_target" in review_html
+    assert "Kubernetes" in review_html
+    assert review_html.count("summary-1") == 1
+    assert review_html.count("skills-1") == 1
+    assert review_html.count("unsupported_target") == 1
+    assert review_html.count("Kubernetes") == 1
+    assert "-summary: Draft v1" in review_html
+    assert "+summary: Refined v2" in review_html
+
+    v2_pdf_response = client.get("/resumes/123/variants/v2")
+    assert v2_pdf_response.status_code == 200
+    assert v2_pdf_response.data == v2_pdf
+    v2_html_response = client.get("/resume-html/123/variants/v2")
+    assert v2_html_response.status_code == 200
+    assert b"Refined v2" in v2_html_response.data
+
+    use_v2 = client.post(
+        "/resumes/123/variants/v2/use",
+        data={"return_to": "/?sort=resume"},
+    )
+    assert use_v2.status_code == 302
+    assert use_v2.headers["Location"] == (
+        "/resumes/123/variants?return_to=%2F%3Fsort%3Dresume"
+    )
+    with webapp.connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT selected_resume_variant, application_resume_object, resume_content,
+                   resume_html_content
+            FROM applications
+            WHERE job_id = '123'
+            """
+        ).fetchone()
+    assert row["selected_resume_variant"] == "v2"
+    assert "summary: Refined v2" in row["application_resume_object"]
+    assert row["resume_content"] == v2_pdf
+    assert "Refined v2" in row["resume_html_content"]
+    assert client.get("/resumes/123").data == v2_pdf
+    assert b"Refined v2" in client.get("/resume-html/123").data
+    assert "Refined v2" in client.get("/").data.decode()
+
+    use_v1 = client.post(
+        "/resumes/123/variants/v1/use",
+        data={"return_to": "/?sort=resume"},
+    )
+    assert use_v1.status_code == 302
+    with webapp.connect_database(database_path) as connection:
+        reverted = connection.execute(
+            """
+            SELECT selected_resume_variant, application_resume_object, resume_content,
+                   resume_html_content
+            FROM applications
+            WHERE job_id = '123'
+            """
+        ).fetchone()
+    assert reverted["selected_resume_variant"] == "v1"
+    assert "summary: Draft v1" in reverted["application_resume_object"]
+    assert reverted["resume_content"] == v1_pdf
+    assert "Draft v1" in reverted["resume_html_content"]
+
+
+def test_connect_database_backfills_v1_resume_variant_for_existing_aro(tmp_path: Path):
+    database_path = tmp_path / "applications.sqlite3"
+    webapp.upsert_application_artifact(
+        database_path=database_path,
+        job_id="123",
+        company="Example Co",
+        job_title="Senior Engineer",
+        linkedin_url="https://www.linkedin.com/jobs/view/123",
+        resume_path=None,
+        job_description="Requires Python, AWS, APIs, and observability.",
+        prompt_job_description="Requires Python, AWS, APIs, and observability.",
+    )
+    webapp.store_application_resume_first_draft(
+        database_path=database_path,
+        job_id="123",
+        application_resume_object="schema_version: test\n",
+        resume_html="<html><body><h1>First Draft Resume</h1></body></html>",
+        resume_pdf=_pdf_bytes("Python AWS APIs observability"),
+    )
+    with sqlite3.connect(database_path) as connection:
+        connection.execute("DROP TABLE application_resume_variants")
+        connection.commit()
+
+    with webapp.connect_database(database_path) as connection:
+        variant = connection.execute(
+            """
+            SELECT variant_key, application_resume_object, resume_html_content,
+                   resume_content, ats_score
+            FROM application_resume_variants
+            WHERE job_id = '123' AND variant_key = 'v1'
+            """
+        ).fetchone()
+
+    assert variant is not None
+    assert variant["application_resume_object"] == "schema_version: test\n"
+    assert "First Draft Resume" in variant["resume_html_content"]
+    assert variant["resume_content"] is not None
+    assert variant["ats_score"] is not None
 
 
 def test_application_seed_update_preserves_first_draft_resume_when_aro_exists(
@@ -1132,7 +1498,7 @@ def test_actions_run_starts_background_regeneration(tmp_path: Path):
     assert status is not None
     assert status["runs"][0]["status"] == "completed"
     assert status["runs"][0]["return_code"] == 0
-    assert status["runs"][0]["title"] == "regenerate draft resume for 2 job(s)"
+    assert status["runs"][0]["title"] == "regenerate draft v1 only for 2 job(s)"
     assert any("processing job 123" in message for message in status["runs"][0]["messages"])
 
 
@@ -1178,9 +1544,95 @@ def test_actions_run_can_chain_codex_highlighting_after_draft_generation(tmp_pat
     status = client.get("/actions/status").get_json()
     assert status is not None
     assert status["runs"][0]["title"] == (
-        "regenerate draft resume for 1 job(s) + "
+        "regenerate draft v1 only for 1 job(s) + "
         "Codex highlight draft resume for 1 job(s)"
     )
+
+
+def test_actions_run_can_start_v2_refinement(tmp_path: Path):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    calls = []
+    completed = threading.Event()
+
+    def runner(**kwargs):
+        calls.append(kwargs)
+        webapp._finish_background_action_run(  # noqa: SLF001
+            kwargs["run_id"],
+            status="completed",
+            return_code=0,
+        )
+        completed.set()
+
+    output_dir = tmp_path / "output"
+    database_path = output_dir / "tracking/applications.sqlite3"
+    app = create_app(
+        database_path=database_path,
+        output_dir=output_dir,
+        background_action_runner=runner,
+    )
+    client = app.test_client()
+
+    response = client.post(
+        "/actions/run",
+        data={
+            "regenerate_mode": "refine_drafts",
+            "job_id": ["url-123"],
+        },
+    )
+
+    assert response.status_code == 302
+    assert completed.wait(timeout=2)
+    assert calls[0]["regenerate_mode"] == "refine_drafts"
+    assert calls[0]["highlight_with_codex"] is False
+
+    status = client.get("/actions/status").get_json()
+    assert status is not None
+    assert status["runs"][0]["title"] == "run v2 resume refinement for 1 job(s)"
+
+
+def test_actions_run_can_start_codex_manual_pass_variant(tmp_path: Path):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    calls = []
+    completed = threading.Event()
+
+    def runner(**kwargs):
+        calls.append(kwargs)
+        webapp._finish_background_action_run(  # noqa: SLF001
+            kwargs["run_id"],
+            status="completed",
+            return_code=0,
+        )
+        completed.set()
+
+    output_dir = tmp_path / "output"
+    database_path = output_dir / "tracking/applications.sqlite3"
+    app = create_app(
+        database_path=database_path,
+        output_dir=output_dir,
+        background_action_runner=runner,
+    )
+    client = app.test_client()
+
+    response = client.post(
+        "/actions/run",
+        data={
+            "regenerate_mode": "manual_pass",
+            "job_id": ["url-123"],
+        },
+    )
+
+    assert response.status_code == 302
+    assert completed.wait(timeout=2)
+    assert calls[0]["regenerate_mode"] == "manual_pass"
+    assert calls[0]["highlight_with_codex"] is False
+
+    status = client.get("/actions/status").get_json()
+    assert status is not None
+    assert status["runs"][0]["title"] == "Codex manual pass resume for 1 job(s)"
 
 
 def test_background_action_runs_only_requested_new_workflow(
@@ -1224,6 +1676,26 @@ def test_background_action_runs_only_requested_new_workflow(
     assert calls == [("regenerate", "draft_resumes"), ("highlight", "url-123")]
 
     calls.clear()
+    run = webapp._create_background_action_run(title="generate draft and v2")  # noqa: SLF001
+    webapp._run_background_action(  # noqa: SLF001
+        run_id=run.run_id,
+        regenerate_mode="resume_variants",
+        job_ids=["url-123"],
+    )
+
+    assert calls == [("regenerate", "resume_variants")]
+
+    calls.clear()
+    run = webapp._create_background_action_run(title="run v2 refinement")  # noqa: SLF001
+    webapp._run_background_action(  # noqa: SLF001
+        run_id=run.run_id,
+        regenerate_mode="refine_drafts",
+        job_ids=["url-123"],
+    )
+
+    assert calls == [("regenerate", "refine_drafts")]
+
+    calls.clear()
     run = webapp._create_background_action_run(title="regenerate ARO object")  # noqa: SLF001
     webapp._run_background_action(  # noqa: SLF001
         run_id=run.run_id,
@@ -1253,6 +1725,184 @@ def test_background_action_runs_only_requested_new_workflow(
     )
 
     assert calls == [("regenerate", "highlight_drafts")]
+
+    calls.clear()
+    run = webapp._create_background_action_run(title="Codex manual pass resume")  # noqa: SLF001
+    webapp._run_background_action(  # noqa: SLF001
+        run_id=run.run_id,
+        regenerate_mode="manual_pass",
+        job_ids=["url-123"],
+    )
+
+    assert calls == [("regenerate", "manual_pass")]
+
+
+def test_seed_workflow_runs_selected_make_targets_for_seeded_jobs(monkeypatch):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    commands: list[list[str]] = []
+
+    def fake_run_make_command(**kwargs):
+        command = kwargs["command"]
+        commands.append(command)
+        if command[:2] == ["make", "seed-jobs"]:
+            return """
+            {
+              "jobs_seeded": 2,
+              "seeded_applications": [
+                {"job_id": "url-123"},
+                {"job_id": "url-456"}
+              ]
+            }
+            """
+        return ""
+
+    monkeypatch.setattr(webapp, "_run_make_command", fake_run_make_command)
+
+    run = webapp._create_background_action_run(title="seed workflow")  # noqa: SLF001
+    webapp._run_seed_workflow_action(  # noqa: SLF001
+        run_id=run.run_id,
+        max_jobs=3,
+        date_posted="past_month",
+        run_v1=True,
+        run_v2=True,
+        run_manual=True,
+        run_highlight=True,
+    )
+
+    assert commands == [
+        ["make", "seed-jobs", "MAX_JOBS=3", "DATE_POSTED=past_month"],
+        [
+            "make",
+            "regenerate-draft-resumes",
+            "JOB_IDS=url-123 url-456",
+            "FIRST_DRAFT_FORCE=1",
+        ],
+        ["make", "refine-draft-resumes", "JOB_IDS=url-123 url-456"],
+        ["make", "manual-pass-resumes", "JOB_IDS=url-123 url-456"],
+        ["make", "highlight-draft-resumes", "JOB_IDS=url-123 url-456"],
+    ]
+    status = webapp.background_action_snapshots()[0]
+    assert status["status"] == "completed"
+    assert any("Seeded job IDs: url-123 url-456" in line for line in status["messages"])
+
+
+def test_seed_workflow_skips_selected_steps_when_no_jobs_seeded(monkeypatch):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    commands: list[list[str]] = []
+
+    def fake_run_make_command(**kwargs):
+        commands.append(kwargs["command"])
+        return '{"jobs_seeded": 0, "seeded_applications": []}'
+
+    monkeypatch.setattr(webapp, "_run_make_command", fake_run_make_command)
+
+    run = webapp._create_background_action_run(title="seed workflow")  # noqa: SLF001
+    webapp._run_seed_workflow_action(  # noqa: SLF001
+        run_id=run.run_id,
+        max_jobs=3,
+        date_posted="past_week",
+        run_v1=True,
+        run_v2=True,
+        run_manual=False,
+        run_highlight=False,
+    )
+
+    assert commands == [["make", "seed-jobs", "MAX_JOBS=3", "DATE_POSTED=past_week"]]
+    status = webapp.background_action_snapshots()[0]
+    assert status["status"] == "completed"
+    assert any("no new job IDs" in line for line in status["messages"])
+
+
+def test_add_application_seed_starts_seed_workflow(tmp_path: Path):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    calls = []
+    completed = threading.Event()
+
+    def runner(**kwargs):
+        calls.append(kwargs)
+        webapp._finish_background_action_run(  # noqa: SLF001
+            kwargs["run_id"],
+            status="completed",
+            return_code=0,
+        )
+        completed.set()
+
+    output_dir = tmp_path / "output"
+    database_path = output_dir / "tracking/applications.sqlite3"
+    app = create_app(
+        database_path=database_path,
+        output_dir=output_dir,
+        background_action_runner=runner,
+    )
+    client = app.test_client()
+
+    response = client.post(
+        "/applications/add/seed",
+        data={
+            "max_jobs": "5",
+            "date_posted": "past_24_hours",
+            "run_v1": "1",
+            "run_v2": "1",
+            "run_manual": "1",
+            "run_highlight": "1",
+            "return_to": "/?q=Platform",
+        },
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == (
+        "/applications/add?return_to=%2F%3Fq%3DPlatform"
+    )
+    assert completed.wait(timeout=2)
+    assert calls[0]["max_jobs"] == 5
+    assert calls[0]["date_posted"] == "past_24_hours"
+    assert calls[0]["run_v1"] is True
+    assert calls[0]["run_v2"] is True
+    assert calls[0]["run_manual"] is True
+    assert calls[0]["run_highlight"] is True
+
+    status = client.get("/actions/status").get_json()
+    assert status is not None
+    assert status["runs"][0]["title"] == (
+        "seed up to 5 job(s) + last 24 hours + v1 draft + v2 refinement + "
+        "Codex manual pass + Codex highlight"
+    )
+
+
+def test_add_application_seed_rejects_invalid_dependencies(tmp_path: Path):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    calls = []
+
+    def runner(**kwargs):
+        calls.append(kwargs)
+
+    output_dir = tmp_path / "output"
+    database_path = output_dir / "tracking/applications.sqlite3"
+    app = create_app(
+        database_path=database_path,
+        output_dir=output_dir,
+        background_action_runner=runner,
+    )
+    client = app.test_client()
+
+    response = client.post(
+        "/applications/add/seed",
+        data={"max_jobs": "5", "run_v2": "1", "return_to": "/?q=Platform"},
+    )
+
+    assert response.status_code == 302
+    assert calls == []
+    status = client.get("/actions/status").get_json()
+    assert status is not None
+    assert status["runs"] == []
 
 
 def test_add_application_loads_linkedin_job_and_starts_regeneration(
@@ -1313,10 +1963,32 @@ def test_add_application_loads_linkedin_job_and_starts_regeneration(
     add_page = client.get("/applications/add?return_to=/?q=Platform")
     add_html = add_page.data.decode()
     assert add_page.status_code == 200
+    assert "Seed jobs" in add_html
     assert "LinkedIn URL" in add_html
     assert "Other" in add_html
+    assert 'action="/applications/add/seed"' in add_html
     assert 'action="/applications/add/linkedin"' in add_html
     assert 'action="/applications/add/other"' in add_html
+    assert add_html.index('action="/applications/add/seed"') < add_html.index(
+        'action="/applications/add/linkedin"'
+    )
+    assert 'name="max_jobs"' in add_html
+    assert 'value="5"' in add_html
+    assert 'name="date_posted"' in add_html
+    assert 'value="past_24_hours"' in add_html
+    assert 'value="past_week"' in add_html
+    assert 'value="past_month"' in add_html
+    assert "Last 24 hours" in add_html
+    assert "Past week" in add_html
+    assert "Past month" in add_html
+    add_soup = BeautifulSoup(add_html, "html.parser")
+    checked_date = add_soup.find("input", {"name": "date_posted", "checked": True})
+    assert checked_date is not None
+    assert checked_date["value"] == "past_week"
+    assert 'name="run_v1" value="1" checked' in add_html
+    assert 'name="run_v2" value="1" checked' in add_html
+    assert 'name="run_manual" value="1"' in add_html
+    assert 'name="run_highlight" value="1"' in add_html
     assert 'name="other_url"' in add_html
     assert "Run Codex bullet highlighting after resume generation" in add_html
     assert 'name="highlight_with_codex" value="1" checked' in add_html

@@ -16,13 +16,16 @@ MAX_JOBS ?= 10
 MASTER_RESUME ?= profile/MASTER-RESUME.yml
 JOD_MODEL ?= z-ai/glm-5.2
 CORE_SKILL_MODEL ?= $(JOD_MODEL)
+SECOND_PASS_MODEL ?= z-ai/glm-5.2
+SECOND_PASS_TIMEOUT_SECONDS ?= 300
 CODEX_COMMAND ?= codex
 CODEX_MODEL ?= gpt-5.5
 CODEX_TIMEOUT_SECONDS ?= 900
+MANUAL_PASS_MASTER_RESUME_TEXT ?= profile/MP-MASTER-RESUME.txt
 HIGHLIGHT_EXPERIENCE_COMPANY ?=
 HIGHLIGHT_EXPERIENCE_JOB_ORDER ?=
 
-.PHONY: install install-python install-browser install-ollama ollama-model venv skill-link seed-jobs regenerate-draft-resumes regenerate-aro-objects sync-draft-to-aro highlight-draft-resumes launch-website stop-website restart-website test lint clean
+.PHONY: install install-python install-browser install-ollama ollama-model venv skill-link seed-jobs regenerate-resumes regenerate-draft-resumes regenerate-resume-variants regenerate-aro-objects sync-draft-to-aro refine-draft-resumes highlight-draft-resumes manual-pass-resumes launch-website stop-website restart-website test lint clean
 
 install: install-python install-ollama ollama-model skill-link
 
@@ -84,6 +87,10 @@ regenerate-draft-resumes: venv
 	fi; \
 	$(VENV_PYTHON) scripts/application_resume_generate_drafts.py --master-resume "$(MASTER_RESUME)" --api-model "$(CORE_SKILL_MODEL)" --jod-model "$(JOD_MODEL)" $$job_args $$force_arg
 
+regenerate-resumes: regenerate-draft-resumes refine-draft-resumes
+
+regenerate-resume-variants: regenerate-resumes
+
 regenerate-aro-objects: venv
 	@job_args=""; \
 	if [ "$(JOB_IDS)" != "all" ]; then \
@@ -102,6 +109,17 @@ sync-draft-to-aro: venv
 	fi; \
 	$(VENV_PYTHON) scripts/application_resume_sync_drafts_to_aro.py $$job_args
 
+refine-draft-resumes: venv
+	@job_args=""; \
+	if [ "$(JOB_IDS)" = "all" ]; then \
+		job_args="--all-active"; \
+	else \
+		for job_id in $(JOB_IDS); do \
+			job_args="$$job_args --job-id $$job_id"; \
+		done; \
+	fi; \
+	$(VENV)/bin/linkedin-career-refine-resume $$job_args --master-resume "$(MASTER_RESUME)" --api-model "$(SECOND_PASS_MODEL)" --api-timeout-seconds "$(SECOND_PASS_TIMEOUT_SECONDS)"
+
 highlight-draft-resumes: venv
 	@job_args=""; \
 	if [ "$(JOB_IDS)" != "all" ]; then \
@@ -117,6 +135,17 @@ highlight-draft-resumes: venv
 		filter_args="$$filter_args --experience-job-order $(HIGHLIGHT_EXPERIENCE_JOB_ORDER)"; \
 	fi; \
 	$(VENV_PYTHON) scripts/application_resume_highlight_drafts.py --codex-command "$(CODEX_COMMAND)" --codex-model "$(CODEX_MODEL)" --timeout-seconds "$(CODEX_TIMEOUT_SECONDS)" $$job_args $$filter_args
+
+manual-pass-resumes: venv
+	@if [ "$(JOB_IDS)" = "all" ]; then \
+		echo "Set JOB_IDS=<job_id ...> for manual-pass-resumes"; \
+		exit 2; \
+	fi; \
+	job_args=""; \
+	for job_id in $(JOB_IDS); do \
+		job_args="$$job_args --job-id $$job_id"; \
+	done; \
+	$(VENV_PYTHON) scripts/application_resume_manual_pass.py --master-resume "$(MASTER_RESUME)" --master-resume-text "$(MANUAL_PASS_MASTER_RESUME_TEXT)" --codex-command "$(CODEX_COMMAND)" --codex-model "$(CODEX_MODEL)" --timeout-seconds "$(CODEX_TIMEOUT_SECONDS)" $$job_args
 
 launch-website: venv
 	$(VENV)/bin/linkedin-career-webapp --host "$(WEBSITE_HOST)" --port "$(WEBSITE_PORT)" --open-browser
