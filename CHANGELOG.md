@@ -5,6 +5,9 @@
 * Add explainable ATS diagnostics, noisy phrase regressions, structured
   second-pass critique parsing, external critique classification, and
   evidence-backed patch validation.
+* Retry empty or thinking-only API LLM completions with the existing
+  backoff/retry policy so transient OpenRouter responses do not fail the
+  first-draft resume generation Make target.
 * Store resume variants in SQLite so first drafts remain available as `v1`, GLM
   5.2 refinements are stored as `v2`, and Codex manual pass output is stored as
   `manual` without overwriting prior drafts.
