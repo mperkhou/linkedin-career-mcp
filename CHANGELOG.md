@@ -2,9 +2,12 @@
 
 ## 4.0.0 - Add DB-backed second-pass resume variants
 
-* Add explainable ATS diagnostics, noisy phrase regressions, structured
+* Add explainable ATS diagnostics, noisy phrase regressions, structured GLM 5.2
   second-pass critique parsing, external critique classification, and
-  evidence-backed patch validation.
+  evidence-backed patch validation. The v2 prompt sends job context, the current
+  ARO, JOD targets, MRO/ARO source evidence, and ATS evidence; the validator
+  accepts only supported recommendations and stores rejected recommendations as
+  review metadata instead of resume content.
 * Retry empty or thinking-only API LLM completions with the existing
   backoff/retry policy so transient OpenRouter responses do not fail the
   first-draft resume generation Make target.
@@ -23,15 +26,21 @@
   pass variant from v1, v2, critique/validation output, ATS diagnostics, JOD
   text, prompt JOD text, and master-resume evidence.
 * Add a tracker Add-popup seeding workflow that runs `make seed-jobs` with a
-  selected job count and posting age window, then chains selected v1, v2, Codex
-  manual pass, and Codex highlighting steps for the newly seeded rows.
+  selected job count and posting age window, defaulting to `past_week`, then
+  chains selected v1, v2, Codex manual pass, and Codex highlighting steps for
+  the newly seeded rows.
 * Shade tracker rows for `Accepted for interview` and `N/A` statuses while
   preserving the existing applied-row green treatment.
-* Keep in-app tracker review and edit links in the current window while leaving
-  external job and artifact links in new tabs.
-* Document the second-pass variant workflow, evidence rules, manual critique
-  ingestion, ATS diagnostics, and migration notes in the README and 4.0.0
-  release notes.
+* Keep in-app tracker compare-description, review, and edit links in the
+  current window while leaving external job and artifact links in new tabs.
+* Refresh the architecture docs, add ADRs for DB-backed variants and
+  tracker-orchestrated workflows, update the README narrative and workflow
+  diagram, and regenerate tracker screenshots for the Add seed widget, Actions
+  menu, variant review page, main tracker, and background progress panel.
+* Document the second-pass variant workflow, GLM critique prompt structure,
+  accepted/rejected recommendation handling, evidence rules, manual critique
+  ingestion, ATS diagnostics, and migration notes in the README, skill docs, and
+  4.0.0 release notes.
 * Bump the package version to `4.0.0` because resume storage, schema, and review
   workflow behavior changed.
 
