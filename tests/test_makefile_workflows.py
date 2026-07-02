@@ -56,6 +56,24 @@ def test_regenerate_draft_resumes_make_target_honors_resume_and_model_overrides(
     assert "$job_args $force_arg" in output
 
 
+def test_regenerate_resumes_make_target_runs_v1_then_v2_workflow() -> None:
+    output = _make_dry_run(
+        "regenerate-resumes",
+        "JOB_IDS=url-123",
+        "FIRST_DRAFT_FORCE=1",
+    )
+
+    assert "scripts/application_resume_generate_drafts.py" in output
+    assert "linkedin-career-refine-resume" in output
+    assert output.index("scripts/application_resume_generate_drafts.py") < output.index(
+        "linkedin-career-refine-resume"
+    )
+    assert '--api-model "z-ai/glm-5.2"' in output
+    assert '--jod-model "z-ai/glm-5.2"' in output
+    assert '--api-timeout-seconds "300"' in output
+    assert "for job_id in url-123" in output
+
+
 def test_refine_draft_resumes_make_target_uses_glm_second_pass_model() -> None:
     output = _make_dry_run(
         "refine-draft-resumes",
@@ -66,7 +84,7 @@ def test_refine_draft_resumes_make_target_uses_glm_second_pass_model() -> None:
     assert 'job_args="$job_args --job-id $job_id"' in output
     assert '--master-resume "profile/MASTER-RESUME.yml"' in output
     assert '--api-model "z-ai/glm-5.2"' in output
-    assert '--api-timeout-seconds "120"' in output
+    assert '--api-timeout-seconds "300"' in output
     assert "for job_id in url-123" in output
 
 
@@ -76,7 +94,7 @@ def test_refine_draft_resumes_make_target_defaults_to_all_active() -> None:
     assert "linkedin-career-refine-resume" in output
     assert 'job_args="--all-active"' in output
     assert '--api-model "z-ai/glm-5.2"' in output
-    assert '--api-timeout-seconds "120"' in output
+    assert '--api-timeout-seconds "300"' in output
 
 
 def test_highlight_draft_resumes_make_target_uses_codex_workflow() -> None:

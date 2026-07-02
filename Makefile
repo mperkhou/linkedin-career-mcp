@@ -17,7 +17,7 @@ MASTER_RESUME ?= profile/MASTER-RESUME.yml
 JOD_MODEL ?= z-ai/glm-5.2
 CORE_SKILL_MODEL ?= $(JOD_MODEL)
 SECOND_PASS_MODEL ?= z-ai/glm-5.2
-SECOND_PASS_TIMEOUT_SECONDS ?= 120
+SECOND_PASS_TIMEOUT_SECONDS ?= 300
 CODEX_COMMAND ?= codex
 CODEX_MODEL ?= gpt-5.5
 CODEX_TIMEOUT_SECONDS ?= 900
@@ -25,7 +25,7 @@ MANUAL_PASS_MASTER_RESUME_TEXT ?= profile/MP-MASTER-RESUME.txt
 HIGHLIGHT_EXPERIENCE_COMPANY ?=
 HIGHLIGHT_EXPERIENCE_JOB_ORDER ?=
 
-.PHONY: install install-python install-browser install-ollama ollama-model venv skill-link seed-jobs regenerate-draft-resumes regenerate-aro-objects sync-draft-to-aro refine-draft-resumes highlight-draft-resumes manual-pass-resumes launch-website stop-website restart-website test lint clean
+.PHONY: install install-python install-browser install-ollama ollama-model venv skill-link seed-jobs regenerate-resumes regenerate-draft-resumes regenerate-resume-variants regenerate-aro-objects sync-draft-to-aro refine-draft-resumes highlight-draft-resumes manual-pass-resumes launch-website stop-website restart-website test lint clean
 
 install: install-python install-ollama ollama-model skill-link
 
@@ -86,6 +86,10 @@ regenerate-draft-resumes: venv
 		force_arg="--force"; \
 	fi; \
 	$(VENV_PYTHON) scripts/application_resume_generate_drafts.py --master-resume "$(MASTER_RESUME)" --api-model "$(CORE_SKILL_MODEL)" --jod-model "$(JOD_MODEL)" $$job_args $$force_arg
+
+regenerate-resumes: regenerate-draft-resumes refine-draft-resumes
+
+regenerate-resume-variants: regenerate-resumes
 
 regenerate-aro-objects: venv
 	@job_args=""; \

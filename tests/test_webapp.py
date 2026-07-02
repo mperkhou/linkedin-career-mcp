@@ -208,13 +208,17 @@ def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypat
     assert "actionSync" not in html
     assert "Sync from output" not in html
     assert "Regenerate ARO Objects" in html
-    assert "Regenerate Draft Resume" in html
+    assert "Regenerate Draft v1 Only" in html
+    assert "Run v1 + v2 Resume Workflow" in html
+    assert "Run v2 Refinement" in html
     assert "Codex Highlight Draft Resume" in html
     assert "Codex Manual Pass Variant" in html
     assert "Run Codex highlighting after draft generation" in html
     assert "Sync Draft to ARO" in html
     assert 'name="regenerate_mode" value="aro_objects"' in html
     assert 'name="regenerate_mode" value="draft_resumes"' in html
+    assert 'name="regenerate_mode" value="resume_variants"' in html
+    assert 'name="regenerate_mode" value="refine_drafts"' in html
     assert 'name="regenerate_mode" value="highlight_drafts"' in html
     assert 'name="regenerate_mode" value="manual_pass"' in html
     assert 'name="highlight_with_codex" value="1"' in html
@@ -557,6 +561,19 @@ def test_regenerate_make_command_maps_modes_to_make_targets():
         "JOB_IDS=url-123",
         "FIRST_DRAFT_FORCE=1",
     ]
+    assert webapp._regenerate_make_command(  # noqa: SLF001
+        regenerate_mode="resume_variants",
+        job_ids=["url-123"],
+    ) == [
+        "make",
+        "regenerate-resumes",
+        "JOB_IDS=url-123",
+        "FIRST_DRAFT_FORCE=1",
+    ]
+    assert webapp._regenerate_make_command(  # noqa: SLF001
+        regenerate_mode="refine_drafts",
+        job_ids=["url-123"],
+    ) == ["make", "refine-draft-resumes", "JOB_IDS=url-123"]
     assert webapp._regenerate_make_command(  # noqa: SLF001
         regenerate_mode="sync_draft_to_aro",
         job_ids=["url-123"],
@@ -1347,7 +1364,7 @@ def test_actions_run_starts_background_regeneration(tmp_path: Path):
     assert status is not None
     assert status["runs"][0]["status"] == "completed"
     assert status["runs"][0]["return_code"] == 0
-    assert status["runs"][0]["title"] == "regenerate draft resume for 2 job(s)"
+    assert status["runs"][0]["title"] == "regenerate draft v1 only for 2 job(s)"
     assert any("processing job 123" in message for message in status["runs"][0]["messages"])
 
 
@@ -1393,9 +1410,52 @@ def test_actions_run_can_chain_codex_highlighting_after_draft_generation(tmp_pat
     status = client.get("/actions/status").get_json()
     assert status is not None
     assert status["runs"][0]["title"] == (
-        "regenerate draft resume for 1 job(s) + "
+        "regenerate draft v1 only for 1 job(s) + "
         "Codex highlight draft resume for 1 job(s)"
     )
+
+
+def test_actions_run_can_start_v2_refinement(tmp_path: Path):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    calls = []
+    completed = threading.Event()
+
+    def runner(**kwargs):
+        calls.append(kwargs)
+        webapp._finish_background_action_run(  # noqa: SLF001
+            kwargs["run_id"],
+            status="completed",
+            return_code=0,
+        )
+        completed.set()
+
+    output_dir = tmp_path / "output"
+    database_path = output_dir / "tracking/applications.sqlite3"
+    app = create_app(
+        database_path=database_path,
+        output_dir=output_dir,
+        background_action_runner=runner,
+    )
+    client = app.test_client()
+
+    response = client.post(
+        "/actions/run",
+        data={
+            "regenerate_mode": "refine_drafts",
+            "job_id": ["url-123"],
+        },
+    )
+
+    assert response.status_code == 302
+    assert completed.wait(timeout=2)
+    assert calls[0]["regenerate_mode"] == "refine_drafts"
+    assert calls[0]["highlight_with_codex"] is False
+
+    status = client.get("/actions/status").get_json()
+    assert status is not None
+    assert status["runs"][0]["title"] == "run v2 resume refinement for 1 job(s)"
 
 
 def test_actions_run_can_start_codex_manual_pass_variant(tmp_path: Path):
@@ -1480,6 +1540,26 @@ def test_background_action_runs_only_requested_new_workflow(
     )
 
     assert calls == [("regenerate", "draft_resumes"), ("highlight", "url-123")]
+
+    calls.clear()
+    run = webapp._create_background_action_run(title="generate draft and v2")  # noqa: SLF001
+    webapp._run_background_action(  # noqa: SLF001
+        run_id=run.run_id,
+        regenerate_mode="resume_variants",
+        job_ids=["url-123"],
+    )
+
+    assert calls == [("regenerate", "resume_variants")]
+
+    calls.clear()
+    run = webapp._create_background_action_run(title="run v2 refinement")  # noqa: SLF001
+    webapp._run_background_action(  # noqa: SLF001
+        run_id=run.run_id,
+        regenerate_mode="refine_drafts",
+        job_ids=["url-123"],
+    )
+
+    assert calls == [("regenerate", "refine_drafts")]
 
     calls.clear()
     run = webapp._create_background_action_run(title="regenerate ARO object")  # noqa: SLF001

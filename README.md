@@ -244,7 +244,21 @@ Seed new LinkedIn rows into the database:
 make seed-jobs MAX_JOBS=5
 ```
 
-Generate or regenerate first-draft ARO resumes for stored jobs:
+Generate or regenerate the main resume workflow for stored jobs. This writes
+the first draft as `v1`, then runs GLM 5.2 refinement and stores `v2` without
+selecting it:
+
+```bash
+make regenerate-resumes JOB_IDS="4424184336"
+```
+
+Run the same main workflow after seeding new LinkedIn rows:
+
+```bash
+make seed-jobs regenerate-resumes MAX_JOBS=5 DATE_POSTED=past_24_hours
+```
+
+Generate or regenerate only the first-draft ARO resume for stored jobs:
 
 ```bash
 make regenerate-draft-resumes JOB_IDS="4424184336"
@@ -275,7 +289,9 @@ resume only needs highlighting in that role:
 make highlight-draft-resumes JOB_IDS="4424184336" HIGHLIGHT_EXPERIENCE_COMPANY=Oracle
 ```
 
-Run the GLM 5.2 second-pass refinement for one job, or for all active postings:
+Run only the GLM 5.2 second-pass refinement for one job, or for all active
+postings. This can create `v2` for a job that only has v1, or rerun and replace
+an existing v2 variant:
 
 ```bash
 make refine-draft-resumes JOB_IDS="4424184336"
@@ -352,7 +368,8 @@ Override the second-pass model or timeout when needed:
 
 - `SECOND_PASS_MODEL`: OpenRouter model for v2 critique/refinement, default
   `z-ai/glm-5.2`.
-- `SECOND_PASS_TIMEOUT_SECONDS`: per-row LLM timeout for v2 refinement.
+- `SECOND_PASS_TIMEOUT_SECONDS`: per-row LLM timeout for v2 refinement,
+  default `300`.
 
 The optional Codex highlighting workflow runs after draft generation. The Codex
 CLI returns JSON patches, and Python validates that only `<strong>` tags were

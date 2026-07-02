@@ -94,12 +94,14 @@ APPLICATION_EXTRA_COLUMNS = {
 }
 REGENERATE_ACTION_TARGETS = {
     "draft_resumes": "regenerate-draft-resumes",
+    "resume_variants": "regenerate-resumes",
+    "refine_drafts": "refine-draft-resumes",
     "aro_objects": "regenerate-aro-objects",
     "sync_draft_to_aro": "sync-draft-to-aro",
     "highlight_drafts": "highlight-draft-resumes",
     "manual_pass": "manual-pass-resumes",
 }
-_DRAFT_REGENERATE_MODES = {"draft_resumes"}
+_DRAFT_REGENERATE_MODES = {"draft_resumes", "resume_variants"}
 COVER_LETTER_OBJECT_SCHEMA_VERSION = "cover_letter_object.v0.1"
 EMERALD_ACCENT = HexColor("#57ba86")
 RESUME_BODY_COLOR = HexColor("#111827")
@@ -2150,7 +2152,9 @@ def _background_action_title(
     parts: list[str] = []
     if regenerate_mode:
         label = {
-            "draft_resumes": "regenerate draft resume",
+            "draft_resumes": "regenerate draft v1 only",
+            "resume_variants": "run v1 and v2 resume workflow",
+            "refine_drafts": "run v2 resume refinement",
             "aro_objects": "regenerate ARO object(s)",
             "sync_draft_to_aro": "sync draft to ARO",
             "highlight_drafts": "Codex highlight draft resume",
@@ -4087,7 +4091,15 @@ INDEX_TEMPLATE = """
             </label>
             <label>
               <input type="radio" name="regenerate_mode" value="draft_resumes">
-              <span>Regenerate Draft Resume</span>
+              <span>Regenerate Draft v1 Only</span>
+            </label>
+            <label>
+              <input type="radio" name="regenerate_mode" value="resume_variants">
+              <span>Run v1 + v2 Resume Workflow</span>
+            </label>
+            <label>
+              <input type="radio" name="regenerate_mode" value="refine_drafts">
+              <span>Run v2 Refinement</span>
             </label>
             <label>
               <input type="radio" name="regenerate_mode" value="highlight_drafts">

@@ -11,6 +11,8 @@
 * Store resume variants in SQLite so first drafts remain available as `v1`, GLM
   5.2 refinements are stored as `v2`, and Codex manual pass output is stored as
   `manual` without overwriting prior drafts.
+* Add `make regenerate-resumes` as the main v1-plus-v2 workflow while keeping
+  `make regenerate-draft-resumes` available for v1-only draft generation.
 * Add `make refine-draft-resumes`, defaulting to
   `SECOND_PASS_MODEL ?= z-ai/glm-5.2`, for one-job or all-active v2 refinement
   runs with DB-stored critique, validation, ATS diagnostics, and model metadata.
