@@ -32,7 +32,11 @@ The source text in `profile/MP-MASTER-RESUME.txt` is converted into `profile/MAS
 
 ## Application Workflow
 
-Once the master resume exists, the job workflow is:
+Once the master resume exists, the default operator path is to seed rows, run
+v1 plus v2 resume generation, review the variants in the tracker, and choose
+which resume should power the normal HTML/PDF links. Manual pass and Codex
+highlighting are extra review or polish stages, not prerequisites for the
+default v1 plus v2 path.
 
 ![ARO application workflow](docs/assets/aro-application-workflow.svg)
 
@@ -45,12 +49,17 @@ Once the master resume exists, the job workflow is:
 7. Ask the JOD-target model to distill the JOD into compact requirement targets.
 8. Rewrite the rendered experience jobs from their ARO source evidence, including current-role paragraph evidence stored in the MRO.
 9. Store the first draft as `v1` in SQLite, render resume HTML through Jinja2, render PDF, and calculate ATS score.
-10. Optionally run the GLM 5.2 second-pass workflow to store a `v2` variant with critique, ATS diagnostics, accepted/rejected patches, validation details, and model metadata.
+10. Run the GLM 5.2 second-pass refinement as the default resume-generation follow-up, storing a `v2` variant with critique, ATS diagnostics, accepted/rejected patches, validation details, and model metadata.
 11. Optionally run the Codex manual pass workflow to store a `manual` variant that reviews v1, v2, critique output, validation output, JOD text, and master-resume evidence.
 12. Optionally run the guarded Codex highlighting workflow to add selective `<strong>` emphasis to professional-experience bullets without changing the underlying wording.
-13. Review, edit, switch variants, download, and rescore from the Flask UI.
+13. Review variants, select the active draft, edit, download, and rescore from the Flask UI.
 
-User edits update the ARO as the workflow basis. The selected resume variant controls the normal HTML/PDF links on the tracker, and switching between v1, v2, and manual variants copies that variant into the active resume fields without deleting the other variants.
+The default `make regenerate-resumes` target creates or refreshes both `v1` and
+`v2`; `make regenerate-draft-resumes` is the explicit v1-only path. User edits
+update the ARO as the workflow basis. The selected resume variant controls the
+normal HTML/PDF links on the tracker, and switching between v1, v2, and manual
+variants copies that variant into the active resume fields without deleting the
+other variants.
 
 ### JOD Target Rewrite Example
 
@@ -161,7 +170,11 @@ but starts from paragraph-level evidence stored directly in `profile/MASTER-RESU
 
 ### Second-Pass Variant Workflow
 
-Second-pass refinement is DB-backed. The `application_resume_variants` table
+Second-pass refinement is DB-backed and part of the normal resume-generation
+path. `make regenerate-resumes` runs v1 draft generation first, then GLM 5.2
+refinement; the standalone `make refine-draft-resumes` target exists for
+creating or rerunning v2 when v1 already exists. The
+`application_resume_variants` table
 stores each variant's ARO YAML, rendered HTML, PDF bytes, ATS scores, ATS
 diagnostics, evidence packet, critique prompt/response, parsed critique,
 accepted/rejected validation report, external critique classification, and model
@@ -247,11 +260,13 @@ make seed-jobs MAX_JOBS=5
 The tracker Add popup also has a seed widget. Set the job count and posting age
 window (last 24 hours, past week, or past month), then choose which steps to run
 for the newly seeded rows: v1 draft generation, v2 refinement, Codex manual
-pass, and Codex highlighting.
+pass, and Codex highlighting. By default it selects v1 draft generation and v2
+refinement, matching the main v1 plus v2 path; manual pass and highlighting are
+opt-in.
 
 Generate or regenerate the main resume workflow for stored jobs. This writes
 the first draft as `v1`, then runs GLM 5.2 refinement and stores `v2` without
-selecting it:
+selecting it. Use this as the default resume generation command:
 
 ```bash
 make regenerate-resumes JOB_IDS="4424184336"
@@ -260,7 +275,7 @@ make regenerate-resumes JOB_IDS="4424184336"
 Run the same main workflow after seeding new LinkedIn rows:
 
 ```bash
-make seed-jobs regenerate-resumes MAX_JOBS=5 DATE_POSTED=past_24_hours
+make seed-jobs regenerate-resumes MAX_JOBS=5 DATE_POSTED=past_week
 ```
 
 Generate or regenerate only the first-draft ARO resume for stored jobs:
