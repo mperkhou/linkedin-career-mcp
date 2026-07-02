@@ -1246,6 +1246,44 @@ def _resume_variant_summary(
     }
 
 
+def _resume_variant_review_details(variants: list[dict[str, Any]]) -> dict[str, Any]:
+    accepted_changes: list[dict[str, Any]] = []
+    rejected_changes: list[dict[str, Any]] = []
+    unsupported_claims: list[str] = []
+    seen_accepted: set[str] = set()
+    seen_rejected: set[str] = set()
+    seen_claims: set[str] = set()
+
+    for variant in variants:
+        for change in variant["accepted_changes"]:
+            key = _stable_review_key(change)
+            if key in seen_accepted:
+                continue
+            seen_accepted.add(key)
+            accepted_changes.append(change)
+        for rejected in variant["rejected_changes"]:
+            key = _stable_review_key(rejected)
+            if key in seen_rejected:
+                continue
+            seen_rejected.add(key)
+            rejected_changes.append(rejected)
+        for claim in variant["unsupported_claims"]:
+            if claim in seen_claims:
+                continue
+            seen_claims.add(claim)
+            unsupported_claims.append(claim)
+
+    return {
+        "accepted_changes": accepted_changes,
+        "rejected_changes": rejected_changes,
+        "unsupported_claims": unsupported_claims,
+    }
+
+
+def _stable_review_key(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, ensure_ascii=True, default=str)
+
+
 def _string_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -2677,6 +2715,7 @@ def create_app(
             RESUME_VARIANTS_TEMPLATE,
             row=row,
             variants=variants,
+            review_details=_resume_variant_review_details(variants),
             diff_text=_resume_variant_unified_diff(v1_variant, v2_variant),
             return_to=_safe_index_return_path(request.args.get("return_to")),
         )
@@ -5980,23 +6019,15 @@ RESUME_VARIANTS_TEMPLATE = """
     <div class="review-grid">
       <section>
         <h2>Accepted Changes</h2>
-        {% set accepted_total = namespace(count=0) %}
-        {% for variant in variants %}
-          {% for change in variant.accepted_changes %}
-            {% set accepted_total.count = accepted_total.count + 1 %}
-          {% endfor %}
-        {% endfor %}
-        {% if accepted_total.count %}
+        {% if review_details.accepted_changes %}
           <ol class="review-list">
-            {% for variant in variants %}
-              {% for change in variant.accepted_changes %}
-                <li>
-                  <strong>{{ change.change_id }}</strong>
-                  {% if change.rationale %}
-                    <span class="issue">{{ change.rationale }}</span>
-                  {% endif %}
-                </li>
-              {% endfor %}
+            {% for change in review_details.accepted_changes %}
+              <li>
+                <strong>{{ change.change_id }}</strong>
+                {% if change.rationale %}
+                  <span class="issue">{{ change.rationale }}</span>
+                {% endif %}
+              </li>
             {% endfor %}
           </ol>
         {% else %}
@@ -6006,26 +6037,18 @@ RESUME_VARIANTS_TEMPLATE = """
 
       <section>
         <h2>Rejected Changes</h2>
-        {% set rejected_total = namespace(count=0) %}
-        {% for variant in variants %}
-          {% for rejected in variant.rejected_changes %}
-            {% set rejected_total.count = rejected_total.count + 1 %}
-          {% endfor %}
-        {% endfor %}
-        {% if rejected_total.count %}
+        {% if review_details.rejected_changes %}
           <ol class="review-list">
-            {% for variant in variants %}
-              {% for rejected in variant.rejected_changes %}
-                <li>
-                  <strong>{{ rejected.change_id }}</strong>
-                  {% for issue in rejected.issues or [] %}
-                    <span class="issue">
-                      {{ issue.reason or 'issue' }}
-                      {% if issue.message %}: {{ issue.message }}{% endif %}
-                    </span>
-                  {% endfor %}
-                </li>
-              {% endfor %}
+            {% for rejected in review_details.rejected_changes %}
+              <li>
+                <strong>{{ rejected.change_id }}</strong>
+                {% for issue in rejected.issues or [] %}
+                  <span class="issue">
+                    {{ issue.reason or 'issue' }}
+                    {% if issue.message %}: {{ issue.message }}{% endif %}
+                  </span>
+                {% endfor %}
+              </li>
             {% endfor %}
           </ol>
         {% else %}
@@ -6035,18 +6058,10 @@ RESUME_VARIANTS_TEMPLATE = """
 
       <section>
         <h2>Unsupported Terms</h2>
-        {% set unsupported_total = namespace(count=0) %}
-        {% for variant in variants %}
-          {% for claim in variant.unsupported_claims %}
-            {% set unsupported_total.count = unsupported_total.count + 1 %}
-          {% endfor %}
-        {% endfor %}
-        {% if unsupported_total.count %}
+        {% if review_details.unsupported_claims %}
           <ol class="review-list">
-            {% for variant in variants %}
-              {% for claim in variant.unsupported_claims %}
-                <li>{{ claim }}</li>
-              {% endfor %}
+            {% for claim in review_details.unsupported_claims %}
+              <li>{{ claim }}</li>
             {% endfor %}
           </ol>
         {% else %}

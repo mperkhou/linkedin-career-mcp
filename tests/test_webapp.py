@@ -832,6 +832,47 @@ def test_resume_variant_review_selects_v2_and_v1_reversibly(tmp_path: Path):
         },
         model_metadata={"model": "z-ai/glm-5.2"},
     )
+    webapp.store_application_resume_variant(
+        database_path=database_path,
+        job_id="123",
+        variant_key="manual",
+        variant_label="Manual pass",
+        source="manual_pass",
+        parent_variant_key="v2",
+        application_resume_object="schema_version: test\nsummary: Manual pass\n",
+        resume_html="<html><body><h1>Manual pass</h1></body></html>",
+        resume_pdf=v2_pdf,
+        validation={
+            "accepted_change_ids": ["summary-1"],
+            "rejected_changes": [
+                {
+                    "change_id": "skills-1",
+                    "issues": [
+                        {
+                            "reason": "unsupported_target",
+                            "message": "Skill was not backed by evidence.",
+                        }
+                    ],
+                }
+            ],
+            "is_valid": False,
+        },
+        critique={
+            "proposed_changes": [
+                {
+                    "change_id": "summary-1",
+                    "rationale": "Tightens the platform summary.",
+                    "unsupported_claims": [],
+                },
+                {
+                    "change_id": "skills-1",
+                    "rationale": "Adds a tool term.",
+                    "unsupported_claims": ["Kubernetes"],
+                },
+            ],
+        },
+        model_metadata={"model": "z-ai/glm-5.2"},
+    )
 
     app = create_app(database_path=database_path, output_dir=tmp_path / "output")
     client = app.test_client()
@@ -848,6 +889,7 @@ def test_resume_variant_review_selects_v2_and_v1_reversibly(tmp_path: Path):
     assert "Resume Variants" in review_html
     assert "Draft v1" in review_html
     assert "Refined v2" in review_html
+    assert "Manual pass" in review_html
     assert "Use v2 draft" in review_html
     assert 'href="/resumes/123/variants/v1"' in review_html
     assert 'href="/resume-html/123/variants/v2"' in review_html
@@ -856,6 +898,10 @@ def test_resume_variant_review_selects_v2_and_v1_reversibly(tmp_path: Path):
     assert "skills-1" in review_html
     assert "unsupported_target" in review_html
     assert "Kubernetes" in review_html
+    assert review_html.count("summary-1") == 1
+    assert review_html.count("skills-1") == 1
+    assert review_html.count("unsupported_target") == 1
+    assert review_html.count("Kubernetes") == 1
     assert "-summary: Draft v1" in review_html
     assert "+summary: Refined v2" in review_html
 
