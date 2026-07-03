@@ -221,6 +221,7 @@ def init_database(connection: sqlite3.Connection) -> None:
     _ensure_application_columns(connection)
     _ensure_resume_variant_table(connection)
     _backfill_v1_resume_variants(connection)
+    _backfill_legacy_manual_resume_variants(connection)
     connection.execute(
         """
         CREATE UNIQUE INDEX IF NOT EXISTS applications_unique_linkedin_job_id
@@ -314,6 +315,84 @@ def _backfill_v1_resume_variants(connection: sqlite3.Connection) -> None:
         WHERE COALESCE(NULLIF(application_resume_object, ''), '') != ''
         """,
         (DEFAULT_RESUME_VARIANT, now, now),
+    )
+
+
+def _backfill_legacy_manual_resume_variants(connection: sqlite3.Connection) -> None:
+    now = datetime.now(UTC).isoformat(timespec="seconds")
+    connection.execute(
+        """
+        INSERT OR IGNORE INTO application_resume_variants (
+            job_id, variant_key, variant_label, source, parent_variant_key,
+            application_resume_object, resume_html_filename, resume_html_content,
+            resume_html_mime_type, source_resume_html_path, resume_html_updated_at,
+            resume_filename, resume_content, resume_mime_type, source_resume_path,
+            resume_updated_at, ats_score, ats_parsing_score, ats_keyword_score,
+            ats_semantic_score, ats_formatting_risk, ats_missing_terms, ats_updated_at,
+            created_at, updated_at
+        )
+        SELECT
+            applications.job_id, ?, 'Manual pass', 'legacy_manual_pass',
+            CASE
+                WHEN v2.variant_key IS NOT NULL THEN ?
+                WHEN v1.variant_key IS NOT NULL THEN ?
+                ELSE NULL
+            END,
+            applications.application_resume_object,
+            applications.resume_html_filename,
+            applications.resume_html_content,
+            applications.resume_html_mime_type,
+            applications.source_resume_html_path,
+            applications.resume_html_updated_at,
+            applications.resume_filename,
+            applications.resume_content,
+            applications.resume_mime_type,
+            applications.source_resume_path,
+            applications.resume_updated_at,
+            applications.ats_score,
+            applications.ats_parsing_score,
+            applications.ats_keyword_score,
+            applications.ats_semantic_score,
+            applications.ats_formatting_risk,
+            applications.ats_missing_terms,
+            applications.ats_updated_at,
+            COALESCE(
+                applications.application_resume_updated_at,
+                applications.resume_updated_at,
+                applications.updated_at,
+                ?
+            ),
+            COALESCE(
+                applications.application_resume_updated_at,
+                applications.resume_updated_at,
+                applications.updated_at,
+                ?
+            )
+        FROM applications
+        LEFT JOIN application_resume_variants AS v1
+          ON v1.job_id = applications.job_id
+         AND v1.variant_key = ?
+        LEFT JOIN application_resume_variants AS v2
+          ON v2.job_id = applications.job_id
+         AND v2.variant_key = ?
+        WHERE COALESCE(NULLIF(applications.application_resume_object, ''), '') != ''
+          AND applications.resume_content IS NOT NULL
+          AND (
+              applications.selected_resume_variant = ?
+              OR lower(COALESCE(applications.notes, '')) LIKE '%manual second pass%'
+              OR lower(COALESCE(applications.notes, '')) LIKE '%manual passthrough%'
+          )
+        """,
+        (
+            MANUAL_PASS_RESUME_VARIANT,
+            SECOND_PASS_RESUME_VARIANT,
+            DEFAULT_RESUME_VARIANT,
+            now,
+            now,
+            DEFAULT_RESUME_VARIANT,
+            SECOND_PASS_RESUME_VARIANT,
+            MANUAL_PASS_RESUME_VARIANT,
+        ),
     )
 
 

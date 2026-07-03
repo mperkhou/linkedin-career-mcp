@@ -997,6 +997,96 @@ def test_connect_database_backfills_v1_resume_variant_for_existing_aro(tmp_path:
     assert variant["ats_score"] is not None
 
 
+def test_connect_database_backfills_legacy_manual_resume_variant(tmp_path: Path):
+    database_path = tmp_path / "applications.sqlite3"
+    webapp.upsert_application_artifact(
+        database_path=database_path,
+        job_id="123",
+        company="Example Co",
+        job_title="Senior Engineer",
+        linkedin_url="https://www.linkedin.com/jobs/view/123",
+        resume_path=None,
+        job_description="Requires Python, AWS, APIs, and observability.",
+        prompt_job_description="Requires Python, AWS, APIs, and observability.",
+    )
+    webapp.store_application_resume_first_draft(
+        database_path=database_path,
+        job_id="123",
+        application_resume_object="schema_version: test\nsummary: Draft v1\n",
+        resume_html="<html><body><h1>Draft v1</h1></body></html>",
+        resume_pdf=_pdf_bytes("Draft v1 Python AWS APIs observability"),
+    )
+    manual_pdf = _pdf_bytes("Manual pass Python AWS APIs observability")
+    with webapp.connect_database(database_path) as connection:
+        connection.execute(
+            """
+            UPDATE applications
+            SET application_resume_object = ?,
+                application_resume_updated_at = '2026-07-01T10:00:00+00:00',
+                resume_html_filename = 'manual.html',
+                resume_html_content = ?,
+                resume_html_updated_at = '2026-07-01T10:00:00+00:00',
+                resume_filename = 'manual.pdf',
+                resume_content = ?,
+                resume_updated_at = '2026-07-01T10:00:00+00:00',
+                ats_score = 88,
+                ats_parsing_score = 100,
+                ats_keyword_score = 84,
+                ats_semantic_score = 72,
+                ats_formatting_risk = 'Low',
+                ats_missing_terms = '',
+                notes = 'Manual second pass 2026-07-01: refreshed artifacts.',
+                selected_resume_variant = 'v1'
+            WHERE job_id = '123'
+            """,
+            (
+                "schema_version: test\nsummary: Manual pass\n",
+                "<html><body><h1>Manual pass</h1></body></html>",
+                manual_pdf,
+            ),
+        )
+        connection.execute(
+            """
+            DELETE FROM application_resume_variants
+            WHERE job_id = '123' AND variant_key = 'manual'
+            """
+        )
+        connection.commit()
+
+    with webapp.connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT selected_resume_variant
+            FROM applications
+            WHERE job_id = '123'
+            """
+        ).fetchone()
+        manual_variant = connection.execute(
+            """
+            SELECT variant_key, variant_label, source, parent_variant_key,
+                   application_resume_object, resume_html_content, resume_content,
+                   ats_score
+            FROM application_resume_variants
+            WHERE job_id = '123' AND variant_key = 'manual'
+            """
+        ).fetchone()
+
+    assert row["selected_resume_variant"] == "v1"
+    assert manual_variant is not None
+    assert manual_variant["variant_label"] == "Manual pass"
+    assert manual_variant["source"] == "legacy_manual_pass"
+    assert manual_variant["parent_variant_key"] == "v1"
+    assert "summary: Manual pass" in manual_variant["application_resume_object"]
+    assert "Manual pass" in manual_variant["resume_html_content"]
+    assert manual_variant["resume_content"] == manual_pdf
+    assert manual_variant["ats_score"] == 88
+
+    app = create_app(database_path=database_path, output_dir=tmp_path / "output")
+    review_html = app.test_client().get("/resumes/123/variants").data.decode()
+    assert "Manual pass" in review_html
+    assert 'href="/resumes/123/variants/manual"' in review_html
+
+
 def test_application_seed_update_preserves_first_draft_resume_when_aro_exists(
     tmp_path: Path,
 ):

@@ -1,5 +1,12 @@
 # linkedin-career-mcp CHANGELOG
 
+## 4.0.1 - Backfill legacy manual resume variants
+
+* Backfill legacy Codex manual-pass resume edits into the `manual` resume
+  variant so the Flask Review page shows older manual passes after the v4.0.0
+  DB-backed variant migration.
+* Bump the package version to `4.0.1` for the Review-page migration fix.
+
 ## 4.0.0 - Add DB-backed second-pass resume variants
 
 * Add explainable ATS diagnostics, noisy phrase regressions, structured GLM 5.2
