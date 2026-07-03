@@ -87,6 +87,7 @@ def test_connect_database_migrates_job_description_columns(tmp_path: Path):
     assert "ats_formatting_risk" in columns
     assert "ats_missing_terms" in columns
     assert "selected_resume_variant" in columns
+    assert "resume_variant_selection_mode" in columns
     with webapp.connect_database(database_path) as connection:
         variant_table = connection.execute(
             """
@@ -100,7 +101,8 @@ def test_connect_database_migrates_job_description_columns(tmp_path: Path):
     with webapp.connect_database(database_path) as connection:
         row = connection.execute(
             """
-            SELECT date_matched, date_posted, archived_at, selected_resume_variant
+            SELECT date_matched, date_posted, archived_at, selected_resume_variant,
+                   resume_variant_selection_mode
             FROM applications
             WHERE job_id = '123'
             """
@@ -109,6 +111,7 @@ def test_connect_database_migrates_job_description_columns(tmp_path: Path):
     assert row["date_posted"] is None
     assert row["archived_at"] is None
     assert row["selected_resume_variant"] == "v1"
+    assert row["resume_variant_selection_mode"] == "auto"
 
 
 def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypatch):
@@ -294,10 +297,15 @@ def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypat
     assert resume_review_link.get("target") is None
     assert cover_letter_edit_link is not None
     assert cover_letter_edit_link.get("target") is None
-    manual_badge = cells[2].select_one(".manual-pass-badge")
+    badge_texts = [
+        badge.get_text(" ", strip=True)
+        for badge in cells[2].select(".variant-badge")
+    ]
+    assert badge_texts == ["Draft v1", "Manual pass"]
+    manual_badge = cells[2].select_one(".variant-badge.is-manual")
     assert manual_badge is not None
     assert manual_badge.get_text(" ", strip=True) == "Manual pass"
-    assert manual_badge["title"] == "Manual second-pass resume review completed"
+    assert manual_badge["title"] == "Selected resume variant"
     assert b"Mid-Senior level" in index.data
     assert b'id="company-sort"' in index.data
     assert b'id="matched-sort"' in index.data
@@ -879,7 +887,14 @@ def test_resume_variant_review_selects_v2_and_v1_reversibly(tmp_path: Path):
 
     index_html = client.get("/").data.decode()
     index_soup = BeautifulSoup(index_html, "html.parser")
-    assert index_soup.select_one(".variant-badge").get_text(" ", strip=True) == "Draft v1"
+    index_badges = [
+        badge.get_text(" ", strip=True)
+        for badge in index_soup.select(".job .variant-badge")
+    ]
+    assert index_badges == ["Draft v1", "Refined v2", "Manual pass"]
+    manual_badge = index_soup.select_one(".job .variant-badge.is-manual")
+    assert manual_badge is not None
+    assert manual_badge["title"] == "Selected resume variant"
     assert 'href="/resumes/123/variants"' in index_html
     assert "Review" in index_html
 
@@ -890,6 +905,7 @@ def test_resume_variant_review_selects_v2_and_v1_reversibly(tmp_path: Path):
     assert "Draft v1" in review_html
     assert "Refined v2" in review_html
     assert "Manual pass" in review_html
+    assert "Selected" in review_html
     assert "Use v2 draft" in review_html
     assert 'href="/resumes/123/variants/v1"' in review_html
     assert 'href="/resume-html/123/variants/v2"' in review_html
@@ -924,12 +940,13 @@ def test_resume_variant_review_selects_v2_and_v1_reversibly(tmp_path: Path):
         row = connection.execute(
             """
             SELECT selected_resume_variant, application_resume_object, resume_content,
-                   resume_html_content
+                   resume_html_content, resume_variant_selection_mode
             FROM applications
             WHERE job_id = '123'
             """
         ).fetchone()
     assert row["selected_resume_variant"] == "v2"
+    assert row["resume_variant_selection_mode"] == "manual"
     assert "summary: Refined v2" in row["application_resume_object"]
     assert row["resume_content"] == v2_pdf
     assert "Refined v2" in row["resume_html_content"]
@@ -946,12 +963,13 @@ def test_resume_variant_review_selects_v2_and_v1_reversibly(tmp_path: Path):
         reverted = connection.execute(
             """
             SELECT selected_resume_variant, application_resume_object, resume_content,
-                   resume_html_content
+                   resume_html_content, resume_variant_selection_mode
             FROM applications
             WHERE job_id = '123'
             """
         ).fetchone()
     assert reverted["selected_resume_variant"] == "v1"
+    assert reverted["resume_variant_selection_mode"] == "manual"
     assert "summary: Draft v1" in reverted["application_resume_object"]
     assert reverted["resume_content"] == v1_pdf
     assert "Draft v1" in reverted["resume_html_content"]
@@ -1056,7 +1074,7 @@ def test_connect_database_backfills_legacy_manual_resume_variant(tmp_path: Path)
     with webapp.connect_database(database_path) as connection:
         row = connection.execute(
             """
-            SELECT selected_resume_variant
+            SELECT selected_resume_variant, resume_variant_selection_mode
             FROM applications
             WHERE job_id = '123'
             """
@@ -1071,7 +1089,8 @@ def test_connect_database_backfills_legacy_manual_resume_variant(tmp_path: Path)
             """
         ).fetchone()
 
-    assert row["selected_resume_variant"] == "v1"
+    assert row["selected_resume_variant"] == "manual"
+    assert row["resume_variant_selection_mode"] == "auto"
     assert manual_variant is not None
     assert manual_variant["variant_label"] == "Manual pass"
     assert manual_variant["source"] == "legacy_manual_pass"

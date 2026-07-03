@@ -78,8 +78,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--apply",
         action="store_true",
         help=(
-            "Deprecated compatibility flag. The workflow stores v2 without changing "
-            "the selected resume links."
+            "Deprecated compatibility flag. The workflow stores v2; automatic "
+            "resume selection uses manual, then v2, then v1 precedence."
         ),
     )
     parser.add_argument(
@@ -175,7 +175,9 @@ async def main_async(argv: Sequence[str] | None = None) -> int:
                 "errors": errors,
                 "backfilled_v1_variants": backfilled_v1_count,
                 "stored_variant": SECOND_PASS_RESUME_VARIANT,
-                "selected_variant_changed": False,
+                "selected_variant_changed": any(
+                    bool(audit.get("selected_variant_changed")) for audit in audits
+                ),
                 "comparisons": comparisons,
                 "jobs": [
                     {
@@ -208,6 +210,9 @@ async def run_second_pass_refinement_for_job(
     external_critique_text: str | None = None,
 ) -> dict[str, Any]:
     row = _load_row(database_path=database_path, job_id=job_id)
+    selected_variant_before = str(
+        row["selected_resume_variant"] or DEFAULT_RESUME_VARIANT
+    )
     application_resume = _yaml_mapping(row["application_resume_object"], label="ARO")
     master_resume = _yaml_mapping(master_resume_path.read_text(encoding="utf-8"), label="MRO")
     job_description = _row_job_description(row)
@@ -334,6 +339,14 @@ async def run_second_pass_refinement_for_job(
         job_ids=[job_id],
     )
     audit["comparison"] = comparison[0] if comparison else None
+    selected_variant_after = (
+        str(audit["comparison"]["selected_resume_variant"])
+        if audit["comparison"] is not None
+        else selected_variant_before
+    )
+    audit["selected_variant_changed"] = (
+        selected_variant_after != selected_variant_before
+    )
     return audit
 
 
@@ -397,7 +410,7 @@ def _load_row(*, database_path: Path, job_id: str) -> sqlite3.Row:
         row = connection.execute(
             """
             SELECT job_id, company, job_title, prompt_job_description, job_description,
-                   application_resume_object, resume_content
+                   application_resume_object, resume_content, selected_resume_variant
             FROM applications
             WHERE job_id = ?
             """,

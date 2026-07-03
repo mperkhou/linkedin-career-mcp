@@ -54,6 +54,13 @@ VIEW_STATE_QUERY_KEYS = {"q", "status", "archive", "sort", "direction"}
 DEFAULT_RESUME_VARIANT = "v1"
 SECOND_PASS_RESUME_VARIANT = "v2"
 MANUAL_PASS_RESUME_VARIANT = "manual"
+AUTO_RESUME_VARIANT_SELECTION_MODE = "auto"
+MANUAL_RESUME_VARIANT_SELECTION_MODE = "manual"
+RESUME_VARIANT_DEFAULT_PRECEDENCE = (
+    MANUAL_PASS_RESUME_VARIANT,
+    SECOND_PASS_RESUME_VARIANT,
+    DEFAULT_RESUME_VARIANT,
+)
 RESUME_VARIANT_LABELS = {
     DEFAULT_RESUME_VARIANT: "Draft v1",
     SECOND_PASS_RESUME_VARIANT: "Refined v2",
@@ -62,6 +69,9 @@ RESUME_VARIANT_LABELS = {
 APPLICATION_EXTRA_COLUMNS = {
     "archived_at": "TEXT",
     "selected_resume_variant": f"TEXT NOT NULL DEFAULT '{DEFAULT_RESUME_VARIANT}'",
+    "resume_variant_selection_mode": (
+        f"TEXT NOT NULL DEFAULT '{AUTO_RESUME_VARIANT_SELECTION_MODE}'"
+    ),
     "job_description": "TEXT",
     "prompt_job_description": "TEXT",
     "application_resume_object": "TEXT",
@@ -222,6 +232,7 @@ def init_database(connection: sqlite3.Connection) -> None:
     _ensure_resume_variant_table(connection)
     _backfill_v1_resume_variants(connection)
     _backfill_legacy_manual_resume_variants(connection)
+    _apply_resume_variant_default_precedence(connection)
     connection.execute(
         """
         CREATE UNIQUE INDEX IF NOT EXISTS applications_unique_linkedin_job_id
@@ -394,6 +405,78 @@ def _backfill_legacy_manual_resume_variants(connection: sqlite3.Connection) -> N
             MANUAL_PASS_RESUME_VARIANT,
         ),
     )
+
+
+def _apply_resume_variant_default_precedence(
+    connection: sqlite3.Connection,
+    *,
+    job_ids: list[str] | None = None,
+    force: bool = False,
+) -> int:
+    clauses = [
+        "COALESCE(NULLIF(applications.resume_variant_selection_mode, ''), ?) = ?"
+    ]
+    params: list[Any] = [
+        MANUAL_PASS_RESUME_VARIANT,
+        SECOND_PASS_RESUME_VARIANT,
+        DEFAULT_RESUME_VARIANT,
+        AUTO_RESUME_VARIANT_SELECTION_MODE,
+        AUTO_RESUME_VARIANT_SELECTION_MODE,
+    ]
+    if job_ids:
+        placeholders = ", ".join("?" for _ in job_ids)
+        clauses.append(f"applications.job_id IN ({placeholders})")
+        params.extend(job_ids)
+    rows = connection.execute(
+        f"""
+        SELECT
+            applications.job_id,
+            applications.selected_resume_variant,
+            manual_variant.variant_key AS manual_variant_key,
+            v2_variant.variant_key AS v2_variant_key,
+            v1_variant.variant_key AS v1_variant_key
+        FROM applications
+        LEFT JOIN application_resume_variants AS manual_variant
+          ON manual_variant.job_id = applications.job_id
+         AND manual_variant.variant_key = ?
+        LEFT JOIN application_resume_variants AS v2_variant
+          ON v2_variant.job_id = applications.job_id
+         AND v2_variant.variant_key = ?
+        LEFT JOIN application_resume_variants AS v1_variant
+          ON v1_variant.job_id = applications.job_id
+         AND v1_variant.variant_key = ?
+        WHERE {' AND '.join(clauses)}
+        """,
+        params,
+    ).fetchall()
+
+    changed_count = 0
+    for row in rows:
+        selected_variant = str(row["selected_resume_variant"] or DEFAULT_RESUME_VARIANT)
+        next_variant = _preferred_resume_variant_from_row(row)
+        if next_variant is None:
+            continue
+        if force or selected_variant != next_variant:
+            _select_application_resume_variant_on_connection(
+                connection=connection,
+                job_id=str(row["job_id"]),
+                variant_key=next_variant,
+                selection_mode=AUTO_RESUME_VARIANT_SELECTION_MODE,
+            )
+            changed_count += 1
+    return changed_count
+
+
+def _preferred_resume_variant_from_row(row: sqlite3.Row) -> str | None:
+    available_variants = {
+        MANUAL_PASS_RESUME_VARIANT: row["manual_variant_key"],
+        SECOND_PASS_RESUME_VARIANT: row["v2_variant_key"],
+        DEFAULT_RESUME_VARIANT: row["v1_variant_key"],
+    }
+    for variant_key in RESUME_VARIANT_DEFAULT_PRECEDENCE:
+        if available_variants.get(variant_key):
+            return variant_key
+    return None
 
 
 def _ensure_application_columns(connection: sqlite3.Connection) -> None:
@@ -915,6 +998,11 @@ def store_application_resume_first_draft(
             source_resume_html_path=str(resume_html_path) if resume_html_path is not None else "",
             source_resume_path=str(resume_pdf_path) if resume_pdf_path is not None else "",
         )
+        _apply_resume_variant_default_precedence(
+            connection,
+            job_ids=[job_id],
+            force=True,
+        )
         connection.commit()
 
 
@@ -984,6 +1072,11 @@ def store_application_resume_variant(
             critique=critique,
             validation=validation,
             model_metadata=model_metadata,
+        )
+        _apply_resume_variant_default_precedence(
+            connection,
+            job_ids=[job_id],
+            force=True,
         )
         connection.commit()
     return ats_score
@@ -1178,83 +1271,101 @@ def select_application_resume_variant(
     job_id: str,
     variant_key: str,
 ) -> dict[str, Any]:
-    now = datetime.now(UTC).isoformat(timespec="seconds")
     with connect_database(database_path) as connection:
-        application = connection.execute(
-            """
-            SELECT job_id
-            FROM applications
-            WHERE job_id = ?
-            """,
-            (job_id,),
-        ).fetchone()
-        if application is None:
-            raise ValueError(f"Application row was not found for job_id={job_id}.")
-        variant = connection.execute(
-            """
-            SELECT *
-            FROM application_resume_variants
-            WHERE job_id = ?
-              AND variant_key = ?
-            """,
-            (job_id, variant_key),
-        ).fetchone()
-        if variant is None:
-            raise ValueError(
-                f"Resume variant {variant_key!r} was not found for job_id={job_id}."
-            )
-        connection.execute(
-            """
-            UPDATE applications
-            SET selected_resume_variant = ?,
-                application_resume_object = ?,
-                application_resume_updated_at = ?,
-                resume_html_filename = ?,
-                resume_html_content = ?,
-                resume_html_mime_type = ?,
-                source_resume_html_path = ?,
-                resume_html_updated_at = ?,
-                resume_filename = ?,
-                resume_content = ?,
-                resume_mime_type = ?,
-                source_resume_path = ?,
-                resume_updated_at = ?,
-                ats_score = ?,
-                ats_parsing_score = ?,
-                ats_keyword_score = ?,
-                ats_semantic_score = ?,
-                ats_formatting_risk = ?,
-                ats_missing_terms = ?,
-                ats_updated_at = ?,
-                updated_at = ?
-            WHERE job_id = ?
-            """,
-            (
-                variant_key,
-                variant["application_resume_object"],
-                variant["updated_at"] or now,
-                variant["resume_html_filename"] or "",
-                variant["resume_html_content"],
-                variant["resume_html_mime_type"] or "text/html; charset=utf-8",
-                variant["source_resume_html_path"] or "",
-                variant["resume_html_updated_at"] or variant["updated_at"] or now,
-                variant["resume_filename"] or "",
-                variant["resume_content"],
-                variant["resume_mime_type"] or "application/pdf",
-                variant["source_resume_path"] or "",
-                variant["resume_updated_at"] or variant["updated_at"] or now,
-                variant["ats_score"],
-                variant["ats_parsing_score"],
-                variant["ats_keyword_score"],
-                variant["ats_semantic_score"],
-                variant["ats_formatting_risk"],
-                variant["ats_missing_terms"],
-                variant["ats_updated_at"] or variant["updated_at"],
-                now,
-                job_id,
-            ),
+        selected = _select_application_resume_variant_on_connection(
+            connection=connection,
+            job_id=job_id,
+            variant_key=variant_key,
+            selection_mode=MANUAL_RESUME_VARIANT_SELECTION_MODE,
         )
         connection.commit()
+    return selected
+
+
+def _select_application_resume_variant_on_connection(
+    *,
+    connection: sqlite3.Connection,
+    job_id: str,
+    variant_key: str,
+    selection_mode: str,
+) -> dict[str, Any]:
+    now = datetime.now(UTC).isoformat(timespec="seconds")
+    application = connection.execute(
+        """
+        SELECT job_id
+        FROM applications
+        WHERE job_id = ?
+        """,
+        (job_id,),
+    ).fetchone()
+    if application is None:
+        raise ValueError(f"Application row was not found for job_id={job_id}.")
+    variant = connection.execute(
+        """
+        SELECT *
+        FROM application_resume_variants
+        WHERE job_id = ?
+          AND variant_key = ?
+        """,
+        (job_id, variant_key),
+    ).fetchone()
+    if variant is None:
+        raise ValueError(
+            f"Resume variant {variant_key!r} was not found for job_id={job_id}."
+        )
+    connection.execute(
+        """
+        UPDATE applications
+        SET selected_resume_variant = ?,
+            resume_variant_selection_mode = ?,
+            application_resume_object = ?,
+            application_resume_updated_at = ?,
+            resume_html_filename = ?,
+            resume_html_content = ?,
+            resume_html_mime_type = ?,
+            source_resume_html_path = ?,
+            resume_html_updated_at = ?,
+            resume_filename = ?,
+            resume_content = ?,
+            resume_mime_type = ?,
+            source_resume_path = ?,
+            resume_updated_at = ?,
+            ats_score = ?,
+            ats_parsing_score = ?,
+            ats_keyword_score = ?,
+            ats_semantic_score = ?,
+            ats_formatting_risk = ?,
+            ats_missing_terms = ?,
+            ats_updated_at = ?,
+            updated_at = ?
+        WHERE job_id = ?
+        """,
+        (
+            variant_key,
+            selection_mode,
+            variant["application_resume_object"],
+            variant["updated_at"] or now,
+            variant["resume_html_filename"] or "",
+            variant["resume_html_content"],
+            variant["resume_html_mime_type"] or "text/html; charset=utf-8",
+            variant["source_resume_html_path"] or "",
+            variant["resume_html_updated_at"] or variant["updated_at"] or now,
+            variant["resume_filename"] or "",
+            variant["resume_content"],
+            variant["resume_mime_type"] or "application/pdf",
+            variant["source_resume_path"] or "",
+            variant["resume_updated_at"] or variant["updated_at"] or now,
+            variant["ats_score"],
+            variant["ats_parsing_score"],
+            variant["ats_keyword_score"],
+            variant["ats_semantic_score"],
+            variant["ats_formatting_risk"],
+            variant["ats_missing_terms"],
+            variant["ats_updated_at"] or variant["updated_at"],
+            now,
+            job_id,
+        ),
+    )
     return {
         "variant_key": variant_key,
         "variant_label": _resume_variant_label(variant_key, variant["variant_label"]),
@@ -3156,17 +3267,62 @@ def _application_select_columns() -> str:
     manual_passthrough_status = """
         CASE
             WHEN applications.selected_resume_variant = 'manual'
+              OR EXISTS (
+                  SELECT 1
+                  FROM application_resume_variants AS manual_variant
+                  WHERE manual_variant.job_id = applications.job_id
+                    AND manual_variant.variant_key = 'manual'
+              )
               OR lower(COALESCE(applications.notes, '')) LIKE '%manual second pass%'
               OR lower(COALESCE(applications.notes, '')) LIKE '%manual passthrough%'
             THEN 'Yes'
             ELSE 'No'
         END
     """
+    has_v1_resume_variant = """
+        CASE
+            WHEN EXISTS (
+                SELECT 1
+                FROM application_resume_variants AS v1_variant
+                WHERE v1_variant.job_id = applications.job_id
+                  AND v1_variant.variant_key = 'v1'
+            )
+            THEN 1
+            ELSE 0
+        END
+    """
+    has_v2_resume_variant = """
+        CASE
+            WHEN EXISTS (
+                SELECT 1
+                FROM application_resume_variants AS v2_variant
+                WHERE v2_variant.job_id = applications.job_id
+                  AND v2_variant.variant_key = 'v2'
+            )
+            THEN 1
+            ELSE 0
+        END
+    """
+    has_manual_resume_variant = """
+        CASE
+            WHEN EXISTS (
+                SELECT 1
+                FROM application_resume_variants AS manual_variant
+                WHERE manual_variant.job_id = applications.job_id
+                  AND manual_variant.variant_key = 'manual'
+            )
+            THEN 1
+            ELSE 0
+        END
+    """
     return f"""
         applications.*,
         {sync_status} AS aro_resume_sync_status,
         CASE WHEN {sync_status} = 'Yes' THEN 0 ELSE 1 END AS aro_resume_out_of_sync,
-        {manual_passthrough_status} AS manual_passthrough_status
+        {manual_passthrough_status} AS manual_passthrough_status,
+        {has_v1_resume_variant} AS has_v1_resume_variant,
+        {has_v2_resume_variant} AS has_v2_resume_variant,
+        {has_manual_resume_variant} AS has_manual_resume_variant
     """
 
 
@@ -4226,7 +4382,7 @@ INDEX_TEMPLATE = """
       gap: 6px;
       margin-top: 6px;
     }
-    .variant-badge, .manual-pass-badge {
+    .variant-badge {
       border-radius: 999px;
       display: inline-flex;
       font-size: 11px;
@@ -4246,7 +4402,7 @@ INDEX_TEMPLATE = """
       border: 1px solid #c7d2fe;
       color: #3730a3;
     }
-    .variant-badge.is-manual, .manual-pass-badge {
+    .variant-badge.is-manual {
       background: #fff7ed;
       border: 1px solid #fed7aa;
       color: #9a3412;
@@ -4665,23 +4821,45 @@ INDEX_TEMPLATE = """
               <td class="job">
                 {{ row.job_title }}
                 <span class="job-id">{{ row.job_id }}</span>
-                {% if row.application_resume_object or row.manual_passthrough_status == 'Yes' %}
+                {% if row.has_v1_resume_variant
+                      or row.has_v2_resume_variant
+                      or row.has_manual_resume_variant %}
                   {% set selected_variant = row.selected_resume_variant or 'v1' %}
                   <span class="job-badges">
-                    {% if row.application_resume_object %}
+                    {% if row.has_v1_resume_variant %}
+                      {% set v1_badge_state = 'Available' %}
+                      {% if selected_variant == 'v1' %}
+                        {% set v1_badge_state = 'Selected' %}
+                      {% endif %}
                       <span
-                        class="variant-badge {{ resume_variant_badge_class(selected_variant) }}"
-                        title="Selected resume variant"
+                        class="variant-badge {{ resume_variant_badge_class('v1') }}"
+                        title="{{ v1_badge_state }} resume variant"
                       >
-                        {{ resume_variant_label(selected_variant) }}
+                        {{ resume_variant_label('v1') }}
                       </span>
                     {% endif %}
-                    {% if row.manual_passthrough_status == 'Yes' and selected_variant != 'manual' %}
+                    {% if row.has_v2_resume_variant %}
+                      {% set v2_badge_state = 'Available' %}
+                      {% if selected_variant == 'v2' %}
+                        {% set v2_badge_state = 'Selected' %}
+                      {% endif %}
                       <span
-                        class="manual-pass-badge"
-                        title="Manual second-pass resume review completed"
+                        class="variant-badge {{ resume_variant_badge_class('v2') }}"
+                        title="{{ v2_badge_state }} resume variant"
                       >
-                        Manual pass
+                        {{ resume_variant_label('v2') }}
+                      </span>
+                    {% endif %}
+                    {% if row.has_manual_resume_variant %}
+                      {% set manual_badge_state = 'Available' %}
+                      {% if selected_variant == 'manual' %}
+                        {% set manual_badge_state = 'Selected' %}
+                      {% endif %}
+                      <span
+                        class="variant-badge {{ resume_variant_badge_class('manual') }}"
+                        title="{{ manual_badge_state }} resume variant"
+                      >
+                        {{ resume_variant_label('manual') }}
                       </span>
                     {% endif %}
                   </span>

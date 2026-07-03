@@ -5,6 +5,11 @@
 * Backfill legacy Codex manual-pass resume edits into the `manual` resume
   variant so the Flask Review page shows older manual passes after the v4.0.0
   DB-backed variant migration.
+* Default the Flask tracker to the highest-value available resume variant using
+  `manual` > `v2` > `v1` precedence, while preserving explicit Review-page
+  selections.
+* Show all available resume variant badges in the tracker Job column instead of
+  only the selected draft plus a separate manual-pass marker.
 * Bump the package version to `4.0.1` for the Review-page migration fix.
 
 ## 4.0.0 - Add DB-backed second-pass resume variants

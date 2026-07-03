@@ -65,6 +65,9 @@ def run_manual_resume_pass_for_job(
         database_path=database_path,
         job_id=job_id,
     )
+    selected_variant_before = str(
+        row["selected_resume_variant"] or DEFAULT_RESUME_VARIANT
+    )
     bundle = build_manual_pass_input_bundle(
         row=row,
         v1_variant=v1_variant,
@@ -148,13 +151,19 @@ def run_manual_resume_pass_for_job(
             validation=validation_payload,
             model_metadata=model_metadata,
         )
+    selected_variant_after = (
+        _load_selected_resume_variant(database_path=database_path, job_id=job_id)
+        if not dry_run
+        else selected_variant_before
+    )
 
     return {
         "job_id": job_id,
         "company": row["company"],
         "job_title": row["job_title"],
         "stored_variant": MANUAL_PASS_RESUME_VARIANT,
-        "selected_variant_changed": False,
+        "selected_variant_changed": selected_variant_after != selected_variant_before,
+        "selected_resume_variant": selected_variant_after,
         "dry_run": dry_run,
         "ats_score": diagnostics.score.overall_score,
         "v1_ats_score": v1_variant["ats_score"],
@@ -361,6 +370,21 @@ def _load_manual_pass_rows(
             f"Manual pass requires stored variants for: {', '.join(missing)}."
         )
     return row, variants[DEFAULT_RESUME_VARIANT], variants[SECOND_PASS_RESUME_VARIANT]
+
+
+def _load_selected_resume_variant(*, database_path: Path, job_id: str) -> str:
+    with connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT selected_resume_variant
+            FROM applications
+            WHERE job_id = ?
+            """,
+            (job_id,),
+        ).fetchone()
+    if row is None:
+        raise ResumeManualPassError(f"Application row was not found for job_id={job_id}.")
+    return str(row["selected_resume_variant"] or DEFAULT_RESUME_VARIANT)
 
 
 def _variant_bundle(variant: sqlite3.Row | Mapping[str, Any]) -> dict[str, Any]:

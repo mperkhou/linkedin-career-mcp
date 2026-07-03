@@ -226,16 +226,18 @@ are classified as `supported`, `needs_user_evidence`, `noisy_or_role_mismatch`,
 or `rejected`. Only supported suggestions may feed the patch validator, and the
 validator still has the final say.
 
-The second pass stores `v2` without changing the selected resume. The tracker's
-variant review page can compare v1 and v2, download either HTML/PDF, inspect ATS
-deltas and accepted/rejected changes, then switch the active resume links with
-`Use v1 draft` or `Use v2 draft`.
+The second pass stores `v2` and, while a row is still using automatic resume
+selection, makes it the active resume ahead of v1. The tracker's variant review
+page can compare v1 and v2, download either HTML/PDF, inspect ATS deltas and
+accepted/rejected changes, then switch the active resume links with `Use v1
+draft` or `Use v2 draft`.
 
 The manual pass is a separate Codex workflow. It receives v1, v2, v2 critique
 and validation details, ATS diagnostics, JOD text, prompt JOD text, and
 master-resume evidence, then stores a `manual` variant through the same DB model.
-It also does not change the selected resume until the tracker action
-`Use manual pass` is clicked.
+Automatic resume selection prefers `manual`, then `v2`, then `v1`; tracker
+review actions still allow an explicit override with `Use manual pass`, `Use v2
+draft`, or `Use v1 draft`.
 
 ## Flask Tracker
 
@@ -365,8 +367,9 @@ make refine-draft-resumes JOB_IDS="4424184336"
 make refine-draft-resumes JOB_IDS=all
 ```
 
-This stores `v2` resume variants and comparison metadata without selecting v2 as
-the active resume.
+This stores `v2` resume variants and comparison metadata. Automatic resume
+selection prefers v2 over v1 unless the tracker row has an explicit variant
+selection.
 
 Run the Codex manual pass for selected jobs after v1 and v2 variants exist:
 
@@ -374,8 +377,8 @@ Run the Codex manual pass for selected jobs after v1 and v2 variants exist:
 make manual-pass-resumes JOB_IDS="4424184336"
 ```
 
-This stores `manual` resume variants without selecting them as the active
-resume.
+This stores `manual` resume variants. Automatic resume selection prefers manual
+over v2 and v1 unless the tracker row has an explicit variant selection.
 
 Run validation:
 

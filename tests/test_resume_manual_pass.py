@@ -79,7 +79,7 @@ def test_parse_manual_pass_response_accepts_fenced_json_with_yaml_aro() -> None:
     assert response.reviewer_notes == ["Kept AWS wording evidence-backed."]
 
 
-def test_run_manual_resume_pass_for_job_stores_manual_variant_without_selecting_it(
+def test_run_manual_resume_pass_for_job_stores_manual_variant_and_defaults_to_it(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -173,7 +173,8 @@ def test_run_manual_resume_pass_for_job_stores_manual_variant_without_selecting_
     )
 
     assert result["stored_variant"] == "manual"
-    assert result["selected_variant_changed"] is False
+    assert result["selected_variant_changed"] is True
+    assert result["selected_resume_variant"] == "manual"
     assert result["unsupported_terms"] == ["Kubernetes"]
     with webapp.connect_database(database_path) as connection:
         current = connection.execute(
@@ -191,9 +192,9 @@ def test_run_manual_resume_pass_for_job_stores_manual_variant_without_selecting_
             WHERE job_id = '123' AND variant_key = 'manual'
             """
         ).fetchone()
-    assert current["selected_resume_variant"] == "v1"
-    assert "Draft v1 summary" in current["application_resume_object"]
-    assert current["resume_content"] == v1_pdf
+    assert current["selected_resume_variant"] == "manual"
+    assert "Manual summary balancing" in current["application_resume_object"]
+    assert current["resume_content"] == manual_pdf
     assert manual_variant is not None
     assert "Manual summary balancing" in manual_variant["application_resume_object"]
     assert manual_variant["resume_content"] == manual_pdf

@@ -59,7 +59,7 @@ The current tools search public LinkedIn job listings and fetch public job detai
   and seeds rows into `output/tracking/applications.sqlite3`. The default
   posting-age window is `past_week`; supported windows include `past_24_hours`,
   `past_week`, and `past_month`.
-- Use `make regenerate-resumes JOB_IDS=<job_id>` for the main resume workflow. It creates or refreshes the first-draft ARO as `v1`, then runs the GLM 5.2 second-pass refinement and stores `v2` without selecting it.
+- Use `make regenerate-resumes JOB_IDS=<job_id>` for the main resume workflow. It creates or refreshes the first-draft ARO as `v1`, then runs the GLM 5.2 second-pass refinement and stores `v2`; automatic resume selection prefers manual, then v2, then v1 unless the tracker row has an explicit variant choice.
 - Use `make regenerate-draft-resumes JOB_IDS=<job_id>` only when you intentionally want the v1 first-draft ARO artifacts without v2. This deep-copies the MRO, uses the draft-generation model default (`z-ai/glm-5.2`) to match Core Technical Skills to the trimmed JOD, generates compact JOD targets, rewrites rendered experience bullets from ARO source evidence, stores the ARO YAML, renders HTML/PDF, and recalculates ATS fields.
 - Use `make refine-draft-resumes JOB_IDS=<job_id>` to create or rerun the v2 refinement for existing v1 drafts.
 - V2 refinement is critique-driven and evidence-validated. GLM 5.2 receives
