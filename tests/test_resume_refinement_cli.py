@@ -17,7 +17,7 @@ from linkedin_career_mcp.resume_refinement_cli import (
 
 
 @pytest.mark.asyncio
-async def test_second_pass_refinement_stores_v2_variant_without_updating_current_links(
+async def test_second_pass_refinement_stores_v2_variant_and_defaults_current_links(
     tmp_path: Path,
 ):
     database_path, master_resume_path = _seed_refinement_row(tmp_path)
@@ -44,7 +44,7 @@ async def test_second_pass_refinement_stores_v2_variant_without_updating_current
     assert not audit_dir.exists()
     assert audit["schema_version"] == SECOND_PASS_RESUME_REFINEMENT_AUDIT_SCHEMA_VERSION
     assert audit["stored_variant"] == "v2"
-    assert audit["selected_variant_changed"] is False
+    assert audit["selected_variant_changed"] is True
     assert audit["applied"] is False
     assert audit["validation"]["accepted_change_ids"] == ["supported-observability"]
     assert audit["validation"]["rejected_changes"] == []
@@ -89,10 +89,10 @@ async def test_second_pass_refinement_stores_v2_variant_without_updating_current
     stored_aro = yaml.safe_load(row["application_resume_object"])
     assert (
         stored_aro["professional_experience"]["jobs"][0]["bullet_points"][0]["text"]
-        == "Built Python automation for platform reliability."
+        == "Built Python automation for platform reliability and observability."
     )
     assert row["resume_content"]
-    assert row["selected_resume_variant"] == "v1"
+    assert row["selected_resume_variant"] == "v2"
     assert set(variants) == {"v1", "v2"}
     v2_aro = yaml.safe_load(variants["v2"]["application_resume_object"])
     assert (
@@ -110,7 +110,7 @@ async def test_second_pass_refinement_stores_v2_variant_without_updating_current
 
 
 @pytest.mark.asyncio
-async def test_second_pass_refinement_apply_flag_does_not_select_v2(
+async def test_second_pass_refinement_apply_flag_uses_default_precedence(
     tmp_path: Path,
 ):
     database_path, master_resume_path = _seed_refinement_row(tmp_path)
@@ -130,6 +130,7 @@ async def test_second_pass_refinement_apply_flag_does_not_select_v2(
     assert audit["applied"] is False
     assert audit["applied_change_ids"] == []
     assert audit["stored_variant"] == "v2"
+    assert audit["selected_variant_changed"] is True
     assert audit["comparison"]["v2"]["accepted_changes"] == 1
     with webapp.connect_database(database_path) as connection:
         row = connection.execute(
@@ -150,14 +151,14 @@ async def test_second_pass_refinement_apply_flag_does_not_select_v2(
     stored_aro = yaml.safe_load(row["application_resume_object"])
     assert (
         stored_aro["professional_experience"]["jobs"][0]["bullet_points"][0]["text"]
-        == "Built Python automation for platform reliability."
+        == "Built Python automation for platform reliability and observability."
     )
     v2_aro = yaml.safe_load(variant["application_resume_object"])
     assert (
         v2_aro["professional_experience"]["jobs"][0]["bullet_points"][0]["text"]
         == "Built Python automation for platform reliability and observability."
     )
-    assert row["selected_resume_variant"] == "v1"
+    assert row["selected_resume_variant"] == "v2"
     assert row["resume_content"]
     assert row["ats_score"] is not None
     assert variant["resume_content"]

@@ -1,5 +1,24 @@
 # linkedin-career-mcp CHANGELOG
 
+## 4.0.1 - Backfill legacy manual resume variants
+
+* Backfill legacy Codex manual-pass resume edits into the `manual` resume
+  variant so the Flask Review page shows older manual passes after the v4.0.0
+  DB-backed variant migration.
+* Default the Flask tracker to the highest-value available resume variant using
+  `manual` > `v2` > `v1` precedence, while preserving explicit Review-page
+  selections.
+* Show all available resume variant badges in the tracker Job column instead of
+  only the selected draft plus a separate manual-pass marker.
+* Fix Codex resume highlighting so it reads and updates the currently selected
+  resume variant (`v1`, `v2`, or `manual`) instead of always storing the
+  highlighted output as `v1`.
+* Preserve the row's existing automatic or explicit resume selection mode after
+  highlighting, keeping the polished result visible in the tracker immediately.
+* Update tracker and workflow wording from draft-only highlighting to selected
+  resume highlighting.
+* Bump the package version to `4.0.1` for the Review-page migration fix.
+
 ## 4.0.0 - Add DB-backed second-pass resume variants
 
 * Add explainable ATS diagnostics, noisy phrase regressions, structured GLM 5.2

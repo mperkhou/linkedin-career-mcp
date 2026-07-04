@@ -87,6 +87,7 @@ def test_connect_database_migrates_job_description_columns(tmp_path: Path):
     assert "ats_formatting_risk" in columns
     assert "ats_missing_terms" in columns
     assert "selected_resume_variant" in columns
+    assert "resume_variant_selection_mode" in columns
     with webapp.connect_database(database_path) as connection:
         variant_table = connection.execute(
             """
@@ -100,7 +101,8 @@ def test_connect_database_migrates_job_description_columns(tmp_path: Path):
     with webapp.connect_database(database_path) as connection:
         row = connection.execute(
             """
-            SELECT date_matched, date_posted, archived_at, selected_resume_variant
+            SELECT date_matched, date_posted, archived_at, selected_resume_variant,
+                   resume_variant_selection_mode
             FROM applications
             WHERE job_id = '123'
             """
@@ -109,6 +111,7 @@ def test_connect_database_migrates_job_description_columns(tmp_path: Path):
     assert row["date_posted"] is None
     assert row["archived_at"] is None
     assert row["selected_resume_variant"] == "v1"
+    assert row["resume_variant_selection_mode"] == "auto"
 
 
 def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypatch):
@@ -211,7 +214,7 @@ def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypat
     assert "Regenerate Draft v1 Only" in html
     assert "Run v1 + v2 Resume Workflow" in html
     assert "Run v2 Refinement" in html
-    assert "Codex Highlight Draft Resume" in html
+    assert "Codex Highlight Selected Resume" in html
     assert "Codex Manual Pass Variant" in html
     assert "Run Codex highlighting after draft generation" in html
     assert "Sync Draft to ARO" in html
@@ -294,10 +297,15 @@ def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypat
     assert resume_review_link.get("target") is None
     assert cover_letter_edit_link is not None
     assert cover_letter_edit_link.get("target") is None
-    manual_badge = cells[2].select_one(".manual-pass-badge")
+    badge_texts = [
+        badge.get_text(" ", strip=True)
+        for badge in cells[2].select(".variant-badge")
+    ]
+    assert badge_texts == ["Draft v1", "Manual pass"]
+    manual_badge = cells[2].select_one(".variant-badge.is-manual")
     assert manual_badge is not None
     assert manual_badge.get_text(" ", strip=True) == "Manual pass"
-    assert manual_badge["title"] == "Manual second-pass resume review completed"
+    assert manual_badge["title"] == "Selected resume variant"
     assert b"Mid-Senior level" in index.data
     assert b'id="company-sort"' in index.data
     assert b'id="matched-sort"' in index.data
@@ -879,7 +887,14 @@ def test_resume_variant_review_selects_v2_and_v1_reversibly(tmp_path: Path):
 
     index_html = client.get("/").data.decode()
     index_soup = BeautifulSoup(index_html, "html.parser")
-    assert index_soup.select_one(".variant-badge").get_text(" ", strip=True) == "Draft v1"
+    index_badges = [
+        badge.get_text(" ", strip=True)
+        for badge in index_soup.select(".job .variant-badge")
+    ]
+    assert index_badges == ["Draft v1", "Refined v2", "Manual pass"]
+    manual_badge = index_soup.select_one(".job .variant-badge.is-manual")
+    assert manual_badge is not None
+    assert manual_badge["title"] == "Selected resume variant"
     assert 'href="/resumes/123/variants"' in index_html
     assert "Review" in index_html
 
@@ -890,6 +905,7 @@ def test_resume_variant_review_selects_v2_and_v1_reversibly(tmp_path: Path):
     assert "Draft v1" in review_html
     assert "Refined v2" in review_html
     assert "Manual pass" in review_html
+    assert "Selected" in review_html
     assert "Use v2 draft" in review_html
     assert 'href="/resumes/123/variants/v1"' in review_html
     assert 'href="/resume-html/123/variants/v2"' in review_html
@@ -924,12 +940,13 @@ def test_resume_variant_review_selects_v2_and_v1_reversibly(tmp_path: Path):
         row = connection.execute(
             """
             SELECT selected_resume_variant, application_resume_object, resume_content,
-                   resume_html_content
+                   resume_html_content, resume_variant_selection_mode
             FROM applications
             WHERE job_id = '123'
             """
         ).fetchone()
     assert row["selected_resume_variant"] == "v2"
+    assert row["resume_variant_selection_mode"] == "manual"
     assert "summary: Refined v2" in row["application_resume_object"]
     assert row["resume_content"] == v2_pdf
     assert "Refined v2" in row["resume_html_content"]
@@ -946,12 +963,13 @@ def test_resume_variant_review_selects_v2_and_v1_reversibly(tmp_path: Path):
         reverted = connection.execute(
             """
             SELECT selected_resume_variant, application_resume_object, resume_content,
-                   resume_html_content
+                   resume_html_content, resume_variant_selection_mode
             FROM applications
             WHERE job_id = '123'
             """
         ).fetchone()
     assert reverted["selected_resume_variant"] == "v1"
+    assert reverted["resume_variant_selection_mode"] == "manual"
     assert "summary: Draft v1" in reverted["application_resume_object"]
     assert reverted["resume_content"] == v1_pdf
     assert "Draft v1" in reverted["resume_html_content"]
@@ -995,6 +1013,97 @@ def test_connect_database_backfills_v1_resume_variant_for_existing_aro(tmp_path:
     assert "First Draft Resume" in variant["resume_html_content"]
     assert variant["resume_content"] is not None
     assert variant["ats_score"] is not None
+
+
+def test_connect_database_backfills_legacy_manual_resume_variant(tmp_path: Path):
+    database_path = tmp_path / "applications.sqlite3"
+    webapp.upsert_application_artifact(
+        database_path=database_path,
+        job_id="123",
+        company="Example Co",
+        job_title="Senior Engineer",
+        linkedin_url="https://www.linkedin.com/jobs/view/123",
+        resume_path=None,
+        job_description="Requires Python, AWS, APIs, and observability.",
+        prompt_job_description="Requires Python, AWS, APIs, and observability.",
+    )
+    webapp.store_application_resume_first_draft(
+        database_path=database_path,
+        job_id="123",
+        application_resume_object="schema_version: test\nsummary: Draft v1\n",
+        resume_html="<html><body><h1>Draft v1</h1></body></html>",
+        resume_pdf=_pdf_bytes("Draft v1 Python AWS APIs observability"),
+    )
+    manual_pdf = _pdf_bytes("Manual pass Python AWS APIs observability")
+    with webapp.connect_database(database_path) as connection:
+        connection.execute(
+            """
+            UPDATE applications
+            SET application_resume_object = ?,
+                application_resume_updated_at = '2026-07-01T10:00:00+00:00',
+                resume_html_filename = 'manual.html',
+                resume_html_content = ?,
+                resume_html_updated_at = '2026-07-01T10:00:00+00:00',
+                resume_filename = 'manual.pdf',
+                resume_content = ?,
+                resume_updated_at = '2026-07-01T10:00:00+00:00',
+                ats_score = 88,
+                ats_parsing_score = 100,
+                ats_keyword_score = 84,
+                ats_semantic_score = 72,
+                ats_formatting_risk = 'Low',
+                ats_missing_terms = '',
+                notes = 'Manual second pass 2026-07-01: refreshed artifacts.',
+                selected_resume_variant = 'v1'
+            WHERE job_id = '123'
+            """,
+            (
+                "schema_version: test\nsummary: Manual pass\n",
+                "<html><body><h1>Manual pass</h1></body></html>",
+                manual_pdf,
+            ),
+        )
+        connection.execute(
+            """
+            DELETE FROM application_resume_variants
+            WHERE job_id = '123' AND variant_key = 'manual'
+            """
+        )
+        connection.commit()
+
+    with webapp.connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT selected_resume_variant, resume_variant_selection_mode
+            FROM applications
+            WHERE job_id = '123'
+            """
+        ).fetchone()
+        manual_variant = connection.execute(
+            """
+            SELECT variant_key, variant_label, source, parent_variant_key,
+                   application_resume_object, resume_html_content, resume_content,
+                   ats_score
+            FROM application_resume_variants
+            WHERE job_id = '123' AND variant_key = 'manual'
+            """
+        ).fetchone()
+
+    assert row["selected_resume_variant"] == "manual"
+    assert row["resume_variant_selection_mode"] == "auto"
+    assert manual_variant is not None
+    assert manual_variant["variant_label"] == "Manual pass"
+    assert manual_variant["source"] == "legacy_manual_pass"
+    assert manual_variant["parent_variant_key"] == "v1"
+    assert "summary: Manual pass" in manual_variant["application_resume_object"]
+    assert "Manual pass" in manual_variant["resume_html_content"]
+    assert manual_variant["resume_content"] == manual_pdf
+    assert manual_variant["ats_score"] == 88
+
+    app = create_app(database_path=database_path, output_dir=tmp_path / "output")
+    review_html = app.test_client().get("/resumes/123/variants").data.decode()
+    assert "Manual pass" in review_html
+    assert 'href="/resumes/123/variants/manual"' in review_html
 
 
 def test_application_seed_update_preserves_first_draft_resume_when_aro_exists(
@@ -1545,7 +1654,7 @@ def test_actions_run_can_chain_codex_highlighting_after_draft_generation(tmp_pat
     assert status is not None
     assert status["runs"][0]["title"] == (
         "regenerate draft v1 only for 1 job(s) + "
-        "Codex highlight draft resume for 1 job(s)"
+        "Codex highlight selected resume for 1 job(s)"
     )
 
 
@@ -1716,7 +1825,7 @@ def test_background_action_runs_only_requested_new_workflow(
     assert calls == [("regenerate", "sync_draft_to_aro")]
 
     calls.clear()
-    run = webapp._create_background_action_run(title="Codex highlight draft resume")  # noqa: SLF001
+    run = webapp._create_background_action_run(title="Codex highlight selected resume")  # noqa: SLF001
     webapp._run_background_action(  # noqa: SLF001
         run_id=run.run_id,
         regenerate_mode="highlight_drafts",

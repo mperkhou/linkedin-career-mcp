@@ -27,11 +27,14 @@ from linkedin_career_mcp.resume_rendering import (
     render_resume_pdf_from_html,
 )
 from linkedin_career_mcp.webapp import (
+    AUTO_RESUME_VARIANT_SELECTION_MODE,
     DEFAULT_DATABASE,
     DEFAULT_OUTPUT_DIR,
     DEFAULT_RESUME_TEMPLATE,
+    DEFAULT_RESUME_VARIANT,
+    RESUME_VARIANT_LABELS,
     connect_database,
-    store_application_resume_first_draft,
+    store_application_resume_variant,
 )
 
 
@@ -39,7 +42,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Use a guarded Codex workflow to add selective <strong> highlighting "
-            "to stored ARO draft resumes."
+            "to the selected stored ARO resume variant."
         )
     )
     parser.add_argument(
@@ -130,7 +133,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     skipped = 0
     for index, row in enumerate(rows, start=1):
         job_id = str(row["job_id"])
-        print(f"[{index}/{len(rows)}] Codex highlighting draft resume: {job_id}", file=sys.stderr)
+        variant_key = _selected_variant_key(row)
+        print(
+            (
+                f"[{index}/{len(rows)}] Codex highlighting selected resume "
+                f"variant {variant_key}: {job_id}"
+            ),
+            file=sys.stderr,
+        )
         try:
             outcome = _highlight_row(
                 row=row,
@@ -160,7 +170,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     summary = {"processed": processed, "failed": failed, "skipped": skipped}
     print(
         (
-            f"Codex highlighted draft resumes: {processed}, "
+            f"Codex highlighted selected resume variants: {processed}, "
             f"skipped: {skipped}, failed: {failed}"
         ),
         file=sys.stderr,
@@ -185,6 +195,11 @@ def _highlight_row(
     experience_job_order: str | None,
 ) -> str:
     job_id = str(row["job_id"])
+    variant_key = _selected_variant_key(row)
+    if row["variant_key"] is None and variant_key != DEFAULT_RESUME_VARIANT:
+        raise ResumeHighlightError(
+            f"Selected resume variant {variant_key!r} was not found for job_id={job_id}."
+        )
     application_resume = _yaml_mapping(row["application_resume_object"])
     bullets = collect_highlight_bullets_for_jobs(
         application_resume,
@@ -251,20 +266,28 @@ def _highlight_row(
         pdf_path.write_bytes(resume_pdf)
 
     if not dry_run:
-        store_application_resume_first_draft(
+        store_application_resume_variant(
             database_path=database_path,
             job_id=job_id,
+            variant_key=variant_key,
+            variant_label=_selected_variant_label(row, variant_key),
+            source=_selected_variant_source(row, variant_key),
+            parent_variant_key=_selected_parent_variant_key(row),
             application_resume_object=aro_yaml,
             resume_html=resume_html,
             resume_pdf=resume_pdf,
-            resume_html_path=html_path,
-            resume_pdf_path=pdf_path,
+            resume_html_filename=html_path.name if html_path is not None else None,
+            resume_filename=pdf_path.name if pdf_path is not None else None,
+            source_resume_html_path=str(html_path) if html_path is not None else "",
+            source_resume_path=str(pdf_path) if pdf_path is not None else "",
+            select_after_store=True,
+            selection_mode=_selected_variant_selection_mode(row),
         )
 
     print(
         (
-            f"[{job_id}] highlighted {stats.bullet_count} bullets with "
-            f"{stats.strong_span_count} strong spans"
+            f"[{job_id}] highlighted {stats.bullet_count} bullets in {variant_key} "
+            f"with {stats.strong_span_count} strong spans"
         ),
         file=sys.stderr,
         flush=True,
@@ -281,11 +304,45 @@ def _load_rows(
     with connect_database(database_path) as connection:
         rows = connection.execute(
             """
-            SELECT job_id, company, job_title, application_resume_object
+            SELECT
+                applications.job_id,
+                applications.company,
+                applications.job_title,
+                COALESCE(
+                    NULLIF(applications.selected_resume_variant, ''),
+                    ?
+                ) AS selected_resume_variant,
+                COALESCE(
+                    NULLIF(applications.resume_variant_selection_mode, ''),
+                    ?
+                ) AS resume_variant_selection_mode,
+                selected_variant.variant_key,
+                selected_variant.variant_label,
+                selected_variant.source AS variant_source,
+                selected_variant.parent_variant_key,
+                COALESCE(
+                    selected_variant.application_resume_object,
+                    applications.application_resume_object
+                ) AS application_resume_object
             FROM applications
-            WHERE COALESCE(NULLIF(application_resume_object, ''), '') != ''
-            ORDER BY rowid
-            """
+            LEFT JOIN application_resume_variants AS selected_variant
+              ON selected_variant.job_id = applications.job_id
+             AND selected_variant.variant_key = COALESCE(
+                    NULLIF(applications.selected_resume_variant, ''),
+                    ?
+                 )
+            WHERE COALESCE(
+                    NULLIF(selected_variant.application_resume_object, ''),
+                    NULLIF(applications.application_resume_object, ''),
+                    ''
+                  ) != ''
+            ORDER BY applications.rowid
+            """,
+            (
+                DEFAULT_RESUME_VARIANT,
+                AUTO_RESUME_VARIANT_SELECTION_MODE,
+                DEFAULT_RESUME_VARIANT,
+            ),
         ).fetchall()
 
     filtered: list[sqlite3.Row] = []
@@ -307,6 +364,29 @@ def _yaml_mapping(value: object) -> Mapping[str, Any]:
     if not isinstance(payload, Mapping):
         raise ResumeHighlightError("Application resume object must be a YAML mapping.")
     return payload
+
+
+def _selected_variant_key(row: sqlite3.Row) -> str:
+    return str(row["selected_resume_variant"] or DEFAULT_RESUME_VARIANT)
+
+
+def _selected_variant_label(row: sqlite3.Row, variant_key: str) -> str:
+    return str(row["variant_label"] or RESUME_VARIANT_LABELS.get(variant_key, variant_key))
+
+
+def _selected_variant_source(row: sqlite3.Row, variant_key: str) -> str:
+    if row["variant_source"]:
+        return str(row["variant_source"])
+    return "first_draft" if variant_key == DEFAULT_RESUME_VARIANT else "highlighted_resume"
+
+
+def _selected_parent_variant_key(row: sqlite3.Row) -> str | None:
+    parent_variant_key = row["parent_variant_key"]
+    return str(parent_variant_key) if parent_variant_key else None
+
+
+def _selected_variant_selection_mode(row: sqlite3.Row) -> str:
+    return str(row["resume_variant_selection_mode"] or AUTO_RESUME_VARIANT_SELECTION_MODE)
 
 
 def _write_artifact(
