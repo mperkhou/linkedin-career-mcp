@@ -2344,7 +2344,15 @@ def _run_background_action(
         if regenerate_mode:
             _run_regenerate_action(run_id=run_id, regenerate_mode=regenerate_mode, job_ids=job_ids)
         if highlight_with_codex and regenerate_mode != "highlight_drafts":
-            _run_highlight_action(run_id=run_id, job_ids=job_ids)
+            _run_highlight_action(
+                run_id=run_id,
+                job_ids=job_ids,
+                variant_key=(
+                    SECOND_PASS_RESUME_VARIANT
+                    if regenerate_mode in {"resume_variants", "refine_drafts"}
+                    else None
+                ),
+            )
         _append_background_action_message(run_id, "Background action completed.")
         _finish_background_action_run(run_id, status="completed", return_code=0)
     except Exception as exc:
@@ -2368,8 +2376,13 @@ def _run_regenerate_action(
     )
 
 
-def _run_highlight_action(*, run_id: str, job_ids: list[str]) -> None:
-    command = _highlight_make_command(job_ids=job_ids)
+def _run_highlight_action(
+    *,
+    run_id: str,
+    job_ids: list[str],
+    variant_key: str | None = None,
+) -> None:
+    command = _highlight_make_command(job_ids=job_ids, variant_key=variant_key)
     _run_make_command(
         run_id=run_id,
         command=command,
@@ -2485,10 +2498,17 @@ def _regenerate_make_command(*, regenerate_mode: str, job_ids: list[str]) -> lis
     return command
 
 
-def _highlight_make_command(*, job_ids: list[str]) -> list[str]:
+def _highlight_make_command(
+    *,
+    job_ids: list[str],
+    variant_key: str | None = None,
+) -> list[str]:
     if not job_ids:
         raise ValueError("At least one job id is required for Codex highlighting.")
-    return ["make", "highlight-draft-resumes", f"JOB_IDS={' '.join(job_ids)}"]
+    command = ["make", "highlight-draft-resumes", f"JOB_IDS={' '.join(job_ids)}"]
+    if variant_key:
+        command.append(f"HIGHLIGHT_RESUME_VARIANT={variant_key}")
+    return command
 
 
 def _seed_make_command(*, max_jobs: int, date_posted: str) -> list[str]:
@@ -2545,6 +2565,10 @@ def _selected_job_ids(values: list[str]) -> list[str]:
         seen.add(job_id)
         job_ids.append(job_id)
     return job_ids
+
+
+def _add_url_regenerate_mode(*, run_v2: bool) -> str:
+    return "resume_variants" if run_v2 else "draft_resumes"
 
 
 def _background_action_title(
@@ -2778,7 +2802,9 @@ def create_app(
             return redirect(_add_application_return_path(request.form.get("return_to")))
 
         run = start_background_action(
-            regenerate_mode="draft_resumes",
+            regenerate_mode=_add_url_regenerate_mode(
+                run_v2=bool(request.form.get("run_v2"))
+            ),
             job_ids=[job_id],
             highlight_with_codex=bool(request.form.get("highlight_with_codex")),
             runner=background_action_runner,
@@ -2798,7 +2824,9 @@ def create_app(
             return redirect(_add_application_return_path(request.form.get("return_to")))
 
         run = start_background_action(
-            regenerate_mode="draft_resumes",
+            regenerate_mode=_add_url_regenerate_mode(
+                run_v2=bool(request.form.get("run_v2"))
+            ),
             job_ids=[job_id],
             highlight_with_codex=bool(request.form.get("highlight_with_codex")),
             runner=background_action_runner,
@@ -5930,6 +5958,10 @@ ADD_APPLICATION_TEMPLATE = """
         >
       </label>
       <label class="option-row">
+        <input type="checkbox" name="run_v2" value="1">
+        <span>Run v2 refinement</span>
+      </label>
+      <label class="option-row">
         <input type="checkbox" name="highlight_with_codex" value="1" checked>
         <span>Run Codex bullet highlighting after resume generation</span>
       </label>
@@ -5946,6 +5978,10 @@ ADD_APPLICATION_TEMPLATE = """
           placeholder="https://company.example/jobs/software-engineer"
           required
         >
+      </label>
+      <label class="option-row">
+        <input type="checkbox" name="run_v2" value="1">
+        <span>Run v2 refinement</span>
       </label>
       <label class="option-row">
         <input type="checkbox" name="highlight_with_codex" value="1" checked>

@@ -1,5 +1,18 @@
 # linkedin-career-mcp CHANGELOG
 
+## 4.0.2 - Pin Codex resume workflow reasoning effort
+
+* Add `CODEX_REASONING_EFFORT`, defaulting to `xhigh`, for the Codex manual
+  resume pass and selected-resume highlighting workflows.
+* Pass `model_reasoning_effort` explicitly to `codex exec` so manual pass and
+  highlighting quality do not depend on the caller's global Codex config.
+* Record the Codex reasoning effort in stored manual-pass model metadata and
+  document the new Makefile and script-level overrides.
+* Add `Run v2 refinement` controls to the tracker Add popup's LinkedIn and
+  other URL forms, chaining Codex highlighting after the v1 plus v2 workflow
+  against the v2 resume when both options are selected.
+* Bump the package version to `4.0.2` for the Codex workflow configuration fix.
+
 ## 4.0.1 - Backfill legacy manual resume variants
 
 * Backfill legacy Codex manual-pass resume edits into the `manual` resume

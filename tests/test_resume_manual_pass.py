@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from io import BytesIO
 from pathlib import Path
 
@@ -206,6 +207,42 @@ def test_run_manual_resume_pass_for_job_stores_manual_variant_and_defaults_to_it
     assert validation["unsupported_terms"] == ["Kubernetes"]
     model_metadata = json.loads(manual_variant["model_metadata_json"])
     assert model_metadata["model"] == "gpt-5.5"
+    assert model_metadata["reasoning_effort"] == "xhigh"
+
+
+def test_run_codex_manual_pass_pins_reasoning_effort(tmp_path: Path, monkeypatch) -> None:
+    captured_args: list[str] = []
+
+    def fake_run(args, **kwargs):
+        captured_args.extend(args)
+        output_path = args[args.index("--output-last-message") + 1]
+        Path(output_path).write_text(
+            json.dumps(
+                {
+                    "schema_version": "manual_resume_pass_response.v1",
+                    "application_resume_object": {"schema_version": "test"},
+                    "rationale": "Manual pass.",
+                    "unsupported_terms": [],
+                    "reviewer_notes": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    response = resume_manual_pass.run_codex_manual_pass(
+        "prompt",
+        project_root=tmp_path,
+        codex_command="codex",
+        codex_model="gpt-5.5",
+    )
+
+    assert "manual_resume_pass_response.v1" in response
+    assert "-c" in captured_args
+    assert 'model_reasoning_effort="xhigh"' in captured_args
+    assert captured_args.index('model_reasoning_effort="xhigh"') < captured_args.index("exec")
 
 
 def _variant_mapping(

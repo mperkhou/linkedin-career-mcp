@@ -15,6 +15,7 @@ import yaml
 from linkedin_career_mcp.resume_highlighting import (
     DEFAULT_CODEX_COMMAND,
     DEFAULT_CODEX_MODEL,
+    DEFAULT_CODEX_REASONING_EFFORT,
     DEFAULT_CODEX_TIMEOUT_SECONDS,
     ResumeHighlightError,
     apply_highlight_response,
@@ -64,6 +65,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--limit", type=int, help="Process at most this many rows.")
     parser.add_argument(
+        "--variant-key",
+        help=(
+            "Highlight this stored resume variant instead of the row's selected "
+            "variant. Useful when chaining highlighting after v2 refinement."
+        ),
+    )
+    parser.add_argument(
         "--artifact-dir",
         type=Path,
         help="Optionally write prompts, Codex responses, YAML, HTML, and PDF files.",
@@ -83,6 +91,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--codex-model",
         default=os.environ.get("LINKEDIN_CAREER_MCP_CODEX_MODEL", DEFAULT_CODEX_MODEL),
         help="Codex model used for the polish step.",
+    )
+    parser.add_argument(
+        "--codex-reasoning-effort",
+        default=os.environ.get(
+            "LINKEDIN_CAREER_MCP_CODEX_REASONING_EFFORT",
+            DEFAULT_CODEX_REASONING_EFFORT,
+        ),
+        help="Codex reasoning effort for the polish step. Pass an empty value to inherit config.",
     )
     parser.add_argument(
         "--timeout-seconds",
@@ -118,11 +134,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         database_path=args.database,
         job_ids=set(args.job_ids or []),
         limit=args.limit,
+        variant_key=args.variant_key,
     )
     print(
         (
             f"Candidates: {len(rows)} (database={args.database}, "
-            f"codex_model={args.codex_model})"
+            f"codex_model={args.codex_model}, "
+            f"codex_reasoning_effort={args.codex_reasoning_effort or 'inherit'})"
         ),
         file=sys.stderr,
         flush=True,
@@ -150,6 +168,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 dry_run=args.dry_run,
                 codex_command=args.codex_command,
                 codex_model=args.codex_model,
+                codex_reasoning_effort=args.codex_reasoning_effort,
                 timeout_seconds=args.timeout_seconds,
                 max_strong_spans_per_bullet=args.max_strong_spans_per_bullet,
                 experience_company=args.experience_company,
@@ -189,6 +208,7 @@ def _highlight_row(
     dry_run: bool,
     codex_command: str,
     codex_model: str,
+    codex_reasoning_effort: str,
     timeout_seconds: int,
     max_strong_spans_per_bullet: int,
     experience_company: str | None,
@@ -230,6 +250,7 @@ def _highlight_row(
         project_root=_project_root(),
         codex_command=codex_command,
         codex_model=codex_model,
+        codex_reasoning_effort=codex_reasoning_effort,
         timeout_seconds=timeout_seconds,
     )
     _write_artifact(
@@ -300,7 +321,9 @@ def _load_rows(
     database_path: Path,
     job_ids: set[str],
     limit: int | None,
+    variant_key: str | None = None,
 ) -> list[sqlite3.Row]:
+    variant_override = str(variant_key or "").strip()
     with connect_database(database_path) as connection:
         rows = connection.execute(
             """
@@ -309,6 +332,7 @@ def _load_rows(
                 applications.company,
                 applications.job_title,
                 COALESCE(
+                    NULLIF(?, ''),
                     NULLIF(applications.selected_resume_variant, ''),
                     ?
                 ) AS selected_resume_variant,
@@ -328,6 +352,7 @@ def _load_rows(
             LEFT JOIN application_resume_variants AS selected_variant
               ON selected_variant.job_id = applications.job_id
              AND selected_variant.variant_key = COALESCE(
+                    NULLIF(?, ''),
                     NULLIF(applications.selected_resume_variant, ''),
                     ?
                  )
@@ -339,8 +364,10 @@ def _load_rows(
             ORDER BY applications.rowid
             """,
             (
+                variant_override,
                 DEFAULT_RESUME_VARIANT,
                 AUTO_RESUME_VARIANT_SELECTION_MODE,
+                variant_override,
                 DEFAULT_RESUME_VARIANT,
             ),
         ).fetchall()

@@ -313,9 +313,15 @@ pass, and Codex highlighting. By default it selects v1 draft generation and v2
 refinement, matching the main v1 plus v2 path; manual pass and highlighting are
 opt-in.
 
+The LinkedIn URL and Other URL forms can also run the v2 refinement for the
+newly loaded job. When `Run v2 refinement` and Codex highlighting are both
+selected, the tracker runs the full v1 plus v2 workflow first and highlights
+the v2 resume after refinement completes.
+
 Generate or regenerate the main resume workflow for stored jobs. This writes
-the first draft as `v1`, then runs GLM 5.2 refinement and stores `v2` without
-selecting it. Use this as the default resume generation command:
+the first draft as `v1`, then runs GLM 5.2 refinement and stores `v2`.
+Automatic resume selection prefers v2 over v1 unless the tracker row has an
+explicit variant selection. Use this as the default resume generation command:
 
 ```bash
 make regenerate-resumes JOB_IDS="4424184336"
@@ -445,17 +451,23 @@ The optional Codex highlighting workflow runs after resume generation and
 polishes the currently selected resume variant (`v1`, `v2`, or `manual`). The
 Codex CLI returns JSON patches, and Python validates that only `<strong>` tags
 were added before writing the selected variant, re-rendering HTML/PDF, and
-keeping that variant active:
+keeping that variant active. Codex-powered manual pass and highlighting runs
+pin reasoning effort to `xhigh` by default so workflow quality does not depend
+on the caller's global Codex config:
 
 ```bash
 CODEX_MODEL=gpt-5.5 make highlight-draft-resumes JOB_IDS="4424184336"
 ```
 
-Override the Codex command or per-row timeout when needed:
+Override the Codex command, reasoning effort, or per-row timeout when needed:
 
 - `CODEX_COMMAND`: Makefile override for the Codex CLI command.
 - `CODEX_MODEL`: Makefile override for the Codex model, default `gpt-5.5`.
+- `CODEX_REASONING_EFFORT`: Makefile override for Codex reasoning effort,
+  default `xhigh`; set to an empty value to inherit Codex CLI config.
 - `CODEX_TIMEOUT_SECONDS`: Makefile override for the Codex CLI timeout.
+- `HIGHLIGHT_RESUME_VARIANT`: optional variant key override for highlighting,
+  such as `v2`; empty means highlight the currently selected resume variant.
 - `MANUAL_PASS_MASTER_RESUME_TEXT`: master-resume source text included in the
   manual pass evidence bundle.
 - `HIGHLIGHT_EXPERIENCE_COMPANY`: optional company-name filter for the rendered
@@ -464,6 +476,8 @@ Override the Codex command or per-row timeout when needed:
   rendered Professional Experience jobs sent to Codex.
 - `LINKEDIN_CAREER_MCP_CODEX_COMMAND`: script-level Codex command fallback.
 - `LINKEDIN_CAREER_MCP_CODEX_MODEL`: script-level model fallback.
+- `LINKEDIN_CAREER_MCP_CODEX_REASONING_EFFORT`: script-level Codex reasoning
+  effort fallback.
 - `LINKEDIN_CAREER_MCP_CODEX_TIMEOUT_SECONDS`: script-level timeout fallback.
 
 The important local files are:

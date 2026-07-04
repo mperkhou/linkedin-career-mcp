@@ -17,7 +17,9 @@ from linkedin_career_mcp.errors import WorkflowError
 from linkedin_career_mcp.resume_highlighting import (
     DEFAULT_CODEX_COMMAND,
     DEFAULT_CODEX_MODEL,
+    DEFAULT_CODEX_REASONING_EFFORT,
     DEFAULT_CODEX_TIMEOUT_SECONDS,
+    _append_codex_reasoning_effort,
 )
 from linkedin_career_mcp.resume_rendering import (
     render_resume_html_from_mapping,
@@ -57,6 +59,7 @@ def run_manual_resume_pass_for_job(
     template_path: Path,
     codex_command: str = DEFAULT_CODEX_COMMAND,
     codex_model: str = DEFAULT_CODEX_MODEL,
+    codex_reasoning_effort: str = DEFAULT_CODEX_REASONING_EFFORT,
     timeout_seconds: int = DEFAULT_CODEX_TIMEOUT_SECONDS,
     artifact_dir: Path | None = None,
     dry_run: bool = False,
@@ -81,6 +84,7 @@ def run_manual_resume_pass_for_job(
         project_root=_project_root(),
         codex_command=codex_command,
         codex_model=codex_model,
+        codex_reasoning_effort=codex_reasoning_effort,
         timeout_seconds=timeout_seconds,
     )
     parsed_response = parse_manual_pass_response(response_text)
@@ -110,6 +114,7 @@ def run_manual_resume_pass_for_job(
     model_metadata = {
         "client": "Codex CLI",
         "model": codex_model,
+        "reasoning_effort": codex_reasoning_effort,
         "codex_command": codex_command,
     }
     parsed_response_payload = {
@@ -259,6 +264,7 @@ def run_codex_manual_pass(
     project_root: Path,
     codex_command: str = DEFAULT_CODEX_COMMAND,
     codex_model: str = DEFAULT_CODEX_MODEL,
+    codex_reasoning_effort: str = DEFAULT_CODEX_REASONING_EFFORT,
     timeout_seconds: int = DEFAULT_CODEX_TIMEOUT_SECONDS,
 ) -> str:
     command = shlex.split(codex_command)
@@ -271,14 +277,19 @@ def run_codex_manual_pass(
             *command,
             "--ask-for-approval",
             "never",
-            "exec",
-            "-C",
-            str(project_root),
-            "--sandbox",
-            "read-only",
-            "--output-last-message",
-            str(output_path),
         ]
+        _append_codex_reasoning_effort(args, codex_reasoning_effort)
+        args.extend(
+            [
+                "exec",
+                "-C",
+                str(project_root),
+                "--sandbox",
+                "read-only",
+                "--output-last-message",
+                str(output_path),
+            ]
+        )
         if codex_model:
             args.extend(["--model", codex_model])
         args.append("-")

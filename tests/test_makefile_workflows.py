@@ -103,14 +103,18 @@ def test_highlight_draft_resumes_make_target_uses_codex_workflow() -> None:
         "JOB_IDS=url-123",
         "CODEX_COMMAND=codex",
         "CODEX_MODEL=gpt-5.5",
+        "CODEX_REASONING_EFFORT=xhigh",
         "CODEX_TIMEOUT_SECONDS=900",
+        "HIGHLIGHT_RESUME_VARIANT=v2",
         "HIGHLIGHT_EXPERIENCE_COMPANY=Oracle",
     )
 
     assert "scripts/application_resume_highlight_drafts.py" in output
     assert '--codex-command "codex"' in output
     assert '--codex-model "gpt-5.5"' in output
+    assert '--codex-reasoning-effort "xhigh"' in output
     assert '--timeout-seconds "900"' in output
+    assert "--variant-key v2" in output
     assert "--experience-company Oracle" in output
     assert "for job_id in url-123" in output
     assert 'job_args="$job_args --job-id $job_id"' in output
@@ -122,6 +126,7 @@ def test_manual_pass_resumes_make_target_uses_codex_workflow() -> None:
         "JOB_IDS=url-123",
         "CODEX_COMMAND=codex",
         "CODEX_MODEL=gpt-5.5",
+        "CODEX_REASONING_EFFORT=xhigh",
         "CODEX_TIMEOUT_SECONDS=900",
     )
 
@@ -130,6 +135,7 @@ def test_manual_pass_resumes_make_target_uses_codex_workflow() -> None:
     assert '--master-resume-text "profile/MP-MASTER-RESUME.txt"' in output
     assert '--codex-command "codex"' in output
     assert '--codex-model "gpt-5.5"' in output
+    assert '--codex-reasoning-effort "xhigh"' in output
     assert '--timeout-seconds "900"' in output
     assert "for job_id in url-123" in output
     assert 'job_args="$job_args --job-id $job_id"' in output

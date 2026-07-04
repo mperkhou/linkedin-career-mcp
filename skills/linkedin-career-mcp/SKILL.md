@@ -76,7 +76,9 @@ The current tools search public LinkedIn job listings and fetch public job detai
 - Use `make sync-draft-to-aro JOB_IDS=<job_id>` to render the stored ARO object into the database-backed draft HTML/PDF and refresh ATS scoring without re-querying the LLM.
 - Use `make manual-pass-resumes JOB_IDS=<job_id>` after `v1` and `v2` exist to
   store a Codex-reviewed `manual` variant. The command does not select the
-  manual variant automatically.
+  manual variant automatically. Codex manual pass and highlighting runs pin
+  `CODEX_REASONING_EFFORT=xhigh` by default; override it or set it empty only
+  when intentionally inheriting Codex CLI config.
 - Use `make highlight-draft-resumes JOB_IDS=<job_id>` for the guarded Codex
   highlighting workflow. It polishes the currently selected resume variant
   (`v1`, `v2`, or `manual`) and is separate from v2 refinement.
@@ -87,6 +89,9 @@ The current tools search public LinkedIn job listings and fetch public job detai
 - The tracker Add popup can seed a batch with a job count and posting-age
   window, then chain selected stages for the newly seeded rows: v1 draft
   generation, v2 refinement, Codex manual pass, and Codex highlighting.
+- The Add popup's LinkedIn and Other URL forms can also run v2 refinement for
+  the newly loaded row. If Codex highlighting is selected too, highlighting
+  runs after the v1 plus v2 workflow and explicitly polishes the v2 resume.
 - The tracker Actions menu runs the same workflow family on selected rows:
   main v1-plus-v2 resume generation, v1-only draft generation, v2
   create/rerun, manual pass, highlighting, ARO regeneration, and draft-to-ARO
