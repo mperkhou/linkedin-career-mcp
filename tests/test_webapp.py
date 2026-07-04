@@ -214,7 +214,7 @@ def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypat
     assert "Regenerate Draft v1 Only" in html
     assert "Run v1 + v2 Resume Workflow" in html
     assert "Run v2 Refinement" in html
-    assert "Codex Highlight Draft Resume" in html
+    assert "Codex Highlight Selected Resume" in html
     assert "Codex Manual Pass Variant" in html
     assert "Run Codex highlighting after draft generation" in html
     assert "Sync Draft to ARO" in html
@@ -1654,7 +1654,7 @@ def test_actions_run_can_chain_codex_highlighting_after_draft_generation(tmp_pat
     assert status is not None
     assert status["runs"][0]["title"] == (
         "regenerate draft v1 only for 1 job(s) + "
-        "Codex highlight draft resume for 1 job(s)"
+        "Codex highlight selected resume for 1 job(s)"
     )
 
 
@@ -1825,7 +1825,7 @@ def test_background_action_runs_only_requested_new_workflow(
     assert calls == [("regenerate", "sync_draft_to_aro")]
 
     calls.clear()
-    run = webapp._create_background_action_run(title="Codex highlight draft resume")  # noqa: SLF001
+    run = webapp._create_background_action_run(title="Codex highlight selected resume")  # noqa: SLF001
     webapp._run_background_action(  # noqa: SLF001
         run_id=run.run_id,
         regenerate_mode="highlight_drafts",

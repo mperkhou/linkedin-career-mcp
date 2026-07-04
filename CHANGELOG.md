@@ -10,6 +10,13 @@
   selections.
 * Show all available resume variant badges in the tracker Job column instead of
   only the selected draft plus a separate manual-pass marker.
+* Fix Codex resume highlighting so it reads and updates the currently selected
+  resume variant (`v1`, `v2`, or `manual`) instead of always storing the
+  highlighted output as `v1`.
+* Preserve the row's existing automatic or explicit resume selection mode after
+  highlighting, keeping the polished result visible in the tracker immediately.
+* Update tracker and workflow wording from draft-only highlighting to selected
+  resume highlighting.
 * Bump the package version to `4.0.1` for the Review-page migration fix.
 
 ## 4.0.0 - Add DB-backed second-pass resume variants

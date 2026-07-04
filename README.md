@@ -345,7 +345,7 @@ Render the current stored ARO into resume HTML/PDF and refresh ATS scoring witho
 make sync-draft-to-aro JOB_IDS="4424184336"
 ```
 
-Add selective Codex-driven bolding to existing draft resume bullets:
+Add selective Codex-driven bolding to the currently selected resume variant:
 
 ```bash
 make highlight-draft-resumes JOB_IDS="4424184336"
@@ -441,9 +441,11 @@ Override the second-pass model or timeout when needed:
 - `SECOND_PASS_TIMEOUT_SECONDS`: per-row LLM timeout for v2 refinement,
   default `300`.
 
-The optional Codex highlighting workflow runs after draft generation. The Codex
-CLI returns JSON patches, and Python validates that only `<strong>` tags were
-added before writing the ARO and re-rendering HTML/PDF:
+The optional Codex highlighting workflow runs after resume generation and
+polishes the currently selected resume variant (`v1`, `v2`, or `manual`). The
+Codex CLI returns JSON patches, and Python validates that only `<strong>` tags
+were added before writing the selected variant, re-rendering HTML/PDF, and
+keeping that variant active:
 
 ```bash
 CODEX_MODEL=gpt-5.5 make highlight-draft-resumes JOB_IDS="4424184336"

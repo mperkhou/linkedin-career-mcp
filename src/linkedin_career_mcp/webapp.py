@@ -1035,6 +1035,12 @@ def store_application_resume_variant(
     critique: Any | None = None,
     validation: Any | None = None,
     model_metadata: Any | None = None,
+    resume_html_filename: str | None = None,
+    resume_filename: str | None = None,
+    source_resume_html_path: str = "",
+    source_resume_path: str = "",
+    select_after_store: bool = False,
+    selection_mode: str | None = None,
 ) -> AtsProxyScore | None:
     _parse_application_resume_yaml(application_resume_object)
     with connect_database(database_path) as connection:
@@ -1064,6 +1070,10 @@ def store_application_resume_variant(
             resume_html=resume_html,
             resume_pdf=resume_pdf,
             ats_score=ats_score,
+            resume_html_filename=resume_html_filename,
+            resume_filename=resume_filename,
+            source_resume_html_path=source_resume_html_path,
+            source_resume_path=source_resume_path,
             ats_diagnostics=ats_diagnostics,
             evidence_packet=evidence_packet,
             external_critique=external_critique,
@@ -1073,11 +1083,20 @@ def store_application_resume_variant(
             validation=validation,
             model_metadata=model_metadata,
         )
-        _apply_resume_variant_default_precedence(
-            connection,
-            job_ids=[job_id],
-            force=True,
-        )
+        if select_after_store:
+            _select_application_resume_variant_on_connection(
+                connection=connection,
+                job_id=job_id,
+                variant_key=variant_key,
+                selection_mode=selection_mode
+                or str(row["resume_variant_selection_mode"] or AUTO_RESUME_VARIANT_SELECTION_MODE),
+            )
+        else:
+            _apply_resume_variant_default_precedence(
+                connection,
+                job_ids=[job_id],
+                force=True,
+            )
         connection.commit()
     return ats_score
 
@@ -2542,12 +2561,12 @@ def _background_action_title(
             "refine_drafts": "run v2 resume refinement",
             "aro_objects": "regenerate ARO object(s)",
             "sync_draft_to_aro": "sync draft to ARO",
-            "highlight_drafts": "Codex highlight draft resume",
+            "highlight_drafts": "Codex highlight selected resume",
             "manual_pass": "Codex manual pass resume",
         }.get(regenerate_mode, "regenerate docs")
         parts.append(f"{label} for {len(job_ids)} job(s)")
     if highlight_with_codex and regenerate_mode != "highlight_drafts":
-        parts.append(f"Codex highlight draft resume for {len(job_ids)} job(s)")
+        parts.append(f"Codex highlight selected resume for {len(job_ids)} job(s)")
     return " + ".join(parts) or "background action"
 
 
@@ -4649,7 +4668,7 @@ INDEX_TEMPLATE = """
             </label>
             <label>
               <input type="radio" name="regenerate_mode" value="highlight_drafts">
-              <span>Codex Highlight Draft Resume</span>
+              <span>Codex Highlight Selected Resume</span>
             </label>
             <label>
               <input type="radio" name="regenerate_mode" value="manual_pass">

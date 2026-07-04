@@ -78,8 +78,8 @@ The current tools search public LinkedIn job listings and fetch public job detai
   store a Codex-reviewed `manual` variant. The command does not select the
   manual variant automatically.
 - Use `make highlight-draft-resumes JOB_IDS=<job_id>` for the guarded Codex
-  highlighting workflow. It is a polish step and is separate from v2
-  refinement.
+  highlighting workflow. It polishes the currently selected resume variant
+  (`v1`, `v2`, or `manual`) and is separate from v2 refinement.
 - Cover letters are manual Cover Letter Objects (CLOs) edited in the Flask tracker and rendered to stored PDF blobs on save.
 - The Flask tracker is launched with `make launch-website`. Resume,
   cover-letter, description, Add popup, and workflow actions read/write the
