@@ -445,7 +445,7 @@ Override the second-pass model or timeout when needed:
 - `SECOND_PASS_MODEL`: OpenRouter model for v2 critique/refinement, default
   `z-ai/glm-5.2`.
 - `SECOND_PASS_TIMEOUT_SECONDS`: per-row LLM timeout for v2 refinement,
-  default `300`.
+  default `600`.
 
 The optional Codex highlighting workflow runs after resume generation and
 polishes the currently selected resume variant (`v1`, `v2`, or `manual`). The

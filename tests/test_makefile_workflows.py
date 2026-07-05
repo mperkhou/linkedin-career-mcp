@@ -70,7 +70,7 @@ def test_regenerate_resumes_make_target_runs_v1_then_v2_workflow() -> None:
     )
     assert '--api-model "z-ai/glm-5.2"' in output
     assert '--jod-model "z-ai/glm-5.2"' in output
-    assert '--api-timeout-seconds "300"' in output
+    assert '--api-timeout-seconds "600"' in output
     assert "for job_id in url-123" in output
 
 
@@ -84,7 +84,7 @@ def test_refine_draft_resumes_make_target_uses_glm_second_pass_model() -> None:
     assert 'job_args="$job_args --job-id $job_id"' in output
     assert '--master-resume "profile/MASTER-RESUME.yml"' in output
     assert '--api-model "z-ai/glm-5.2"' in output
-    assert '--api-timeout-seconds "300"' in output
+    assert '--api-timeout-seconds "600"' in output
     assert "for job_id in url-123" in output
 
 
@@ -94,7 +94,7 @@ def test_refine_draft_resumes_make_target_defaults_to_all_active() -> None:
     assert "linkedin-career-refine-resume" in output
     assert 'job_args="--all-active"' in output
     assert '--api-model "z-ai/glm-5.2"' in output
-    assert '--api-timeout-seconds "300"' in output
+    assert '--api-timeout-seconds "600"' in output
 
 
 def test_highlight_draft_resumes_make_target_uses_codex_workflow() -> None:

@@ -11,6 +11,8 @@
 * Add `Run v2 refinement` controls to the tracker Add popup's LinkedIn and
   other URL forms, chaining Codex highlighting after the v1 plus v2 workflow
   against the v2 resume when both options are selected.
+* Increase the default v2 refinement LLM timeout from 300 to 600 seconds to
+  reduce false failures on slower second-pass critique calls.
 * Bump the package version to `4.0.2` for the Codex workflow configuration fix.
 
 ## 4.0.1 - Backfill legacy manual resume variants
