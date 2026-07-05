@@ -241,6 +241,9 @@ def test_run_codex_highlight_places_approval_flag_before_exec(tmp_path, monkeypa
     assert response == '{"bullet_updates": []}'
     assert captured_args.index("--ask-for-approval") < captured_args.index("exec")
     assert captured_args[captured_args.index("--ask-for-approval") + 1] == "never"
+    assert "-c" in captured_args
+    assert 'model_reasoning_effort="xhigh"' in captured_args
+    assert captured_args.index('model_reasoning_effort="xhigh"') < captured_args.index("exec")
 
 
 def _sample_resume() -> dict[str, object]:

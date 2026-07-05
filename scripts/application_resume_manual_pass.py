@@ -11,6 +11,7 @@ from pathlib import Path
 from linkedin_career_mcp.resume_highlighting import (
     DEFAULT_CODEX_COMMAND,
     DEFAULT_CODEX_MODEL,
+    DEFAULT_CODEX_REASONING_EFFORT,
     DEFAULT_CODEX_TIMEOUT_SECONDS,
 )
 from linkedin_career_mcp.resume_manual_pass import run_manual_resume_pass_for_job
@@ -74,6 +75,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Codex model used for the manual pass.",
     )
     parser.add_argument(
+        "--codex-reasoning-effort",
+        default=os.environ.get(
+            "LINKEDIN_CAREER_MCP_CODEX_REASONING_EFFORT",
+            DEFAULT_CODEX_REASONING_EFFORT,
+        ),
+        help="Codex reasoning effort for the manual pass. Pass an empty value to inherit config.",
+    )
+    parser.add_argument(
         "--timeout-seconds",
         type=int,
         default=int(
@@ -97,7 +106,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(
         (
             f"Codex manual pass candidates: {len(job_ids)} "
-            f"(database={args.database}, codex_model={args.codex_model})"
+            f"(database={args.database}, codex_model={args.codex_model}, "
+            f"codex_reasoning_effort={args.codex_reasoning_effort or 'inherit'})"
         ),
         file=sys.stderr,
         flush=True,
@@ -114,6 +124,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 template_path=args.template,
                 codex_command=args.codex_command,
                 codex_model=args.codex_model,
+                codex_reasoning_effort=args.codex_reasoning_effort,
                 timeout_seconds=args.timeout_seconds,
                 artifact_dir=args.artifact_dir,
                 dry_run=args.dry_run,

@@ -80,6 +80,44 @@ def test_highlight_preserves_explicit_v1_selection_when_v2_exists(
     assert "<strong>" not in v2["application_resume_object"]
 
 
+def test_highlight_variant_override_updates_v2_when_v1_is_explicitly_selected(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_path = tmp_path / "applications.sqlite3"
+    _store_resume_variants(database_path)
+    webapp.select_application_resume_variant(
+        database_path=database_path,
+        job_id="url-123",
+        variant_key="v1",
+    )
+    monkeypatch.setattr(
+        highlight_drafts,
+        "run_codex_highlight",
+        lambda *args, **kwargs: _highlight_response("Refined v2 API bullet."),
+    )
+    monkeypatch.setattr(
+        highlight_drafts,
+        "render_resume_pdf_from_html",
+        lambda html: _pdf_bytes(f"Rendered {html}"),
+    )
+
+    _run_highlight(database_path, variant_key="v2")
+
+    with webapp.connect_database(database_path) as connection:
+        application = _fetch_application(connection)
+        v1 = _fetch_variant(connection, "v1")
+        v2 = _fetch_variant(connection, "v2")
+
+    assert application["selected_resume_variant"] == "v2"
+    assert application["resume_variant_selection_mode"] == "manual"
+    assert "<strong>Refined v2</strong> API bullet." in application[
+        "application_resume_object"
+    ]
+    assert "<strong>Refined v2</strong> API bullet." in v2["application_resume_object"]
+    assert "<strong>" not in v1["application_resume_object"]
+
+
 def test_highlight_updates_selected_manual_variant(tmp_path: Path, monkeypatch) -> None:
     database_path = tmp_path / "applications.sqlite3"
     _store_resume_variants(database_path, include_manual=True)
@@ -112,11 +150,12 @@ def test_highlight_updates_selected_manual_variant(tmp_path: Path, monkeypatch) 
     assert "<strong>" not in v2["application_resume_object"]
 
 
-def _run_highlight(database_path: Path) -> None:
+def _run_highlight(database_path: Path, *, variant_key: str | None = None) -> None:
     rows = highlight_drafts._load_rows(  # noqa: SLF001
         database_path=database_path,
         job_ids={"url-123"},
         limit=None,
+        variant_key=variant_key,
     )
     assert len(rows) == 1
     outcome = highlight_drafts._highlight_row(  # noqa: SLF001
@@ -127,6 +166,7 @@ def _run_highlight(database_path: Path) -> None:
         dry_run=False,
         codex_command="codex",
         codex_model="gpt-5.5",
+        codex_reasoning_effort="xhigh",
         timeout_seconds=30,
         max_strong_spans_per_bullet=3,
         experience_company=None,

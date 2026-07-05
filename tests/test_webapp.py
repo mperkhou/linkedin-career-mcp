@@ -643,6 +643,15 @@ def test_regenerate_make_command_maps_modes_to_make_targets():
         "highlight-draft-resumes",
         "JOB_IDS=url-123",
     ]
+    assert webapp._highlight_make_command(  # noqa: SLF001
+        job_ids=["url-123"],
+        variant_key="v2",
+    ) == [
+        "make",
+        "highlight-draft-resumes",
+        "JOB_IDS=url-123",
+        "HIGHLIGHT_RESUME_VARIANT=v2",
+    ]
     with pytest.raises(ValueError, match="Unsupported regeneration mode"):
         webapp._regenerate_make_command(  # noqa: SLF001
             regenerate_mode="resumes",
@@ -1752,12 +1761,14 @@ def test_background_action_runs_only_requested_new_workflow(
         webapp._ACTION_RUNS.clear()  # noqa: SLF001
 
     calls: list[tuple[str, str]] = []
+    highlight_calls: list[dict[str, object]] = []
 
     def fake_regenerate_action(**kwargs):
         calls.append(("regenerate", kwargs["regenerate_mode"]))
 
     def fake_highlight_action(**kwargs):
         calls.append(("highlight", " ".join(kwargs["job_ids"])))
+        highlight_calls.append(kwargs)
 
     monkeypatch.setattr(webapp, "_run_regenerate_action", fake_regenerate_action)
     monkeypatch.setattr(webapp, "_run_highlight_action", fake_highlight_action)
@@ -1783,6 +1794,7 @@ def test_background_action_runs_only_requested_new_workflow(
     )
 
     assert calls == [("regenerate", "draft_resumes"), ("highlight", "url-123")]
+    assert highlight_calls[-1].get("variant_key") is None
 
     calls.clear()
     run = webapp._create_background_action_run(title="generate draft and v2")  # noqa: SLF001
@@ -1793,6 +1805,20 @@ def test_background_action_runs_only_requested_new_workflow(
     )
 
     assert calls == [("regenerate", "resume_variants")]
+
+    calls.clear()
+    run = webapp._create_background_action_run(  # noqa: SLF001
+        title="generate draft, v2, and highlight"
+    )
+    webapp._run_background_action(  # noqa: SLF001
+        run_id=run.run_id,
+        regenerate_mode="resume_variants",
+        job_ids=["url-123"],
+        highlight_with_codex=True,
+    )
+
+    assert calls == [("regenerate", "resume_variants"), ("highlight", "url-123")]
+    assert highlight_calls[-1]["variant_key"] == "v2"
 
     calls.clear()
     run = webapp._create_background_action_run(title="run v2 refinement")  # noqa: SLF001
@@ -2101,6 +2127,13 @@ def test_add_application_loads_linkedin_job_and_starts_regeneration(
     assert 'name="other_url"' in add_html
     assert "Run Codex bullet highlighting after resume generation" in add_html
     assert 'name="highlight_with_codex" value="1" checked' in add_html
+    url_run_v2_inputs = add_soup.select(
+        'form[action="/applications/add/linkedin"] input[name="run_v2"], '
+        'form[action="/applications/add/other"] input[name="run_v2"]'
+    )
+    assert len(url_run_v2_inputs) == 2
+    assert [input_tag.get("value") for input_tag in url_run_v2_inputs] == ["1", "1"]
+    assert add_html.count("Run v2 refinement") == 3
 
     response = client.post(
         "/applications/add/linkedin",
@@ -2138,6 +2171,81 @@ def test_add_application_loads_linkedin_job_and_starts_regeneration(
     assert row["prompt_job_description"] == "Clean prompt JOD with practical Python work."
     assert row["date_posted"] == "2026-06-05"
     assert row["experience_level"] == "Mid-Senior level"
+
+
+def test_add_application_linkedin_can_run_v2_before_highlighting(
+    tmp_path: Path,
+    monkeypatch,
+):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    async def fake_fetch_linkedin_job_details(linkedin_url: str) -> JobDetails:
+        assert linkedin_url == "https://www.linkedin.com/jobs/view/67890/"
+        return JobDetails(
+            job_id="67890",
+            title="AI Platform Engineer",
+            company="Acme AI",
+            listed_at="2026-07-01",
+            job_url="https://www.linkedin.com/jobs/view/67890",
+            description="Raw public JOD with AI platform automation work.",
+            seniority_level="Senior",
+        )
+
+    monkeypatch.setattr(
+        webapp,
+        "_fetch_linkedin_job_details",
+        fake_fetch_linkedin_job_details,
+    )
+    monkeypatch.setattr(
+        webapp,
+        "_clean_prompt_job_description",
+        lambda description: "Clean prompt JOD with AI platform automation work.",
+    )
+
+    calls = []
+    completed = threading.Event()
+
+    def runner(**kwargs):
+        calls.append(kwargs)
+        webapp._finish_background_action_run(  # noqa: SLF001
+            kwargs["run_id"],
+            status="completed",
+            return_code=0,
+        )
+        completed.set()
+
+    output_dir = tmp_path / "output"
+    database_path = output_dir / "tracking/applications.sqlite3"
+    app = create_app(
+        database_path=database_path,
+        output_dir=output_dir,
+        background_action_runner=runner,
+    )
+    client = app.test_client()
+
+    response = client.post(
+        "/applications/add/linkedin",
+        data={
+            "linkedin_url": "https://www.linkedin.com/jobs/view/67890/",
+            "run_v2": "1",
+            "highlight_with_codex": "1",
+        },
+    )
+
+    assert response.status_code == 302
+    assert completed.wait(timeout=2)
+    assert calls
+    assert calls[0]["regenerate_mode"] == "resume_variants"
+    assert calls[0]["highlight_with_codex"] is True
+    assert calls[0]["job_ids"] == ["67890"]
+
+    status = client.get("/actions/status").get_json()
+    assert status is not None
+    assert status["runs"][0]["title"] == (
+        "run v1 and v2 resume workflow for 1 job(s) + "
+        "Codex highlight selected resume for 1 job(s)"
+    )
 
 
 def test_add_application_loads_other_job_url_and_starts_regeneration(
@@ -2228,6 +2336,82 @@ def test_add_application_loads_other_job_url_and_starts_regeneration(
     assert row["prompt_job_description"] == "Clean generic JOD with platform reliability."
     assert row["date_posted"] == "2026-06-14"
     assert row["experience_level"] == "Senior"
+
+
+def test_add_application_other_url_can_run_v2_before_highlighting(
+    tmp_path: Path,
+    monkeypatch,
+):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    async def fake_fetch_generic_job_details(job_url: str) -> JobDetails:
+        assert job_url == "https://jobs.example.com/ai-platform"
+        return JobDetails(
+            job_id="url-fedcba987654",
+            title="AI Platform Engineer",
+            company="Example AI Jobs",
+            listed_at="2026-07-02",
+            job_url="https://jobs.example.com/ai-platform",
+            description="Raw generic JOD with AI platform and reliability work.",
+            seniority_level="Staff",
+            source="generic_url",
+        )
+
+    monkeypatch.setattr(
+        webapp,
+        "_fetch_generic_job_details",
+        fake_fetch_generic_job_details,
+    )
+    monkeypatch.setattr(
+        webapp,
+        "_clean_prompt_job_description",
+        lambda description: "Clean generic JOD with AI platform work.",
+    )
+
+    calls = []
+    completed = threading.Event()
+
+    def runner(**kwargs):
+        calls.append(kwargs)
+        webapp._finish_background_action_run(  # noqa: SLF001
+            kwargs["run_id"],
+            status="completed",
+            return_code=0,
+        )
+        completed.set()
+
+    output_dir = tmp_path / "output"
+    database_path = output_dir / "tracking/applications.sqlite3"
+    app = create_app(
+        database_path=database_path,
+        output_dir=output_dir,
+        background_action_runner=runner,
+    )
+    client = app.test_client()
+
+    response = client.post(
+        "/applications/add/other",
+        data={
+            "other_url": "https://jobs.example.com/ai-platform",
+            "run_v2": "1",
+            "highlight_with_codex": "1",
+        },
+    )
+
+    assert response.status_code == 302
+    assert completed.wait(timeout=2)
+    assert calls
+    assert calls[0]["regenerate_mode"] == "resume_variants"
+    assert calls[0]["highlight_with_codex"] is True
+    assert calls[0]["job_ids"] == ["url-fedcba987654"]
+
+    status = client.get("/actions/status").get_json()
+    assert status is not None
+    assert status["runs"][0]["title"] == (
+        "run v1 and v2 resume workflow for 1 job(s) + "
+        "Codex highlight selected resume for 1 job(s)"
+    )
 
 
 def _edit_form_data(html: str) -> dict[str, str]:

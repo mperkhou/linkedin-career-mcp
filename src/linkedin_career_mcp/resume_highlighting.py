@@ -18,6 +18,7 @@ from linkedin_career_mcp.errors import WorkflowError
 
 DEFAULT_CODEX_COMMAND = "codex"
 DEFAULT_CODEX_MODEL = "gpt-5.5"
+DEFAULT_CODEX_REASONING_EFFORT = "xhigh"
 DEFAULT_CODEX_TIMEOUT_SECONDS = 900
 DEFAULT_MAX_STRONG_SPANS_PER_BULLET = 3
 DEFAULT_MIN_STRONG_SPANS_PER_BULLET = 1
@@ -165,6 +166,7 @@ def run_codex_highlight(
     project_root: Path,
     codex_command: str = DEFAULT_CODEX_COMMAND,
     codex_model: str = DEFAULT_CODEX_MODEL,
+    codex_reasoning_effort: str = DEFAULT_CODEX_REASONING_EFFORT,
     timeout_seconds: int = DEFAULT_CODEX_TIMEOUT_SECONDS,
 ) -> str:
     command = shlex.split(codex_command)
@@ -177,14 +179,19 @@ def run_codex_highlight(
             *command,
             "--ask-for-approval",
             "never",
-            "exec",
-            "-C",
-            str(project_root),
-            "--sandbox",
-            "read-only",
-            "--output-last-message",
-            str(output_path),
         ]
+        _append_codex_reasoning_effort(args, codex_reasoning_effort)
+        args.extend(
+            [
+                "exec",
+                "-C",
+                str(project_root),
+                "--sandbox",
+                "read-only",
+                "--output-last-message",
+                str(output_path),
+            ]
+        )
         if codex_model:
             args.extend(["--model", codex_model])
         args.append("-")
@@ -215,6 +222,13 @@ def run_codex_highlight(
         if not response:
             raise ResumeHighlightError("Codex returned an empty highlighting response.")
         return response
+
+
+def _append_codex_reasoning_effort(args: list[str], codex_reasoning_effort: str) -> None:
+    effort = codex_reasoning_effort.strip()
+    if not effort:
+        return
+    args.extend(["-c", f"model_reasoning_effort={json.dumps(effort)}"])
 
 
 def apply_highlight_response(
