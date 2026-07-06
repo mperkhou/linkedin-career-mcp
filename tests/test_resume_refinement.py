@@ -235,6 +235,21 @@ def test_parse_second_pass_critique_response_normalizes_common_model_aliases():
                         "evidence_refs": ["mro:skills:1"],
                         "unsupported_claims": [],
                     },
+                    {
+                        "change_id": "bullets-1",
+                        "change_type": "reorder_bullets",
+                        "target": {
+                            "section": "professional_experience",
+                            "field": "text",
+                            "job_order": "1",
+                            "bullet_order": "1",
+                        },
+                        "current_text": "Built Python automation.",
+                        "proposed_text": "Built Python automation.",
+                        "rationale": "Model used a near-miss change type.",
+                        "evidence_refs": ["mro:job:1:bullet:1"],
+                        "unsupported_claims": [],
+                    },
                 ],
             }
         )
@@ -243,6 +258,7 @@ def test_parse_second_pass_critique_response_normalizes_common_model_aliases():
     assert critique.proposed_changes[0].target.section == "professional_summary"
     assert critique.proposed_changes[1].target.section == "core_technical_skills"
     assert critique.proposed_changes[1].change_type == "emphasize_supported_term"
+    assert critique.proposed_changes[2].change_type == "other"
 
 
 def test_external_critique_classification_handles_nscale_lts_mismatch(
