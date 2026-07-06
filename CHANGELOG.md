@@ -1,5 +1,17 @@
 # linkedin-career-mcp CHANGELOG
 
+## 4.5.0 - Refresh Oracle AI platform MRO evidence
+
+* Update `profile/MP-MASTER-RESUME.txt` with the latest OLAM MCP, ONDA reporting,
+  portable agent harness, and Jira/OCI/CX skill-bundle narratives.
+* Refresh `profile/MASTER-RESUME.yml` so the MRO preserves the new Oracle
+  AI-platform evidence as structured, skill-linked resume paragraphs without
+  replacing the still-useful existing ONDA and platform operations material.
+* Add targeted Core Technical Skills vocabulary for typed APIs, tracker-backed
+  reporting, control-plane authorization, agent harnesses, and checkpointed
+  agent workflows.
+* Bump the package version to `4.5.0` for the profile-data refresh.
+
 ## 4.4.0 - Require release notes for PRs
 
 * Add `AGENTS.md` release workflow guidance requiring every committed PR/version
