@@ -9,6 +9,10 @@ metadata:
 
 This skill supports the local Python MCP server in the repository that contains this skill.
 
+Before making repo changes, follow the root `AGENTS.md` file for shared safety,
+release, tracker, and resume-evidence guardrails. This skill keeps the
+command-level workflow reference.
+
 ## Setup
 
 - From the repository root, run `make install` to create `.venv`, install development requirements, install Ollama, pull `qwen3:4b`, and link repository skills into `~/.codex/skills`.
