@@ -1,5 +1,17 @@
 # linkedin-career-mcp CHANGELOG
 
+## 4.4.0 - Require release notes for PRs
+
+* Add `AGENTS.md` release workflow guidance requiring every committed PR/version
+  bump to update the matching `docs/release-notes/<version>.md` file.
+* Backfill standalone release notes for all changelog versions greater than
+  `3.0.0` that were missing release-note files.
+* Add regression coverage so changelog entries after `3.0.0` must have matching
+  release notes and the agent guidance must mention the release-note guardrail.
+* Add an explicit CI release-metadata step for the agent guidance and release
+  note checks, ahead of the full test suite.
+* Bump the package version to `4.4.0` for the release-note guardrail update.
+
 ## 4.3.1 - Document canonical agent guidance
 
 * Expand the README and architecture docs to describe `AGENTS.md` as the
