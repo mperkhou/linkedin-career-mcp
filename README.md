@@ -16,6 +16,13 @@ That object-oriented design is more straightforward than the previous artifact p
 
 The v3.0.0 redesign is documented in the [release notes](docs/release-notes/3.0.0.md), [experiment log](docs/experiments/2026-06-21-jod-target-aro-redesign.md), and [architecture decision record](docs/adr/0001-adopt-jod-target-aro-rewrite-workflow.md). The guiding lesson was to keep source evidence bounded and truthful, then let the LLM generate role-specific bullets instead of asking local scoring code to pick from a fixed bullet inventory. The Codex post-generation highlighting workflow is documented in [ADR 0002](docs/adr/0002-codex-resume-highlighting-workflow.md), and the DB-backed second-pass variant workflow is documented in the [4.0.0 release notes](docs/release-notes/4.0.0.md).
 
+The operational guidance layer is separate from those product docs. [AGENTS.md](AGENTS.md)
+is the canonical guardrail file for agents editing this repository: it collects
+release closeout, tracker workflow, artifact safety, and resume-evidence rules
+that need to apply across Codex sessions. [ADR 0005](docs/adr/0005-canonical-agent-guidance.md)
+documents that decision, and the [4.3.0 release notes](docs/release-notes/4.3.0.md)
+summarize the implementation.
+
 ## Terms
 
 - **JOD**: Job Opening Description. This is the parsed posting text after trimming low-signal boilerplate such as benefits, compensation, legal notices, and generic company copy.

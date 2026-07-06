@@ -1,5 +1,15 @@
 # linkedin-career-mcp CHANGELOG
 
+## 4.3.1 - Document canonical agent guidance
+
+* Expand the README and architecture docs to describe `AGENTS.md` as the
+  canonical operational guardrail layer for repo-working agents.
+* Add ADR 0005 and 4.3.0 release notes documenting why shared agent guidance
+  lives in `AGENTS.md` instead of being duplicated across human docs and skills.
+* Extend guidance regression coverage so README, architecture docs, ADRs, and
+  release notes stay linked to the `AGENTS.md` implementation.
+* Bump the package version to `4.3.1` for the documentation-alignment patch.
+
 ## 4.3.0 - Add canonical agent guidance
 
 * Add a root `AGENTS.md` as the canonical repo operating guide for agents,
