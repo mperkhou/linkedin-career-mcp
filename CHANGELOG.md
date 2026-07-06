@@ -1,5 +1,12 @@
 # linkedin-career-mcp CHANGELOG
 
+## 4.2.2 - Require release tags after PR merges
+
+* Document release closeout as incomplete until the merged `main` commit is
+  annotated with the matching `vX.Y.Z` tag, the tag is pushed to `origin`, and
+  the remote tag ref is verified.
+* Bump the package version to `4.2.2` for the release-guidance fix.
+
 ## 4.2.1 - Tolerate second-pass bullet reorder aliases
 
 * Normalize second-pass critique responses that use the model-produced

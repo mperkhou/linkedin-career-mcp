@@ -538,6 +538,17 @@ The active workflow modules are intentionally smaller than the retired artifact 
 
 Keep the MRO neutral: empty `jod_matched_items`, zero match counts, source-evidence bullets, and no job-specific pruning. Job-specific generated bullets belong in the ARO stored on the application row.
 
+### Release closeout
+
+Every merged PR that bumps the package version must leave GitHub with a matching
+remote release tag. After CI passes and the PR is merged, sync the local checkout
+back to `main`, create an annotated tag named `vX.Y.Z` on the merged `main`
+commit, push that tag to `origin`, and verify the remote ref exists with
+`git ls-remote --tags origin refs/tags/vX.Y.Z`.
+
+Use the existing annotated-tag convention: subject `Release vX.Y.Z` and a short
+body matching the top `CHANGELOG.md` heading.
+
 The resume template treats Education, Certifications, and Portfolio as supporting sections
 after Professional Experience. By default, they are grouped together so senior-engineer
 resumes can use page 1 for high-signal experience and flow supporting sections onto page 2
