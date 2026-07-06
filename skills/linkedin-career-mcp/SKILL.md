@@ -48,6 +48,15 @@ The current tools search public LinkedIn job listings and fetch public job detai
 - Keep the package version in `pyproject.toml` and the top `CHANGELOG.md`
   heading aligned. Do not carry patch digits forward when promoting a change to
   a minor or major release.
+- Release closeout is not complete after a PR merge alone. After GitHub CI
+  passes and the PR is merged, return the local checkout to synced `main`, then
+  create an annotated tag named `vX.Y.Z` for the top changelog/package version
+  on the merged `main` commit.
+- Push that exact tag to `origin` and verify the remote ref exists, for example
+  with `git ls-remote --tags origin refs/tags/vX.Y.Z`. Do not finish a release
+  closeout while the matching remote tag is missing.
+- Tag messages should follow the existing convention: subject `Release vX.Y.Z`
+  plus a short body line matching the top `CHANGELOG.md` heading.
 
 ## ARO Workflow
 
