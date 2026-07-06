@@ -1,5 +1,22 @@
 # linkedin-career-mcp CHANGELOG
 
+## 4.2.0 - Add batch URL loading and chained manual workflows
+
+* Let the tracker Add popup load comma- or newline-separated batches of
+  LinkedIn URLs and generic Other URLs, collecting per-URL failures while still
+  starting resume generation for successfully added rows.
+* Add `Run Codex manual pass` controls to the LinkedIn and Other URL add forms,
+  with client- and server-side validation that requires v2 refinement before a
+  manual pass can be chained.
+* Extend add-popup and Actions-menu workflows so v1+v2 generation, Codex manual
+  pass, and Codex highlighting can run in one ordered background action.
+* Make chained highlighting deterministic by highlighting the `v2` variant after
+  v2 refinement and the `manual` variant after a chained manual pass.
+* Add a combined `Run v1 + v2 + Codex Manual Pass` Actions-menu option and fix
+  the chained highlighting checkbox so it is selectable for supported workflows.
+* Bump the package version to `4.2.0` for the tracker batch-workflow
+  enhancement.
+
 ## 4.1.1 - Add embedded job-page extraction for generic URLs
 
 * Teach the generic job scraper to read Dayforce-style Next.js `__NEXT_DATA__`

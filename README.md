@@ -245,9 +245,11 @@ The tracker is the daily operating surface. The main page shows job status, ATS 
 
 ![Annotated main tracker](docs/assets/tracker-main-annotated.png)
 
-The Add page can seed a batch of public postings and chain the selected stages
-for the newly seeded rows. The main Actions menu runs the same workflow family
-against selected tracker rows.
+The Add page can seed a batch of public postings, load batches of pasted
+LinkedIn or Other URLs, and chain the selected stages for the newly added rows.
+The main Actions menu runs the same workflow family against selected tracker
+rows, including a combined v1 plus v2 plus Codex manual pass action and optional
+chained highlighting for supported generation workflows.
 
 ![Annotated add seed workflow](docs/assets/tracker-add-seed-annotated.png)
 
@@ -313,10 +315,13 @@ pass, and Codex highlighting. By default it selects v1 draft generation and v2
 refinement, matching the main v1 plus v2 path; manual pass and highlighting are
 opt-in.
 
-The LinkedIn URL and Other URL forms can also run the v2 refinement for the
-newly loaded job. When `Run v2 refinement` and Codex highlighting are both
-selected, the tracker runs the full v1 plus v2 workflow first and highlights
-the v2 resume after refinement completes.
+The LinkedIn URL and Other URL forms accept comma- or newline-separated batches
+of job URLs. Successfully loaded URLs are grouped into one background workflow;
+per-URL failures are flashed without blocking successfully added rows. These
+forms can also chain v2 refinement, Codex manual pass, and Codex highlighting.
+Manual pass requires v2 refinement. When highlighting follows v2 refinement, the
+tracker highlights the `v2` resume; when highlighting follows a chained manual
+pass, it highlights the `manual` resume.
 
 The Other URL parser reads schema.org `JobPosting` metadata first, then embedded
 app payloads used by modern job boards such as Dayforce Next.js pages and
