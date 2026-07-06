@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import html as html_module
+import json
+
 import pytest
 
 from linkedin_career_mcp.errors import ProviderError
@@ -132,6 +135,126 @@ def test_extract_generic_job_details_infers_greenhouse_company_from_page_title()
     assert details.title == "Principal Platform Engineer"
     assert details.company == "LTS"
     assert "commercial AWS" in details.description
+
+
+def test_extract_generic_job_details_reads_dayforce_next_data():
+    description = (
+        "<h1>About the Opportunity</h1>"
+        "<p>Build a scalable AI platform for developing, deploying, and maintaining "
+        "LLM applications, autonomous agents, RAG pipelines, vector databases, and "
+        "multimodal systems in a secure cloud environment.</p>"
+    )
+    payload = {
+        "props": {
+            "pageProps": {
+                "dehydratedState": {
+                    "queries": [
+                        {
+                            "state": {
+                                "data": {
+                                    "candidateCorrespondenceClientName": "Dayforce",
+                                }
+                            }
+                        }
+                    ]
+                },
+                "jobData": {
+                    "jobPostingId": 98352,
+                    "jobTitle": "AI Platform Developer, Sr.",
+                    "postingStartTimestampUTC": "2026-06-23T05:00:00+00:00",
+                    "postingLocations": [
+                        {
+                            "formattedAddress": "United States",
+                            "isoCountryCode": "US",
+                        }
+                    ],
+                    "jobPostingContent": {
+                        "jobDescription": description,
+                    },
+                },
+            }
+        }
+    }
+    html = f"""
+    <html>
+      <head>
+        <title>Job Details | Dayforce Jobs</title>
+      </head>
+      <body>
+        <main>Job Details | Dayforce Jobs Sign In</main>
+        <script id="__NEXT_DATA__" type="application/json">
+          {json.dumps(payload)}
+        </script>
+      </body>
+    </html>
+    """
+
+    details = extract_generic_job_details_from_html(
+        html=html,
+        url="https://jobs.dayforcehcm.com/en-US/mydayforce/alljobs/jobs/98352",
+    )
+
+    assert details.job_id == generic_job_id(
+        "https://jobs.dayforcehcm.com/en-US/mydayforce/alljobs/jobs/98352"
+    )
+    assert details.title == "AI Platform Developer, Sr."
+    assert details.company == "Dayforce"
+    assert details.location == "United States"
+    assert details.listed_at == "2026-06-23"
+    assert "autonomous agents" in details.description
+    assert "Job Details | Dayforce Jobs Sign In" not in details.description
+
+
+def test_extract_generic_job_details_reads_workatastartup_inertia_data():
+    description = (
+        "<p>Emergent builds autonomous coding agents that generate, test, debug, "
+        "and deploy production applications from plain-language intent.</p>"
+        "<p>Own distributed systems, agent runtime infrastructure, observability, "
+        "fault tolerance, validation, and correctness for millions of applications.</p>"
+    )
+    payload = {
+        "component": "jobs/public/pages/JobDetailPage",
+        "props": {
+            "job": {
+                "id": 97648,
+                "title": "Staff Engineer ",
+                "location": "Bangalore",
+                "jobType": "Full-time",
+                "minExperience": "8+ years",
+                "descriptionHtml": description,
+            },
+            "company": {
+                "name": "Emergent",
+                "industry": "Consumer",
+                "url": "https://emergent.sh",
+            },
+        },
+    }
+    data_page = html_module.escape(json.dumps(payload), quote=True)
+    html = f"""
+    <html>
+      <head>
+        <title>Staff Engineer at Emergent | Y Combinator's Work at a Startup</title>
+      </head>
+      <body>
+        <div id="app" data-page="{data_page}"></div>
+      </body>
+    </html>
+    """
+
+    details = extract_generic_job_details_from_html(
+        html=html,
+        url="https://www.workatastartup.com/jobs/97648",
+    )
+
+    assert details.title == "Staff Engineer"
+    assert details.company == "Emergent"
+    assert str(details.company_url).rstrip("/") == "https://emergent.sh"
+    assert details.location == "Bangalore"
+    assert details.employment_type == "Full-time"
+    assert details.seniority_level == "8+ years"
+    assert details.industries == "Consumer"
+    assert "agent runtime infrastructure" in details.description
 
 
 def test_extract_generic_job_details_rejects_pages_without_usable_description():

@@ -1,5 +1,18 @@
 # linkedin-career-mcp CHANGELOG
 
+## 4.1.1 - Add embedded job-page extraction for generic URLs
+
+* Teach the generic job scraper to read Dayforce-style Next.js `__NEXT_DATA__`
+  job payloads so the tracker Other URL add flow can capture postings whose
+  visible HTML only contains the app shell.
+* Teach the generic job scraper to read Work at a Startup-style Inertia
+  `data-page` payloads, preserving title, company, location, employment type,
+  seniority, industry, company URL, and the full job description.
+* Use embedded application payloads before the existing visible-text fallback
+  while keeping schema.org `JobPosting` metadata as the highest-priority source.
+* Add parser coverage for both app-shell formats and bump the package version
+  to `4.1.1`.
+
 ## 4.1.0 - Add v1 draft generation timeouts and progress logging
 
 * Add a `FIRST_DRAFT_LLM_TIMEOUT_SECONDS` Makefile setting, defaulting to 300

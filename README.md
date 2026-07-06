@@ -318,6 +318,11 @@ newly loaded job. When `Run v2 refinement` and Codex highlighting are both
 selected, the tracker runs the full v1 plus v2 workflow first and highlights
 the v2 resume after refinement completes.
 
+The Other URL parser reads schema.org `JobPosting` metadata first, then embedded
+app payloads used by modern job boards such as Dayforce Next.js pages and
+Y Combinator Work at a Startup Inertia pages, then falls back to visible page
+text.
+
 Generate or regenerate the main resume workflow for stored jobs. This writes
 the first draft as `v1`, then runs GLM 5.2 refinement and stores `v2`.
 Automatic resume selection prefers v2 over v1 unless the tracker row has an
