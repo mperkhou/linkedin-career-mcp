@@ -1,5 +1,15 @@
 # linkedin-career-mcp CHANGELOG
 
+## 4.3.0 - Add canonical agent guidance
+
+* Add a root `AGENTS.md` as the canonical repo operating guide for agents,
+  consolidating shared safety, release, tracker, and resume-evidence guardrails.
+* Link the README and repo skills to `AGENTS.md` while keeping human-facing
+  documentation and workflow-specific skill instructions concise.
+* Add regression coverage that ensures agent guidance exists and includes the
+  required remote-tag release closeout language.
+* Bump the package version to `4.3.0` for the agent-guidance consolidation.
+
 ## 4.2.2 - Require release tags after PR merges
 
 * Document release closeout as incomplete until the merged `main` commit is

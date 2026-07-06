@@ -4,6 +4,10 @@ LinkedIn Career MCP is a local, database-backed job-search and resume-tailoring 
 
 The project is intentionally local-first. It does not authenticate to LinkedIn, read private member data, submit applications, or auto-generate cover letters.
 
+Agents working in this repository should follow the root [AGENTS.md](AGENTS.md)
+file for shared safety, release, tracker, and resume-evidence guardrails. This
+README stays focused on product behavior and operator-facing workflows.
+
 ## What Changed
 
 The workflow now centers on explicit objects instead of large freeform context bundles. `profile/MASTER-RESUME.yml` is the canonical Master Resume Object (MRO); each job gets an Application Resume Object (ARO) deep-copied from that master; cover letters are manual Cover Letter Objects (CLOs); and the Flask database stores the ARO, rendered HTML, rendered PDF, ATS fields, resume variants, and user edits.

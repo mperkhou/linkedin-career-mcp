@@ -5,6 +5,10 @@ description: Use when the user asks for a manual second pass, manual passthrough
 
 # Manual Resume Passthrough
 
+Follow the repository root `AGENTS.md` for shared safety, release, tracker, and
+resume-evidence guardrails. This skill covers the manual resume pass workflow
+itself.
+
 Use this workflow after the normal resume path has created `v1` and `v2`
 variants for a job row in `output/tracking/applications.sqlite3`. The goal is a
 factual manual pass, not a keyword-stuffing pass. In the current tracker, the
