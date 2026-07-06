@@ -89,16 +89,19 @@ The current tools search public LinkedIn job listings and fetch public job detai
 - The tracker Add popup can seed a batch with a job count and posting-age
   window, then chain selected stages for the newly seeded rows: v1 draft
   generation, v2 refinement, Codex manual pass, and Codex highlighting.
-- The Add popup's LinkedIn and Other URL forms can also run v2 refinement for
-  the newly loaded row. If Codex highlighting is selected too, highlighting
-  runs after the v1 plus v2 workflow and explicitly polishes the v2 resume.
+- The Add popup's LinkedIn and Other URL forms accept comma- or
+  newline-separated URL batches, then run one background workflow for the rows
+  that were loaded successfully. They can chain v2 refinement, Codex manual
+  pass, and Codex highlighting; manual pass requires v2 refinement. Chained
+  highlighting targets `v2` after v2 refinement and `manual` after a chained
+  manual pass.
 - The Other URL parser reads schema.org `JobPosting` metadata first, then
   embedded app payloads used by Dayforce Next.js pages and Work at a Startup
   Inertia pages, then visible page text.
 - The tracker Actions menu runs the same workflow family on selected rows:
-  main v1-plus-v2 resume generation, v1-only draft generation, v2
-  create/rerun, manual pass, highlighting, ARO regeneration, and draft-to-ARO
-  sync.
+  main v1-plus-v2 resume generation, v1-only draft generation, a combined
+  v1-plus-v2-plus-manual-pass workflow, v2 create/rerun, manual pass,
+  highlighting, ARO regeneration, and draft-to-ARO sync.
 - Long-running tracker actions stream progress through the collapsible status panel in the Flask UI.
 
 ## Local Conventions

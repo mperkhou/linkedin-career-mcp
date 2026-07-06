@@ -213,6 +213,7 @@ def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypat
     assert "Regenerate ARO Objects" in html
     assert "Regenerate Draft v1 Only" in html
     assert "Run v1 + v2 Resume Workflow" in html
+    assert "Run v1 + v2 + Codex Manual Pass" in html
     assert "Run v2 Refinement" in html
     assert "Codex Highlight Selected Resume" in html
     assert "Codex Manual Pass Variant" in html
@@ -221,6 +222,7 @@ def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypat
     assert 'name="regenerate_mode" value="aro_objects"' in html
     assert 'name="regenerate_mode" value="draft_resumes"' in html
     assert 'name="regenerate_mode" value="resume_variants"' in html
+    assert 'value="resume_variants_manual_pass"' in html
     assert 'name="regenerate_mode" value="refine_drafts"' in html
     assert 'name="regenerate_mode" value="highlight_drafts"' in html
     assert 'name="regenerate_mode" value="manual_pass"' in html
@@ -1667,6 +1669,103 @@ def test_actions_run_can_chain_codex_highlighting_after_draft_generation(tmp_pat
     )
 
 
+def test_actions_run_can_chain_codex_highlighting_after_v2_generation(tmp_path: Path):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    calls = []
+    completed = threading.Event()
+
+    def runner(**kwargs):
+        calls.append(kwargs)
+        webapp._finish_background_action_run(  # noqa: SLF001
+            kwargs["run_id"],
+            status="completed",
+            return_code=0,
+        )
+        completed.set()
+
+    output_dir = tmp_path / "output"
+    database_path = output_dir / "tracking/applications.sqlite3"
+    app = create_app(
+        database_path=database_path,
+        output_dir=output_dir,
+        background_action_runner=runner,
+    )
+    client = app.test_client()
+
+    response = client.post(
+        "/actions/run",
+        data={
+            "regenerate_mode": "resume_variants",
+            "highlight_with_codex": "1",
+            "job_id": ["url-123"],
+        },
+    )
+
+    assert response.status_code == 302
+    assert completed.wait(timeout=2)
+    assert calls[0]["regenerate_mode"] == "resume_variants"
+    assert calls[0]["highlight_with_codex"] is True
+    assert calls[0]["run_manual"] is False
+
+    status = client.get("/actions/status").get_json()
+    assert status is not None
+    assert status["runs"][0]["title"] == (
+        "run v1 and v2 resume workflow for 1 job(s) + "
+        "Codex highlight selected resume for 1 job(s)"
+    )
+
+
+def test_actions_run_can_chain_v2_manual_pass_and_highlighting(tmp_path: Path):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    calls = []
+    completed = threading.Event()
+
+    def runner(**kwargs):
+        calls.append(kwargs)
+        webapp._finish_background_action_run(  # noqa: SLF001
+            kwargs["run_id"],
+            status="completed",
+            return_code=0,
+        )
+        completed.set()
+
+    output_dir = tmp_path / "output"
+    database_path = output_dir / "tracking/applications.sqlite3"
+    app = create_app(
+        database_path=database_path,
+        output_dir=output_dir,
+        background_action_runner=runner,
+    )
+    client = app.test_client()
+
+    response = client.post(
+        "/actions/run",
+        data={
+            "regenerate_mode": "resume_variants_manual_pass",
+            "highlight_with_codex": "1",
+            "job_id": ["url-123"],
+        },
+    )
+
+    assert response.status_code == 302
+    assert completed.wait(timeout=2)
+    assert calls[0]["regenerate_mode"] == "resume_variants"
+    assert calls[0]["highlight_with_codex"] is True
+    assert calls[0]["run_manual"] is True
+
+    status = client.get("/actions/status").get_json()
+    assert status is not None
+    assert status["runs"][0]["title"] == (
+        "run v1 and v2 resume workflow for 1 job(s) + "
+        "Codex manual pass resume for 1 job(s) + "
+        "Codex highlight selected resume for 1 job(s)"
+    )
+
+
 def test_actions_run_can_start_v2_refinement(tmp_path: Path):
     with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
         webapp._ACTION_RUNS.clear()  # noqa: SLF001
@@ -1821,6 +1920,25 @@ def test_background_action_runs_only_requested_new_workflow(
     assert highlight_calls[-1]["variant_key"] == "v2"
 
     calls.clear()
+    run = webapp._create_background_action_run(  # noqa: SLF001
+        title="generate draft, v2, manual, and highlight"
+    )
+    webapp._run_background_action(  # noqa: SLF001
+        run_id=run.run_id,
+        regenerate_mode="resume_variants",
+        job_ids=["url-123"],
+        run_manual=True,
+        highlight_with_codex=True,
+    )
+
+    assert calls == [
+        ("regenerate", "resume_variants"),
+        ("regenerate", "manual_pass"),
+        ("highlight", "url-123"),
+    ]
+    assert highlight_calls[-1]["variant_key"] == "manual"
+
+    calls.clear()
     run = webapp._create_background_action_run(title="run v2 refinement")  # noqa: SLF001
     webapp._run_background_action(  # noqa: SLF001
         run_id=run.run_id,
@@ -1916,7 +2034,12 @@ def test_seed_workflow_runs_selected_make_targets_for_seeded_jobs(monkeypatch):
         ],
         ["make", "refine-draft-resumes", "JOB_IDS=url-123 url-456"],
         ["make", "manual-pass-resumes", "JOB_IDS=url-123 url-456"],
-        ["make", "highlight-draft-resumes", "JOB_IDS=url-123 url-456"],
+        [
+            "make",
+            "highlight-draft-resumes",
+            "JOB_IDS=url-123 url-456",
+            "HIGHLIGHT_RESUME_VARIANT=manual",
+        ],
     ]
     status = webapp.background_action_snapshots()[0]
     assert status["status"] == "completed"
@@ -2099,8 +2222,8 @@ def test_add_application_loads_linkedin_job_and_starts_regeneration(
     add_html = add_page.data.decode()
     assert add_page.status_code == 200
     assert "Seed jobs" in add_html
-    assert "LinkedIn URL" in add_html
-    assert "Other" in add_html
+    assert "LinkedIn URLs" in add_html
+    assert "Other URLs" in add_html
     assert 'action="/applications/add/seed"' in add_html
     assert 'action="/applications/add/linkedin"' in add_html
     assert 'action="/applications/add/other"' in add_html
@@ -2124,6 +2247,8 @@ def test_add_application_loads_linkedin_job_and_starts_regeneration(
     assert 'name="run_v2" value="1" checked' in add_html
     assert 'name="run_manual" value="1"' in add_html
     assert 'name="run_highlight" value="1"' in add_html
+    assert 'textarea' in add_html
+    assert 'name="linkedin_url"' in add_html
     assert 'name="other_url"' in add_html
     assert "Run Codex bullet highlighting after resume generation" in add_html
     assert 'name="highlight_with_codex" value="1" checked' in add_html
@@ -2133,7 +2258,17 @@ def test_add_application_loads_linkedin_job_and_starts_regeneration(
     )
     assert len(url_run_v2_inputs) == 2
     assert [input_tag.get("value") for input_tag in url_run_v2_inputs] == ["1", "1"]
+    url_run_manual_inputs = add_soup.select(
+        'form[action="/applications/add/linkedin"] input[name="run_manual"], '
+        'form[action="/applications/add/other"] input[name="run_manual"]'
+    )
+    assert len(url_run_manual_inputs) == 2
+    assert [input_tag.get("disabled") for input_tag in url_run_manual_inputs] == [
+        "",
+        "",
+    ]
     assert add_html.count("Run v2 refinement") == 3
+    assert add_html.count("Run Codex manual pass") == 3
 
     response = client.post(
         "/applications/add/linkedin",
@@ -2171,6 +2306,142 @@ def test_add_application_loads_linkedin_job_and_starts_regeneration(
     assert row["prompt_job_description"] == "Clean prompt JOD with practical Python work."
     assert row["date_posted"] == "2026-06-05"
     assert row["experience_level"] == "Mid-Senior level"
+
+
+def test_add_application_loads_batch_linkedin_urls_and_starts_one_workflow(
+    tmp_path: Path,
+    monkeypatch,
+):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    details_by_url = {
+        "https://www.linkedin.com/jobs/view/12345/": JobDetails(
+            job_id="12345",
+            title="Senior Python Engineer",
+            company="Acme Corp",
+            listed_at="2026-06-05",
+            job_url="https://www.linkedin.com/jobs/view/12345",
+            description="Raw public JOD with practical Python work.",
+        ),
+        "https://www.linkedin.com/jobs/view/67890/": JobDetails(
+            job_id="67890",
+            title="Staff Platform Engineer",
+            company="Example Corp",
+            listed_at="2026-06-06",
+            job_url="https://www.linkedin.com/jobs/view/67890",
+            description="Raw public JOD with platform engineering work.",
+        ),
+    }
+
+    async def fake_fetch_linkedin_job_details(linkedin_url: str) -> JobDetails:
+        return details_by_url[linkedin_url]
+
+    monkeypatch.setattr(
+        webapp,
+        "_fetch_linkedin_job_details",
+        fake_fetch_linkedin_job_details,
+    )
+    monkeypatch.setattr(
+        webapp,
+        "_clean_prompt_job_description",
+        lambda description: f"Clean {description}",
+    )
+
+    calls = []
+    completed = threading.Event()
+
+    def runner(**kwargs):
+        calls.append(kwargs)
+        webapp._finish_background_action_run(  # noqa: SLF001
+            kwargs["run_id"],
+            status="completed",
+            return_code=0,
+        )
+        completed.set()
+
+    output_dir = tmp_path / "output"
+    database_path = output_dir / "tracking/applications.sqlite3"
+    app = create_app(
+        database_path=database_path,
+        output_dir=output_dir,
+        background_action_runner=runner,
+    )
+    client = app.test_client()
+
+    response = client.post(
+        "/applications/add/linkedin",
+        data={
+            "linkedin_url": (
+                "https://www.linkedin.com/jobs/view/12345/,\n"
+                "https://www.linkedin.com/jobs/view/67890/"
+            ),
+            "run_v2": "1",
+            "run_manual": "1",
+            "highlight_with_codex": "1",
+        },
+    )
+
+    assert response.status_code == 302
+    assert completed.wait(timeout=2)
+    assert calls[0]["regenerate_mode"] == "resume_variants"
+    assert calls[0]["run_manual"] is True
+    assert calls[0]["highlight_with_codex"] is True
+    assert calls[0]["job_ids"] == ["12345", "67890"]
+
+    with webapp.connect_database(database_path) as connection:
+        rows = connection.execute(
+            "SELECT job_id FROM applications ORDER BY job_id"
+        ).fetchall()
+    assert [row["job_id"] for row in rows] == ["12345", "67890"]
+
+    html = client.get("/applications/add").data.decode()
+    assert "Added 2 LinkedIn job(s)." in html
+    assert "Failed" not in html
+
+
+def test_add_application_linkedin_rejects_manual_without_v2(
+    tmp_path: Path,
+    monkeypatch,
+):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    calls = []
+
+    async def fake_fetch_linkedin_job_details(linkedin_url: str) -> JobDetails:
+        calls.append(linkedin_url)
+        return JobDetails(
+            job_id="12345",
+            title="Senior Python Engineer",
+            company="Acme Corp",
+            job_url="https://www.linkedin.com/jobs/view/12345",
+            description="Raw public JOD.",
+        )
+
+    monkeypatch.setattr(
+        webapp,
+        "_fetch_linkedin_job_details",
+        fake_fetch_linkedin_job_details,
+    )
+
+    output_dir = tmp_path / "output"
+    database_path = output_dir / "tracking/applications.sqlite3"
+    app = create_app(database_path=database_path, output_dir=output_dir)
+    client = app.test_client()
+
+    response = client.post(
+        "/applications/add/linkedin",
+        data={
+            "linkedin_url": "https://www.linkedin.com/jobs/view/12345/",
+            "run_manual": "1",
+        },
+    )
+
+    assert response.status_code == 302
+    assert calls == []
+    html = client.get("/applications/add").data.decode()
+    assert "Run v2 refinement must be selected before Codex manual pass" in html
 
 
 def test_add_application_linkedin_can_run_v2_before_highlighting(
@@ -2336,6 +2607,84 @@ def test_add_application_loads_other_job_url_and_starts_regeneration(
     assert row["prompt_job_description"] == "Clean generic JOD with platform reliability."
     assert row["date_posted"] == "2026-06-14"
     assert row["experience_level"] == "Senior"
+
+
+def test_add_application_other_url_batch_continues_after_partial_failure(
+    tmp_path: Path,
+    monkeypatch,
+):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    async def fake_fetch_generic_job_details(job_url: str) -> JobDetails:
+        if job_url == "https://jobs.example.com/bad":
+            raise ValueError("No usable job description was found at that URL.")
+        return JobDetails(
+            job_id="url-good123",
+            title="Staff Platform Engineer",
+            company="Example Jobs",
+            listed_at="2026-06-14",
+            job_url=job_url,
+            description="Raw generic JOD with platform reliability and secure API work.",
+            seniority_level="Senior",
+            source="generic_url",
+        )
+
+    monkeypatch.setattr(
+        webapp,
+        "_fetch_generic_job_details",
+        fake_fetch_generic_job_details,
+    )
+    monkeypatch.setattr(
+        webapp,
+        "_clean_prompt_job_description",
+        lambda description: "Clean generic JOD with platform reliability.",
+    )
+
+    calls = []
+    completed = threading.Event()
+
+    def runner(**kwargs):
+        calls.append(kwargs)
+        webapp._finish_background_action_run(  # noqa: SLF001
+            kwargs["run_id"],
+            status="completed",
+            return_code=0,
+        )
+        completed.set()
+
+    output_dir = tmp_path / "output"
+    database_path = output_dir / "tracking/applications.sqlite3"
+    app = create_app(
+        database_path=database_path,
+        output_dir=output_dir,
+        background_action_runner=runner,
+    )
+    client = app.test_client()
+
+    response = client.post(
+        "/applications/add/other",
+        data={
+            "other_url": (
+                "https://jobs.example.com/platform-engineer, "
+                "https://jobs.example.com/bad"
+            ),
+            "run_v2": "1",
+            "highlight_with_codex": "1",
+        },
+    )
+
+    assert response.status_code == 302
+    assert completed.wait(timeout=2)
+    assert calls[0]["regenerate_mode"] == "resume_variants"
+    assert calls[0]["run_manual"] is False
+    assert calls[0]["highlight_with_codex"] is True
+    assert calls[0]["job_ids"] == ["url-good123"]
+
+    html = client.get("/applications/add").data.decode()
+    assert "Added 1 job URL(s)." in html
+    assert "Failed 1 URL(s)" in html
+    assert "No usable job description" in html
 
 
 def test_add_application_other_url_can_run_v2_before_highlighting(

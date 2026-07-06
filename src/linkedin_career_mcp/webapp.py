@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import difflib
 import json
+import re
 import sqlite3
 import subprocess
 import sys
@@ -112,6 +113,12 @@ REGENERATE_ACTION_TARGETS = {
     "manual_pass": "manual-pass-resumes",
 }
 _DRAFT_REGENERATE_MODES = {"draft_resumes", "resume_variants"}
+COMPOSITE_ACTION_MODES = {"resume_variants_manual_pass"}
+CHAINABLE_HIGHLIGHT_MODES = {
+    "draft_resumes",
+    "resume_variants",
+    "resume_variants_manual_pass",
+}
 COVER_LETTER_OBJECT_SCHEMA_VERSION = "cover_letter_object.v0.1"
 EMERALD_ACCENT = HexColor("#57ba86")
 RESUME_BODY_COLOR = HexColor("#111827")
@@ -2199,6 +2206,7 @@ def start_background_action(
     regenerate_mode: str,
     job_ids: list[str],
     highlight_with_codex: bool = False,
+    run_manual: bool = False,
     runner: BackgroundActionRunner | None = None,
 ) -> BackgroundActionRun:
     run = _create_background_action_run(
@@ -2206,6 +2214,7 @@ def start_background_action(
             regenerate_mode=regenerate_mode,
             job_ids=job_ids,
             highlight_with_codex=highlight_with_codex,
+            run_manual=run_manual,
         )
     )
     target = runner or _run_background_action
@@ -2216,6 +2225,7 @@ def start_background_action(
             "regenerate_mode": regenerate_mode,
             "job_ids": job_ids,
             "highlight_with_codex": highlight_with_codex,
+            "run_manual": run_manual,
         },
         daemon=True,
     )
@@ -2339,18 +2349,24 @@ def _run_background_action(
     regenerate_mode: str,
     job_ids: list[str],
     highlight_with_codex: bool = False,
+    run_manual: bool = False,
 ) -> None:
     try:
         if regenerate_mode:
             _run_regenerate_action(run_id=run_id, regenerate_mode=regenerate_mode, job_ids=job_ids)
+        if run_manual:
+            _run_regenerate_action(
+                run_id=run_id,
+                regenerate_mode="manual_pass",
+                job_ids=job_ids,
+            )
         if highlight_with_codex and regenerate_mode != "highlight_drafts":
             _run_highlight_action(
                 run_id=run_id,
                 job_ids=job_ids,
-                variant_key=(
-                    SECOND_PASS_RESUME_VARIANT
-                    if regenerate_mode in {"resume_variants", "refine_drafts"}
-                    else None
+                variant_key=_highlight_variant_for_chained_workflow(
+                    regenerate_mode=regenerate_mode,
+                    run_manual=run_manual,
                 ),
             )
         _append_background_action_message(run_id, "Background action completed.")
@@ -2441,7 +2457,14 @@ def _run_seed_workflow_action(
                     job_ids=job_ids,
                 )
             if run_highlight:
-                _run_highlight_action(run_id=run_id, job_ids=job_ids)
+                _run_highlight_action(
+                    run_id=run_id,
+                    job_ids=job_ids,
+                    variant_key=_highlight_variant_for_seed_workflow(
+                        run_v2=run_v2,
+                        run_manual=run_manual,
+                    ),
+                )
         else:
             _append_background_action_message(
                 run_id,
@@ -2511,6 +2534,30 @@ def _highlight_make_command(
     return command
 
 
+def _highlight_variant_for_chained_workflow(
+    *,
+    regenerate_mode: str,
+    run_manual: bool,
+) -> str | None:
+    if run_manual:
+        return MANUAL_PASS_RESUME_VARIANT
+    if regenerate_mode in {"resume_variants", "refine_drafts"}:
+        return SECOND_PASS_RESUME_VARIANT
+    return None
+
+
+def _highlight_variant_for_seed_workflow(
+    *,
+    run_v2: bool,
+    run_manual: bool,
+) -> str | None:
+    if run_manual:
+        return MANUAL_PASS_RESUME_VARIANT
+    if run_v2:
+        return SECOND_PASS_RESUME_VARIANT
+    return None
+
+
 def _seed_make_command(*, max_jobs: int, date_posted: str) -> list[str]:
     if max_jobs < 1:
         raise ValueError("Seed job count must be at least 1.")
@@ -2567,8 +2614,43 @@ def _selected_job_ids(values: list[str]) -> list[str]:
     return job_ids
 
 
+def _parse_job_url_list(value: Any) -> list[str]:
+    urls: list[str] = []
+    seen: set[str] = set()
+    for part in re.split(r"[\s,]+", str(value or "")):
+        url = part.strip()
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        urls.append(url)
+    if not urls:
+        raise ValueError("Paste at least one job URL.")
+    return urls
+
+
 def _add_url_regenerate_mode(*, run_v2: bool) -> str:
     return "resume_variants" if run_v2 else "draft_resumes"
+
+
+def _add_url_workflow_validation_error(*, run_v2: bool, run_manual: bool) -> str | None:
+    if run_manual and not run_v2:
+        return "Run v2 refinement must be selected before Codex manual pass."
+    return None
+
+
+def _format_url_add_failures(failures: list[tuple[str, str]]) -> str:
+    if not failures:
+        return ""
+    shown = [f"{url}: {message}" for url, message in failures[:3]]
+    if len(failures) > len(shown):
+        shown.append(f"{len(failures) - len(shown)} more")
+    return "; ".join(shown)
+
+
+def _normalize_action_mode(regenerate_mode: str) -> tuple[str, bool]:
+    if regenerate_mode == "resume_variants_manual_pass":
+        return "resume_variants", True
+    return regenerate_mode, False
 
 
 def _background_action_title(
@@ -2576,6 +2658,7 @@ def _background_action_title(
     regenerate_mode: str,
     job_ids: list[str],
     highlight_with_codex: bool = False,
+    run_manual: bool = False,
 ) -> str:
     parts: list[str] = []
     if regenerate_mode:
@@ -2589,6 +2672,8 @@ def _background_action_title(
             "manual_pass": "Codex manual pass resume",
         }.get(regenerate_mode, "regenerate docs")
         parts.append(f"{label} for {len(job_ids)} job(s)")
+    if run_manual:
+        parts.append(f"Codex manual pass resume for {len(job_ids)} job(s)")
     if highlight_with_codex and regenerate_mode != "highlight_drafts":
         parts.append(f"Codex highlight selected resume for {len(job_ids)} job(s)")
     return " + ".join(parts) or "background action"
@@ -2792,46 +2877,110 @@ def create_app(
 
     @app.post("/applications/add/linkedin")
     def add_linkedin_application():
+        run_v2 = bool(request.form.get("run_v2"))
+        run_manual = bool(request.form.get("run_manual"))
+        highlight_with_codex = bool(request.form.get("highlight_with_codex"))
+        validation_error = _add_url_workflow_validation_error(
+            run_v2=run_v2,
+            run_manual=run_manual,
+        )
+        if validation_error:
+            flash(f"LinkedIn add failed: {validation_error}")
+            return redirect(_add_application_return_path(request.form.get("return_to")))
         try:
-            job_id = add_linkedin_application_from_url(
-                database_path=database_path,
-                linkedin_url=request.form.get("linkedin_url", ""),
-            )
-        except (ValueError, LinkedInCareerMcpError) as exc:
+            urls = _parse_job_url_list(request.form.get("linkedin_url", ""))
+        except ValueError as exc:
             flash(f"LinkedIn add failed: {exc}")
             return redirect(_add_application_return_path(request.form.get("return_to")))
 
+        job_ids: list[str] = []
+        failures: list[tuple[str, str]] = []
+        for url in urls:
+            try:
+                job_ids.append(
+                    add_linkedin_application_from_url(
+                        database_path=database_path,
+                        linkedin_url=url,
+                    )
+                )
+            except (ValueError, LinkedInCareerMcpError) as exc:
+                failures.append((url, str(exc)))
+        job_ids = _selected_job_ids(job_ids)
+        if not job_ids:
+            flash(f"LinkedIn add failed: {_format_url_add_failures(failures)}")
+            return redirect(_add_application_return_path(request.form.get("return_to")))
+
         run = start_background_action(
-            regenerate_mode=_add_url_regenerate_mode(
-                run_v2=bool(request.form.get("run_v2"))
-            ),
-            job_ids=[job_id],
-            highlight_with_codex=bool(request.form.get("highlight_with_codex")),
+            regenerate_mode=_add_url_regenerate_mode(run_v2=run_v2),
+            job_ids=job_ids,
+            highlight_with_codex=highlight_with_codex,
+            run_manual=run_manual,
             runner=background_action_runner,
         )
-        flash(f"Added LinkedIn job {job_id}. Started background action: {run.title}.")
+        message = (
+            f"Added {len(job_ids)} LinkedIn job(s). "
+            f"Started background action: {run.title}."
+        )
+        if failures:
+            message = (
+                f"{message} Failed {len(failures)} URL(s): "
+                f"{_format_url_add_failures(failures)}."
+            )
+        flash(message)
         return redirect(_add_application_return_path(request.form.get("return_to")))
 
     @app.post("/applications/add/other")
     def add_other_application():
+        run_v2 = bool(request.form.get("run_v2"))
+        run_manual = bool(request.form.get("run_manual"))
+        highlight_with_codex = bool(request.form.get("highlight_with_codex"))
+        validation_error = _add_url_workflow_validation_error(
+            run_v2=run_v2,
+            run_manual=run_manual,
+        )
+        if validation_error:
+            flash(f"Other URL add failed: {validation_error}")
+            return redirect(_add_application_return_path(request.form.get("return_to")))
         try:
-            job_id = add_generic_application_from_url(
-                database_path=database_path,
-                job_url=request.form.get("other_url", ""),
-            )
-        except (ValueError, LinkedInCareerMcpError) as exc:
+            urls = _parse_job_url_list(request.form.get("other_url", ""))
+        except ValueError as exc:
             flash(f"Other URL add failed: {exc}")
             return redirect(_add_application_return_path(request.form.get("return_to")))
 
+        job_ids: list[str] = []
+        failures: list[tuple[str, str]] = []
+        for url in urls:
+            try:
+                job_ids.append(
+                    add_generic_application_from_url(
+                        database_path=database_path,
+                        job_url=url,
+                    )
+                )
+            except (ValueError, LinkedInCareerMcpError) as exc:
+                failures.append((url, str(exc)))
+        job_ids = _selected_job_ids(job_ids)
+        if not job_ids:
+            flash(f"Other URL add failed: {_format_url_add_failures(failures)}")
+            return redirect(_add_application_return_path(request.form.get("return_to")))
+
         run = start_background_action(
-            regenerate_mode=_add_url_regenerate_mode(
-                run_v2=bool(request.form.get("run_v2"))
-            ),
-            job_ids=[job_id],
-            highlight_with_codex=bool(request.form.get("highlight_with_codex")),
+            regenerate_mode=_add_url_regenerate_mode(run_v2=run_v2),
+            job_ids=job_ids,
+            highlight_with_codex=highlight_with_codex,
+            run_manual=run_manual,
             runner=background_action_runner,
         )
-        flash(f"Added job URL {job_id}. Started background action: {run.title}.")
+        message = (
+            f"Added {len(job_ids)} job URL(s). "
+            f"Started background action: {run.title}."
+        )
+        if failures:
+            message = (
+                f"{message} Failed {len(failures)} URL(s): "
+                f"{_format_url_add_failures(failures)}."
+            )
+        flash(message)
         return redirect(_add_application_return_path(request.form.get("return_to")))
 
     @app.post("/actions/run")
@@ -2840,23 +2989,30 @@ def create_app(
         regenerate_requested = bool(regenerate_mode)
         highlight_with_codex = bool(request.form.get("highlight_with_codex"))
         job_ids = _selected_job_ids(request.form.getlist("job_id"))
+        normalized_regenerate_mode, run_manual = _normalize_action_mode(regenerate_mode)
         if not regenerate_requested:
             flash("Choose at least one action to run.")
             return redirect_to_index_state()
         if regenerate_requested and not job_ids:
             flash("Select at least one job before regenerating documents.")
             return redirect_to_index_state()
-        if regenerate_requested and regenerate_mode not in REGENERATE_ACTION_TARGETS:
+        if regenerate_requested and regenerate_mode not in (
+            set(REGENERATE_ACTION_TARGETS) | COMPOSITE_ACTION_MODES
+        ):
             flash("Choose a valid regeneration option.")
             return redirect_to_index_state()
-        if highlight_with_codex and regenerate_mode != "draft_resumes":
-            flash("Codex highlighting can only be chained after draft resume regeneration.")
+        if highlight_with_codex and regenerate_mode not in CHAINABLE_HIGHLIGHT_MODES:
+            flash(
+                "Codex highlighting can only be chained after v1, v1+v2, "
+                "or v1+v2+manual workflows."
+            )
             return redirect_to_index_state()
 
         run = start_background_action(
-            regenerate_mode=regenerate_mode if regenerate_requested else "",
+            regenerate_mode=normalized_regenerate_mode if regenerate_requested else "",
             job_ids=job_ids,
             highlight_with_codex=highlight_with_codex,
+            run_manual=run_manual,
             runner=background_action_runner,
         )
         flash(f"Started background action: {run.title}.")
@@ -4691,6 +4847,14 @@ INDEX_TEMPLATE = """
               <span>Run v1 + v2 Resume Workflow</span>
             </label>
             <label>
+              <input
+                type="radio"
+                name="regenerate_mode"
+                value="resume_variants_manual_pass"
+              >
+              <span>Run v1 + v2 + Codex Manual Pass</span>
+            </label>
+            <label>
               <input type="radio" name="regenerate_mode" value="refine_drafts">
               <span>Run v2 Refinement</span>
             </label>
@@ -5491,7 +5655,11 @@ INDEX_TEMPLATE = """
         actionsSelectedSummary.textContent = `${selected.length} selected`;
       }
       if (highlightWithCodexInput) {
-        const canChainHighlight = mode === "draft_resumes";
+        const canChainHighlight = [
+          "draft_resumes",
+          "resume_variants",
+          "resume_variants_manual_pass",
+        ].includes(mode);
         highlightWithCodexInput.disabled = !canChainHighlight;
         if (!canChainHighlight) {
           highlightWithCodexInput.checked = false;
@@ -5835,7 +6003,7 @@ ADD_APPLICATION_TEMPLATE = """
       text-transform: none;
     }
     .option-row input { margin: 0; }
-    input[type="url"], input[type="number"] {
+    input[type="url"], input[type="number"], textarea {
       width: 100%;
       border: 1px solid var(--line);
       border-radius: 6px;
@@ -5843,6 +6011,10 @@ ADD_APPLICATION_TEMPLATE = """
       color: var(--ink);
       font: inherit;
       text-transform: none;
+    }
+    textarea {
+      min-height: 74px;
+      resize: vertical;
     }
     button, .button-link {
       justify-self: start;
@@ -5949,17 +6121,20 @@ ADD_APPLICATION_TEMPLATE = """
     <form method="post" action="/applications/add/linkedin">
       <input type="hidden" name="return_to" value="{{ return_to }}">
       <label>
-        LinkedIn URL
-        <input
-          type="url"
+        LinkedIn URLs
+        <textarea
           name="linkedin_url"
-          placeholder="https://www.linkedin.com/jobs/view/1234567890"
+          placeholder="https://www.linkedin.com/jobs/view/1234567890, https://www.linkedin.com/jobs/view/2345678901"
           required
-        >
+        ></textarea>
       </label>
       <label class="option-row">
         <input type="checkbox" name="run_v2" value="1">
         <span>Run v2 refinement</span>
+      </label>
+      <label class="option-row">
+        <input type="checkbox" name="run_manual" value="1" disabled>
+        <span>Run Codex manual pass</span>
       </label>
       <label class="option-row">
         <input type="checkbox" name="highlight_with_codex" value="1" checked>
@@ -5971,17 +6146,20 @@ ADD_APPLICATION_TEMPLATE = """
     <form method="post" action="/applications/add/other">
       <input type="hidden" name="return_to" value="{{ return_to }}">
       <label>
-        Other
-        <input
-          type="url"
+        Other URLs
+        <textarea
           name="other_url"
-          placeholder="https://company.example/jobs/software-engineer"
+          placeholder="https://company.example/jobs/software-engineer, https://jobs.example.com/platform-engineer"
           required
-        >
+        ></textarea>
       </label>
       <label class="option-row">
         <input type="checkbox" name="run_v2" value="1">
         <span>Run v2 refinement</span>
+      </label>
+      <label class="option-row">
+        <input type="checkbox" name="run_manual" value="1" disabled>
+        <span>Run Codex manual pass</span>
       </label>
       <label class="option-row">
         <input type="checkbox" name="highlight_with_codex" value="1" checked>
@@ -5990,6 +6168,23 @@ ADD_APPLICATION_TEMPLATE = """
       <button type="submit">Load</button>
     </form>
   </main>
+  <script>
+    document.querySelectorAll("form").forEach((form) => {
+      const runV2 = form.querySelector("input[name='run_v2']");
+      const runManual = form.querySelector("input[name='run_manual']");
+      if (!runV2 || !runManual) {
+        return;
+      }
+      function syncManualDependency() {
+        runManual.disabled = !runV2.checked;
+        if (!runV2.checked) {
+          runManual.checked = false;
+        }
+      }
+      runV2.addEventListener("change", syncManualDependency);
+      syncManualDependency();
+    });
+  </script>
 </body>
 </html>
 """
