@@ -227,6 +227,7 @@ def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypat
     assert 'name="regenerate_mode" value="highlight_drafts"' in html
     assert 'name="regenerate_mode" value="manual_pass"' in html
     assert 'name="highlight_with_codex" value="1"' in html
+    assert '"manual_pass",' in html
     assert 'name="regenerate_mode" value="sync_draft_to_aro"' in html
     assert "ARO/Resume Sync" in html
     assert "Cover letters" not in html
@@ -1852,6 +1853,54 @@ def test_actions_run_can_start_codex_manual_pass_variant(tmp_path: Path):
     assert status["runs"][0]["title"] == "Codex manual pass resume for 1 job(s)"
 
 
+def test_actions_run_can_chain_codex_highlighting_after_manual_pass(tmp_path: Path):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    calls = []
+    completed = threading.Event()
+
+    def runner(**kwargs):
+        calls.append(kwargs)
+        webapp._finish_background_action_run(  # noqa: SLF001
+            kwargs["run_id"],
+            status="completed",
+            return_code=0,
+        )
+        completed.set()
+
+    output_dir = tmp_path / "output"
+    database_path = output_dir / "tracking/applications.sqlite3"
+    app = create_app(
+        database_path=database_path,
+        output_dir=output_dir,
+        background_action_runner=runner,
+    )
+    client = app.test_client()
+
+    response = client.post(
+        "/actions/run",
+        data={
+            "regenerate_mode": "manual_pass",
+            "highlight_with_codex": "1",
+            "job_id": ["url-123"],
+        },
+    )
+
+    assert response.status_code == 302
+    assert completed.wait(timeout=2)
+    assert calls[0]["regenerate_mode"] == "manual_pass"
+    assert calls[0]["highlight_with_codex"] is True
+    assert calls[0]["run_manual"] is False
+
+    status = client.get("/actions/status").get_json()
+    assert status is not None
+    assert status["runs"][0]["title"] == (
+        "Codex manual pass resume for 1 job(s) + "
+        "Codex highlight selected resume for 1 job(s)"
+    )
+
+
 def test_background_action_runs_only_requested_new_workflow(
     tmp_path: Path,
     monkeypatch,
@@ -1988,6 +2037,20 @@ def test_background_action_runs_only_requested_new_workflow(
     )
 
     assert calls == [("regenerate", "manual_pass")]
+
+    calls.clear()
+    run = webapp._create_background_action_run(  # noqa: SLF001
+        title="Codex manual pass resume and highlight"
+    )
+    webapp._run_background_action(  # noqa: SLF001
+        run_id=run.run_id,
+        regenerate_mode="manual_pass",
+        job_ids=["url-123"],
+        highlight_with_codex=True,
+    )
+
+    assert calls == [("regenerate", "manual_pass"), ("highlight", "url-123")]
+    assert highlight_calls[-1]["variant_key"] == "manual"
 
 
 def test_seed_workflow_runs_selected_make_targets_for_seeded_jobs(monkeypatch):
