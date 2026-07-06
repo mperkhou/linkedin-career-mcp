@@ -118,6 +118,7 @@ CHAINABLE_HIGHLIGHT_MODES = {
     "draft_resumes",
     "resume_variants",
     "resume_variants_manual_pass",
+    "manual_pass",
 }
 COVER_LETTER_OBJECT_SCHEMA_VERSION = "cover_letter_object.v0.1"
 EMERALD_ACCENT = HexColor("#57ba86")
@@ -2540,6 +2541,8 @@ def _highlight_variant_for_chained_workflow(
     run_manual: bool,
 ) -> str | None:
     if run_manual:
+        return MANUAL_PASS_RESUME_VARIANT
+    if regenerate_mode == "manual_pass":
         return MANUAL_PASS_RESUME_VARIANT
     if regenerate_mode in {"resume_variants", "refine_drafts"}:
         return SECOND_PASS_RESUME_VARIANT
@@ -5659,6 +5662,7 @@ INDEX_TEMPLATE = """
           "draft_resumes",
           "resume_variants",
           "resume_variants_manual_pass",
+          "manual_pass",
         ].includes(mode);
         highlightWithCodexInput.disabled = !canChainHighlight;
         if (!canChainHighlight) {

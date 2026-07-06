@@ -394,6 +394,7 @@ def _normalize_second_pass_critique_payload(payload: object) -> object:
         "add_skill": "emphasize_supported_term",
         "add_supported_skill": "emphasize_supported_term",
         "add_supported_alias": "emphasize_supported_term",
+        "reorder_bullets": "other",
         "rewrite_skills": "reorder_skills",
     }
     for change in changes:

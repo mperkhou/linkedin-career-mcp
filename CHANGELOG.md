@@ -1,5 +1,16 @@
 # linkedin-career-mcp CHANGELOG
 
+## 4.2.1 - Tolerate second-pass bullet reorder aliases
+
+* Normalize second-pass critique responses that use the model-produced
+  `reorder_bullets` change type so one near-miss enum value does not fail an
+  otherwise recoverable v2 refinement batch.
+* Allow the tracker Actions menu to chain Codex highlighting after the standalone
+  Codex manual pass variant workflow, targeting the newly stored `manual`
+  resume variant.
+* Add regression coverage for the `reorder_bullets` alias and bump the package
+  version to `4.2.1` for the v2 refinement parser fix.
+
 ## 4.2.0 - Add batch URL loading and chained manual workflows
 
 * Let the tracker Add popup load comma- or newline-separated batches of
