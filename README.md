@@ -430,6 +430,17 @@ JOD_MODEL=<model-id> make regenerate-draft-resumes JOB_IDS="4424184336"
 Use `CORE_SKILL_MODEL=<model-id>` only when Core Technical Skills matching should
 use a different model from the JOD target and bullet rewrite calls.
 
+First-draft generation logs each v1 substep to stderr so the Flask tracker can
+show whether a job is in Core Technical Skills matching, JOD target extraction,
+experience rewrite, rendering, or storage. Each v1 LLM API call has a hard
+per-call timeout:
+
+- `FIRST_DRAFT_LLM_TIMEOUT_SECONDS`: per-call wall-clock timeout for v1 Core
+  Technical Skills, JOD target, and experience rewrite LLM calls, default `300`.
+
+Set `FIRST_DRAFT_LLM_TIMEOUT_SECONDS=0` to disable the v1 per-call timeout when
+debugging a provider issue intentionally.
+
 Use `MASTER_RESUME=<path>` to run the same ARO workflow against
 an alternate master resume object without replacing the canonical MRO.
 

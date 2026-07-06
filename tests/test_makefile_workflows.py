@@ -33,6 +33,7 @@ def test_regenerate_draft_resumes_make_target_uses_final_jod_workflow() -> None:
     assert '--master-resume "profile/MASTER-RESUME.yml"' in output
     assert '--api-model "z-ai/glm-5.2"' in output
     assert '--jod-model "z-ai/glm-5.2"' in output
+    assert '--llm-timeout-seconds "300"' in output
     assert "for job_id in url-123" in output
     assert 'job_args="$job_args --job-id $job_id"' in output
     assert "$job_args $force_arg" in output
@@ -47,11 +48,13 @@ def test_regenerate_draft_resumes_make_target_honors_resume_and_model_overrides(
         "MASTER_RESUME=profile/custom.yml",
         "CORE_SKILL_MODEL=core/example",
         "JOD_MODEL=example/model",
+        "FIRST_DRAFT_LLM_TIMEOUT_SECONDS=45",
     )
 
     assert '--master-resume "profile/custom.yml"' in output
     assert '--api-model "core/example"' in output
     assert '--jod-model "example/model"' in output
+    assert '--llm-timeout-seconds "45"' in output
     assert "for job_id in url-123" in output
     assert "$job_args $force_arg" in output
 
@@ -70,6 +73,7 @@ def test_regenerate_resumes_make_target_runs_v1_then_v2_workflow() -> None:
     )
     assert '--api-model "z-ai/glm-5.2"' in output
     assert '--jod-model "z-ai/glm-5.2"' in output
+    assert '--llm-timeout-seconds "300"' in output
     assert '--api-timeout-seconds "600"' in output
     assert "for job_id in url-123" in output
 
