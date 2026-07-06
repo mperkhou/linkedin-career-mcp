@@ -24,3 +24,21 @@ def test_agents_guidance_captures_core_repo_invariants() -> None:
     assert "git diff --check" in guidance
     assert "make lint" in guidance
     assert "make test" in guidance
+
+
+def test_agents_guidance_is_linked_from_docs() -> None:
+    readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+    architecture = (PROJECT_ROOT / "docs/architecture.md").read_text(encoding="utf-8")
+    adr = (PROJECT_ROOT / "docs/adr/0005-canonical-agent-guidance.md").read_text(
+        encoding="utf-8"
+    )
+    release_notes = (PROJECT_ROOT / "docs/release-notes/4.3.0.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "AGENTS.md" in readme
+    assert "docs/adr/0005-canonical-agent-guidance.md" in readme
+    assert "docs/release-notes/4.3.0.md" in readme
+    assert "AGENTS.md" in architecture
+    assert "AGENTS.md" in adr
+    assert "AGENTS.md" in release_notes

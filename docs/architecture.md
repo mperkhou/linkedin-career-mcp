@@ -30,6 +30,26 @@ MCP clients / CLI / Make / Flask tracker
 - SQLite is the source of truth for application rows, job descriptions, resume
   objects, rendered artifacts, ATS fields, cover letters, and resume variants.
 
+## Agent Guidance Layer
+
+`AGENTS.md` is the canonical operational guidance layer for agents working in
+this repository. It is intentionally separate from the user-facing product docs:
+`README.md` explains what the system does and how an operator uses it, while
+`AGENTS.md` defines repo-working guardrails such as edit safety, release
+closeout, tracker workflow invariants, generated-artifact caution, and
+resume-evidence discipline.
+
+The skill docs stay focused on workflow-specific command reference. The
+`skills/linkedin-career-mcp/SKILL.md` file points agents to `AGENTS.md` for
+shared repo behavior before providing MCP and Make target details. The
+`skills/manual-resume-passthrough/SKILL.md` file does the same for manual resume
+pass work, so the manual-pass protocol can stay focused on per-job evidence
+review while release and safety rules remain centralized.
+
+This keeps agent behavior aligned across tracker workflows, Codex manual pass,
+Codex highlighting, release closeout, and application-writing work without
+duplicating the same operational rules in every human-facing document.
+
 ## Core Layers
 
 ```text
