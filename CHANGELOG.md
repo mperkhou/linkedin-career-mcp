@@ -1,5 +1,19 @@
 # linkedin-career-mcp CHANGELOG
 
+## 4.1.0 - Add v1 draft generation timeouts and progress logging
+
+* Add a `FIRST_DRAFT_LLM_TIMEOUT_SECONDS` Makefile setting, defaulting to 300
+  seconds, and pass it to v1 first-draft generation as a hard per-LLM-call
+  timeout.
+* Wrap each v1 LLM substep with a wall-clock timeout so one slow provider
+  response cannot pin the whole resume workflow indefinitely.
+* Emit first-draft substep progress to stderr, including start/completion,
+  elapsed seconds, timeout failures, and the affected job ID.
+* Keep first-draft stdout JSON stable for script consumers while making the
+  Flask tracker status panel more informative during long v1 runs.
+* Bump the package version to `4.1.0` for the v1 workflow observability
+  improvement.
+
 ## 4.0.2 - Pin Codex resume workflow reasoning effort
 
 * Add `CODEX_REASONING_EFFORT`, defaulting to `xhigh`, for the Codex manual

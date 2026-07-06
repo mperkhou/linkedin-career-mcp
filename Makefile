@@ -16,6 +16,7 @@ MAX_JOBS ?= 10
 MASTER_RESUME ?= profile/MASTER-RESUME.yml
 JOD_MODEL ?= z-ai/glm-5.2
 CORE_SKILL_MODEL ?= $(JOD_MODEL)
+FIRST_DRAFT_LLM_TIMEOUT_SECONDS ?= 300
 SECOND_PASS_MODEL ?= z-ai/glm-5.2
 SECOND_PASS_TIMEOUT_SECONDS ?= 600
 CODEX_COMMAND ?= codex
@@ -87,7 +88,7 @@ regenerate-draft-resumes: venv
 	if [ "$(FIRST_DRAFT_FORCE)" = "1" ] || [ "$(FIRST_DRAFT_FORCE)" = "true" ]; then \
 		force_arg="--force"; \
 	fi; \
-	$(VENV_PYTHON) scripts/application_resume_generate_drafts.py --master-resume "$(MASTER_RESUME)" --api-model "$(CORE_SKILL_MODEL)" --jod-model "$(JOD_MODEL)" $$job_args $$force_arg
+	$(VENV_PYTHON) scripts/application_resume_generate_drafts.py --master-resume "$(MASTER_RESUME)" --api-model "$(CORE_SKILL_MODEL)" --jod-model "$(JOD_MODEL)" --llm-timeout-seconds "$(FIRST_DRAFT_LLM_TIMEOUT_SECONDS)" $$job_args $$force_arg
 
 regenerate-resumes: regenerate-draft-resumes refine-draft-resumes
 
