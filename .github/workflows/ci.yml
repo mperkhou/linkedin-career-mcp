@@ -22,5 +22,7 @@ jobs:
           python -m pip install -e ".[dev]"
       - name: Lint
         run: ruff check .
+      - name: Release metadata checks
+        run: python -m pytest tests/test_release_metadata.py tests/test_agent_guidance.py
       - name: Test
         run: python -m pytest

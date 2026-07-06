@@ -552,10 +552,11 @@ Keep the MRO neutral: empty `jod_matched_items`, zero match counts, source-evide
 ### Release closeout
 
 Every merged PR that bumps the package version must leave GitHub with a matching
-remote release tag. After CI passes and the PR is merged, sync the local checkout
-back to `main`, create an annotated tag named `vX.Y.Z` on the merged `main`
-commit, push that tag to `origin`, and verify the remote ref exists with
-`git ls-remote --tags origin refs/tags/vX.Y.Z`.
+remote release tag and a matching release-note file under
+`docs/release-notes/<version>.md`. After CI passes and the PR is merged, sync
+the local checkout back to `main`, create an annotated tag named `vX.Y.Z` on the
+merged `main` commit, push that tag to `origin`, and verify the remote ref
+exists with `git ls-remote --tags origin refs/tags/vX.Y.Z`.
 
 Use the existing annotated-tag convention: subject `Release vX.Y.Z` and a short
 body matching the top `CHANGELOG.md` heading.

@@ -69,6 +69,12 @@ details in `skills/`, and shared repo guardrails here.
 
 - For committed work, keep `pyproject.toml` version and the top `CHANGELOG.md`
   entry aligned.
+- Every PR that changes committed repository state must update the matching
+  release-note file under `docs/release-notes/<version>.md`. For version bumps,
+  `pyproject.toml`, the top `CHANGELOG.md` heading, and the release-note
+  filename must all use the same version.
+- Release notes should summarize why the release exists, what changed, and any
+  validation or migration notes that future agents and operators would need.
 - Choose SemVer deliberately from the final diff:
   - `MAJOR` for breaking architecture, workflow, schema, command, or user
     behavior changes.
@@ -79,6 +85,8 @@ details in `skills/`, and shared repo guardrails here.
   - focused `.venv/bin/python -m pytest ...`
   - `make lint`
   - `make test`
+- Do not open or merge a release PR while its matching release-note file is
+  missing.
 - Release closeout is incomplete after a PR merge until the matching remote tag
   exists. After CI passes and the PR is merged:
   - checkout synced `main`

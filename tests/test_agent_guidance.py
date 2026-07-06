@@ -10,6 +10,7 @@ def test_agents_guidance_exists_with_release_closeout_guardrails() -> None:
     assert guidance_path.exists()
 
     guidance = guidance_path.read_text(encoding="utf-8")
+    assert "docs/release-notes/<version>.md" in guidance
     assert "annotated tag" in guidance
     assert "push tag `vX.Y.Z` to `origin`" in guidance
     assert "git ls-remote --tags origin refs/tags/vX.Y.Z" in guidance

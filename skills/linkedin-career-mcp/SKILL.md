@@ -52,6 +52,9 @@ The current tools search public LinkedIn job listings and fetch public job detai
 - Keep the package version in `pyproject.toml` and the top `CHANGELOG.md`
   heading aligned. Do not carry patch digits forward when promoting a change to
   a minor or major release.
+- Keep the matching release-note file under `docs/release-notes/<version>.md`
+  aligned with the package version and top changelog entry. The root
+  `AGENTS.md` file is the canonical release-note guardrail.
 - Release closeout is not complete after a PR merge alone. After GitHub CI
   passes and the PR is merged, return the local checkout to synced `main`, then
   create an annotated tag named `vX.Y.Z` for the top changelog/package version
