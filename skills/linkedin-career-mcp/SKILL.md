@@ -92,6 +92,9 @@ The current tools search public LinkedIn job listings and fetch public job detai
 - The Add popup's LinkedIn and Other URL forms can also run v2 refinement for
   the newly loaded row. If Codex highlighting is selected too, highlighting
   runs after the v1 plus v2 workflow and explicitly polishes the v2 resume.
+- The Other URL parser reads schema.org `JobPosting` metadata first, then
+  embedded app payloads used by Dayforce Next.js pages and Work at a Startup
+  Inertia pages, then visible page text.
 - The tracker Actions menu runs the same workflow family on selected rows:
   main v1-plus-v2 resume generation, v1-only draft generation, v2
   create/rerun, manual pass, highlighting, ARO regeneration, and draft-to-ARO
