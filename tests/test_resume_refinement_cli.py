@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from io import BytesIO
 from pathlib import Path
@@ -12,6 +13,7 @@ from linkedin_career_mcp import webapp
 from linkedin_career_mcp.resume_refinement import SECOND_PASS_RESUME_CRITIQUE_SCHEMA_VERSION
 from linkedin_career_mcp.resume_refinement_cli import (
     SECOND_PASS_RESUME_REFINEMENT_AUDIT_SCHEMA_VERSION,
+    _generate_text_with_timeout,
     run_second_pass_refinement_for_job,
 )
 
@@ -173,6 +175,33 @@ class _FakeLlm:
     async def generate_text(self, prompt: str) -> str:
         self.prompts.append(prompt)
         return self._response
+
+
+class _FlakyTimeoutLlm:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def generate_text(self, prompt: str) -> str:
+        self.calls += 1
+        if self.calls == 1:
+            await asyncio.sleep(1)
+        return "ok"
+
+
+@pytest.mark.asyncio
+async def test_second_pass_generation_retries_timeout_once(capsys) -> None:
+    llm = _FlakyTimeoutLlm()
+
+    response = await _generate_text_with_timeout(
+        llm=llm,
+        prompt="prompt",
+        timeout_seconds=0.01,
+        retry_count=1,
+    )
+
+    assert response == "ok"
+    assert llm.calls == 2
+    assert "Second-pass critique timed out; retrying (attempt 2/2)" in capsys.readouterr().err
 
 
 def _supported_patch_response() -> str:

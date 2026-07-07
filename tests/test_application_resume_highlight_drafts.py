@@ -168,6 +168,7 @@ def _run_highlight(database_path: Path, *, variant_key: str | None = None) -> No
         codex_model="gpt-5.5",
         codex_reasoning_effort="xhigh",
         timeout_seconds=30,
+        retry_count=0,
         max_strong_spans_per_bullet=3,
         experience_company=None,
         experience_job_order=None,

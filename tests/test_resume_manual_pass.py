@@ -245,6 +245,42 @@ def test_run_codex_manual_pass_pins_reasoning_effort(tmp_path: Path, monkeypatch
     assert captured_args.index('model_reasoning_effort="xhigh"') < captured_args.index("exec")
 
 
+def test_run_codex_manual_pass_retries_timeout(tmp_path: Path, monkeypatch) -> None:
+    calls = 0
+
+    def fake_run(args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise subprocess.TimeoutExpired(cmd=args, timeout=kwargs["timeout"])
+        output_path = args[args.index("--output-last-message") + 1]
+        Path(output_path).write_text(
+            json.dumps(
+                {
+                    "schema_version": "manual_resume_pass_response.v1",
+                    "application_resume_object": {"schema_version": "test"},
+                    "rationale": "Manual pass.",
+                    "unsupported_terms": [],
+                    "reviewer_notes": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    response = resume_manual_pass.run_codex_manual_pass(
+        "prompt",
+        project_root=tmp_path,
+        codex_command="codex",
+        retry_count=1,
+    )
+
+    assert calls == 2
+    assert "manual_resume_pass_response.v1" in response
+
+
 def _variant_mapping(
     variant_key: str,
     variant_label: str,

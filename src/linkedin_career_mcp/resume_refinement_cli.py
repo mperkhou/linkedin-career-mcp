@@ -92,6 +92,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Override the configured API timeout for the second-pass critique call.",
     )
     parser.add_argument(
+        "--api-retries",
+        type=int,
+        default=1,
+        help="Number of timeout retries for the second-pass critique call.",
+    )
+    parser.add_argument(
         "--external-critique-file",
         type=Path,
         help="Optional pasted external critique text file to classify before refinement.",
@@ -142,6 +148,7 @@ async def main_async(argv: Sequence[str] | None = None) -> int:
                     apply=args.apply,
                     llm=llm,
                     generation_timeout_seconds=args.api_timeout_seconds,
+                    generation_retry_count=args.api_retries,
                     external_critique_text=external_critique_text,
                 )
                 audits.append(audit)
@@ -207,6 +214,7 @@ async def run_second_pass_refinement_for_job(
     apply: bool = False,
     llm: Any,
     generation_timeout_seconds: float | None = None,
+    generation_retry_count: int = 0,
     external_critique_text: str | None = None,
 ) -> dict[str, Any]:
     row = _load_row(database_path=database_path, job_id=job_id)
@@ -256,6 +264,7 @@ async def run_second_pass_refinement_for_job(
         llm=llm,
         prompt=critique_prompt,
         timeout_seconds=generation_timeout_seconds,
+        retry_count=generation_retry_count,
     )
     critique = parse_second_pass_resume_critique_response(critique_response)
     patch_result = validate_and_apply_second_pass_resume_patches(
@@ -377,18 +386,35 @@ async def _generate_text_with_timeout(
     llm: Any,
     prompt: str,
     timeout_seconds: float | None,
+    retry_count: int = 0,
 ) -> str:
-    if timeout_seconds is None:
-        return await llm.generate_text(prompt)
-    try:
-        return await asyncio.wait_for(
-            llm.generate_text(prompt),
-            timeout=max(1.0, timeout_seconds),
-        )
-    except TimeoutError as exc:
-        raise TimeoutError(
-            f"Second-pass critique timed out after {timeout_seconds:g} seconds."
-        ) from exc
+    attempts = max(1, retry_count + 1)
+    for attempt in range(1, attempts + 1):
+        try:
+            if timeout_seconds is None:
+                return await llm.generate_text(prompt)
+            return await asyncio.wait_for(
+                llm.generate_text(prompt),
+                timeout=max(1.0, timeout_seconds),
+            )
+        except TimeoutError as exc:
+            if attempt < attempts:
+                print(
+                    (
+                        "Second-pass critique timed out; retrying "
+                        f"(attempt {attempt + 1}/{attempts})"
+                    ),
+                    file=sys.stderr,
+                    flush=True,
+                )
+                continue
+            timeout_value = (
+                f"{timeout_seconds:g}" if timeout_seconds is not None else "unknown"
+            )
+            raise TimeoutError(
+                f"Second-pass critique timed out after {timeout_value} seconds."
+            ) from exc
+    raise AssertionError("unreachable retry loop exit")
 
 
 def _external_critique_text(

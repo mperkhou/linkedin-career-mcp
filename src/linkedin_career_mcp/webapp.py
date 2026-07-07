@@ -171,6 +171,13 @@ class BackgroundActionRun:
     messages: list[str] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class BackgroundWorkflowStage:
+    label: str
+    regenerate_mode: str | None = None
+    highlight_variant_key: str | None = None
+
+
 BackgroundActionRunner = Callable[..., None]
 
 
@@ -2353,23 +2360,15 @@ def _run_background_action(
     run_manual: bool = False,
 ) -> None:
     try:
-        if regenerate_mode:
-            _run_regenerate_action(run_id=run_id, regenerate_mode=regenerate_mode, job_ids=job_ids)
-        if run_manual:
-            _run_regenerate_action(
-                run_id=run_id,
-                regenerate_mode="manual_pass",
-                job_ids=job_ids,
-            )
-        if highlight_with_codex and regenerate_mode != "highlight_drafts":
-            _run_highlight_action(
-                run_id=run_id,
-                job_ids=job_ids,
-                variant_key=_highlight_variant_for_chained_workflow(
-                    regenerate_mode=regenerate_mode,
-                    run_manual=run_manual,
-                ),
-            )
+        _run_job_workflow_stages(
+            run_id=run_id,
+            job_ids=job_ids,
+            stages=_background_workflow_stages(
+                regenerate_mode=regenerate_mode,
+                run_manual=run_manual,
+                highlight_with_codex=highlight_with_codex,
+            ),
+        )
         _append_background_action_message(run_id, "Background action completed.")
         _finish_background_action_run(run_id, status="completed", return_code=0)
     except Exception as exc:
@@ -2439,33 +2438,16 @@ def _run_seed_workflow_action(
                 run_id,
                 f"Seeded job IDs: {' '.join(job_ids)}",
             )
-            if run_v1:
-                _run_regenerate_action(
-                    run_id=run_id,
-                    regenerate_mode="draft_resumes",
-                    job_ids=job_ids,
-                )
-            if run_v2:
-                _run_regenerate_action(
-                    run_id=run_id,
-                    regenerate_mode="refine_drafts",
-                    job_ids=job_ids,
-                )
-            if run_manual:
-                _run_regenerate_action(
-                    run_id=run_id,
-                    regenerate_mode="manual_pass",
-                    job_ids=job_ids,
-                )
-            if run_highlight:
-                _run_highlight_action(
-                    run_id=run_id,
-                    job_ids=job_ids,
-                    variant_key=_highlight_variant_for_seed_workflow(
-                        run_v2=run_v2,
-                        run_manual=run_manual,
-                    ),
-                )
+            _run_job_workflow_stages(
+                run_id=run_id,
+                job_ids=job_ids,
+                stages=_seed_workflow_stages(
+                    run_v1=run_v1,
+                    run_v2=run_v2,
+                    run_manual=run_manual,
+                    run_highlight=run_highlight,
+                ),
+            )
         else:
             _append_background_action_message(
                 run_id,
@@ -2476,6 +2458,91 @@ def _run_seed_workflow_action(
     except Exception as exc:
         _append_background_action_message(run_id, f"Seed workflow failed: {exc}")
         _finish_background_action_run(run_id, status="failed", return_code=1)
+
+
+def _run_job_workflow_stages(
+    *,
+    run_id: str,
+    job_ids: list[str],
+    stages: list[BackgroundWorkflowStage],
+) -> None:
+    if not stages:
+        return
+    if not job_ids:
+        raise ValueError("At least one job id is required for workflow actions.")
+
+    active_job_ids = list(job_ids)
+    failures: list[dict[str, str]] = []
+    for stage in stages:
+        if not active_job_ids:
+            break
+        _append_background_action_message(
+            run_id,
+            f"Starting {stage.label} for {len(active_job_ids)} active job(s).",
+        )
+        succeeded: list[str] = []
+        for job_id in active_job_ids:
+            try:
+                _run_background_workflow_stage(
+                    run_id=run_id,
+                    stage=stage,
+                    job_id=job_id,
+                )
+            except Exception as exc:
+                failures.append(
+                    {
+                        "job_id": job_id,
+                        "stage": stage.label,
+                        "error": str(exc),
+                    }
+                )
+                _append_background_action_message(
+                    run_id,
+                    f"[{job_id}] {stage.label} failed: {exc}",
+                )
+                continue
+            succeeded.append(job_id)
+        active_job_ids = succeeded
+
+    if failures and not active_job_ids:
+        first_failure = failures[0]
+        raise RuntimeError(
+            "All workflow jobs failed before completing every requested stage. "
+            f"First failure: {first_failure['job_id']} "
+            f"{first_failure['stage']}: {first_failure['error']}"
+        )
+    if failures:
+        _append_background_action_message(
+            run_id,
+            (
+                "Background workflow completed with partial failures: "
+                f"{len(active_job_ids)} succeeded, {len(failures)} failed stage(s)."
+            ),
+        )
+        _append_background_action_message(
+            run_id,
+            f"Completed job IDs: {' '.join(active_job_ids)}",
+        )
+
+
+def _run_background_workflow_stage(
+    *,
+    run_id: str,
+    stage: BackgroundWorkflowStage,
+    job_id: str,
+) -> None:
+    if stage.regenerate_mode is not None:
+        _run_regenerate_action(
+            run_id=run_id,
+            regenerate_mode=stage.regenerate_mode,
+            job_ids=[job_id],
+        )
+        return
+    _run_highlight_action(
+        run_id=run_id,
+        job_ids=[job_id],
+        variant_key=stage.highlight_variant_key,
+    )
 
 
 def _run_make_command(
@@ -2533,6 +2600,94 @@ def _highlight_make_command(
     if variant_key:
         command.append(f"HIGHLIGHT_RESUME_VARIANT={variant_key}")
     return command
+
+
+def _background_workflow_stages(
+    *,
+    regenerate_mode: str,
+    run_manual: bool,
+    highlight_with_codex: bool,
+) -> list[BackgroundWorkflowStage]:
+    stages: list[BackgroundWorkflowStage] = []
+    if regenerate_mode:
+        stages.append(
+            BackgroundWorkflowStage(
+                label=_regenerate_stage_label(regenerate_mode),
+                regenerate_mode=regenerate_mode,
+            )
+        )
+    if run_manual:
+        stages.append(
+            BackgroundWorkflowStage(
+                label=_regenerate_stage_label("manual_pass"),
+                regenerate_mode="manual_pass",
+            )
+        )
+    if highlight_with_codex and regenerate_mode != "highlight_drafts":
+        stages.append(
+            BackgroundWorkflowStage(
+                label="Codex highlighting",
+                highlight_variant_key=_highlight_variant_for_chained_workflow(
+                    regenerate_mode=regenerate_mode,
+                    run_manual=run_manual,
+                ),
+            )
+        )
+    return stages
+
+
+def _seed_workflow_stages(
+    *,
+    run_v1: bool,
+    run_v2: bool,
+    run_manual: bool,
+    run_highlight: bool,
+) -> list[BackgroundWorkflowStage]:
+    stages: list[BackgroundWorkflowStage] = []
+    if run_v1:
+        stages.append(
+            BackgroundWorkflowStage(
+                label=_regenerate_stage_label("draft_resumes"),
+                regenerate_mode="draft_resumes",
+            )
+        )
+    if run_v2:
+        stages.append(
+            BackgroundWorkflowStage(
+                label=_regenerate_stage_label("refine_drafts"),
+                regenerate_mode="refine_drafts",
+            )
+        )
+    if run_manual:
+        stages.append(
+            BackgroundWorkflowStage(
+                label=_regenerate_stage_label("manual_pass"),
+                regenerate_mode="manual_pass",
+            )
+        )
+    if run_highlight:
+        stages.append(
+            BackgroundWorkflowStage(
+                label="Codex highlighting",
+                highlight_variant_key=_highlight_variant_for_seed_workflow(
+                    run_v2=run_v2,
+                    run_manual=run_manual,
+                ),
+            )
+        )
+    return stages
+
+
+def _regenerate_stage_label(regenerate_mode: str) -> str:
+    return {
+        "draft_resumes": "v1 draft generation",
+        "resume_variants": "v1 and v2 resume workflow",
+        "refine_drafts": "v2 resume refinement",
+        "aro_objects": "ARO regeneration",
+        "sync_draft_to_aro": "draft-to-ARO sync",
+        "highlight_drafts": "Codex highlighting",
+        "manual_pass": "Codex manual pass",
+    }.get(regenerate_mode, regenerate_mode)
 
 
 def _highlight_variant_for_chained_workflow(

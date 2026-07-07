@@ -246,6 +246,32 @@ def test_run_codex_highlight_places_approval_flag_before_exec(tmp_path, monkeypa
     assert captured_args.index('model_reasoning_effort="xhigh"') < captured_args.index("exec")
 
 
+def test_run_codex_highlight_retries_timeout(tmp_path, monkeypatch):
+    calls = 0
+
+    def fake_run(args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise subprocess.TimeoutExpired(cmd=args, timeout=kwargs["timeout"])
+        output_path = args[args.index("--output-last-message") + 1]
+        with open(output_path, "w", encoding="utf-8") as output_file:
+            output_file.write('{"bullet_updates": []}')
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    response = run_codex_highlight(
+        "prompt",
+        project_root=tmp_path,
+        codex_command="codex",
+        retry_count=1,
+    )
+
+    assert calls == 2
+    assert response == '{"bullet_updates": []}'
+
+
 def _sample_resume() -> dict[str, object]:
     return {
         "professional_experience": {
