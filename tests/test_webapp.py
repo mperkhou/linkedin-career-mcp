@@ -2092,21 +2092,100 @@ def test_seed_workflow_runs_selected_make_targets_for_seeded_jobs(monkeypatch):
         [
             "make",
             "regenerate-draft-resumes",
-            "JOB_IDS=url-123 url-456",
+            "JOB_IDS=url-123",
             "FIRST_DRAFT_FORCE=1",
         ],
-        ["make", "refine-draft-resumes", "JOB_IDS=url-123 url-456"],
-        ["make", "manual-pass-resumes", "JOB_IDS=url-123 url-456"],
+        [
+            "make",
+            "regenerate-draft-resumes",
+            "JOB_IDS=url-456",
+            "FIRST_DRAFT_FORCE=1",
+        ],
+        ["make", "refine-draft-resumes", "JOB_IDS=url-123"],
+        ["make", "refine-draft-resumes", "JOB_IDS=url-456"],
+        ["make", "manual-pass-resumes", "JOB_IDS=url-123"],
+        ["make", "manual-pass-resumes", "JOB_IDS=url-456"],
         [
             "make",
             "highlight-draft-resumes",
-            "JOB_IDS=url-123 url-456",
+            "JOB_IDS=url-123",
+            "HIGHLIGHT_RESUME_VARIANT=manual",
+        ],
+        [
+            "make",
+            "highlight-draft-resumes",
+            "JOB_IDS=url-456",
             "HIGHLIGHT_RESUME_VARIANT=manual",
         ],
     ]
     status = webapp.background_action_snapshots()[0]
     assert status["status"] == "completed"
     assert any("Seeded job IDs: url-123 url-456" in line for line in status["messages"])
+
+
+def test_background_action_continues_batch_after_single_job_failure(monkeypatch):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    calls: list[tuple[str, str]] = []
+    highlights: list[tuple[str, object]] = []
+
+    def fake_regenerate_action(**kwargs):
+        job_id = kwargs["job_ids"][0]
+        regenerate_mode = kwargs["regenerate_mode"]
+        calls.append((regenerate_mode, job_id))
+        if regenerate_mode == "resume_variants" and job_id == "url-456":
+            raise RuntimeError("Oracle experience rewrite timed out")
+
+    def fake_highlight_action(**kwargs):
+        job_id = kwargs["job_ids"][0]
+        highlights.append((job_id, kwargs.get("variant_key")))
+
+    monkeypatch.setattr(webapp, "_run_regenerate_action", fake_regenerate_action)
+    monkeypatch.setattr(webapp, "_run_highlight_action", fake_highlight_action)
+
+    run = webapp._create_background_action_run(title="batch workflow")  # noqa: SLF001
+    webapp._run_background_action(  # noqa: SLF001
+        run_id=run.run_id,
+        regenerate_mode="resume_variants",
+        job_ids=["url-123", "url-456", "url-789"],
+        run_manual=True,
+        highlight_with_codex=True,
+    )
+
+    status = webapp.background_action_snapshots()[0]
+    assert status["status"] == "completed"
+    assert calls == [
+        ("resume_variants", "url-123"),
+        ("resume_variants", "url-456"),
+        ("resume_variants", "url-789"),
+        ("manual_pass", "url-123"),
+        ("manual_pass", "url-789"),
+    ]
+    assert highlights == [("url-123", "manual"), ("url-789", "manual")]
+    assert any("partial failures" in line for line in status["messages"])
+    assert any("url-456" in line and "timed out" in line for line in status["messages"])
+
+
+def test_background_action_fails_when_every_batch_job_fails(monkeypatch):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    def fake_regenerate_action(**kwargs):
+        raise RuntimeError(f"{kwargs['job_ids'][0]} timed out")
+
+    monkeypatch.setattr(webapp, "_run_regenerate_action", fake_regenerate_action)
+
+    run = webapp._create_background_action_run(title="batch workflow")  # noqa: SLF001
+    webapp._run_background_action(  # noqa: SLF001
+        run_id=run.run_id,
+        regenerate_mode="resume_variants",
+        job_ids=["url-123", "url-456"],
+    )
+
+    status = webapp.background_action_snapshots()[0]
+    assert status["status"] == "failed"
+    assert any("All workflow jobs failed" in line for line in status["messages"])
 
 
 def test_seed_workflow_skips_selected_steps_when_no_jobs_seeded(monkeypatch):

@@ -120,6 +120,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "Set to 0 or a negative value to disable."
         ),
     )
+    parser.add_argument(
+        "--llm-retries",
+        type=int,
+        default=1,
+        help="Number of timeout retries for each v1 LLM API call.",
+    )
     return parser
 
 
@@ -167,6 +173,11 @@ async def main_async(argv: Sequence[str] | None = None) -> int:
         file=sys.stderr,
         flush=True,
     )
+    print(
+        f"V1 LLM timeout retries: {max(0, args.llm_retries)} per call",
+        file=sys.stderr,
+        flush=True,
+    )
 
     processed = 0
     failures: list[dict[str, str]] = []
@@ -190,6 +201,7 @@ async def main_async(argv: Sequence[str] | None = None) -> int:
                     artifact_dir=args.artifact_dir,
                     max_jod_chars=args.max_jod_chars,
                     llm_timeout_seconds=args.llm_timeout_seconds,
+                    llm_retry_count=args.llm_retries,
                 )
             except Exception as exc:
                 failures.append({"job_id": candidate.job_id, "error": str(exc)})
@@ -277,6 +289,7 @@ async def backport_candidate(
     artifact_dir: Path | None,
     max_jod_chars: int,
     llm_timeout_seconds: float | None,
+    llm_retry_count: int,
 ) -> None:
     aro = initialize_application_resume_object(master_resume_path)
     prompt = build_core_skills_jod_match_prompt(
@@ -288,6 +301,7 @@ async def backport_candidate(
         job_id=candidate.job_id,
         step_name="core skill matching",
         timeout_seconds=llm_timeout_seconds,
+        retry_count=llm_retry_count,
         operation=lambda: llm.generate_json(prompt),
     )
     first_draft_aro = apply_core_skill_jod_matches(
@@ -304,6 +318,7 @@ async def backport_candidate(
         job_id=candidate.job_id,
         step_name="JOD target extraction",
         timeout_seconds=llm_timeout_seconds,
+        retry_count=llm_retry_count,
         operation=lambda: jod_llm.generate_json(jod_prompt),
     )
     jod_object = create_job_opening_description_object(
@@ -334,6 +349,7 @@ async def backport_candidate(
         job_id=candidate.job_id,
         step_name="Oracle experience rewrite",
         timeout_seconds=llm_timeout_seconds,
+        retry_count=llm_retry_count,
         operation=lambda: jod_llm.generate_text(oracle_prompt),
     )
     first_draft_aro = replace_experience_job_bullets_from_text_response(
@@ -359,6 +375,7 @@ async def backport_candidate(
             job_id=candidate.job_id,
             step_name=step_name,
             timeout_seconds=llm_timeout_seconds,
+            retry_count=llm_retry_count,
             operation=lambda prompt=rewrite_prompt: jod_llm.generate_text(prompt),
         )
         first_draft_aro = replace_experience_job_bullets_from_text_response(
@@ -440,26 +457,62 @@ async def _run_llm_step(
     job_id: str,
     step_name: str,
     timeout_seconds: float | None,
+    retry_count: int = 0,
     operation: Callable[[], Awaitable[T]],
 ) -> T:
-    started = _log_step_started(job_id, step_name, timeout_seconds=timeout_seconds)
-    try:
-        if timeout_seconds is None or timeout_seconds <= 0:
-            result = await operation()
-        else:
-            result = await asyncio.wait_for(operation(), timeout=timeout_seconds)
-    except TimeoutError as exc:
-        detail = (
-            f"{step_name} timed out for {job_id} after "
-            f"{timeout_seconds:g} seconds."
+    attempts = max(1, retry_count + 1)
+    for attempt in range(1, attempts + 1):
+        attempt_step_name = _attempt_step_name(step_name, attempt=attempt, attempts=attempts)
+        started = _log_step_started(
+            job_id,
+            attempt_step_name,
+            timeout_seconds=timeout_seconds,
         )
-        _log_step_failed(job_id, step_name, started, detail, status="timed out")
-        raise TimeoutError(detail) from exc
-    except Exception as exc:
-        _log_step_failed(job_id, step_name, started, str(exc))
-        raise
-    _log_step_completed(job_id, step_name, started)
-    return result
+        try:
+            if timeout_seconds is None or timeout_seconds <= 0:
+                result = await operation()
+            else:
+                result = await asyncio.wait_for(operation(), timeout=timeout_seconds)
+        except TimeoutError as exc:
+            timeout_value = (
+                f"{timeout_seconds:g}" if timeout_seconds is not None else "unknown"
+            )
+            detail = (
+                f"{step_name} timed out for {job_id} after "
+                f"{timeout_value} seconds."
+            )
+            _log_step_failed(job_id, attempt_step_name, started, detail, status="timed out")
+            if attempt < attempts:
+                _log_step_retrying(job_id, step_name, attempt=attempt, attempts=attempts)
+                continue
+            raise TimeoutError(detail) from exc
+        except Exception as exc:
+            _log_step_failed(job_id, attempt_step_name, started, str(exc))
+            raise
+        _log_step_completed(job_id, attempt_step_name, started)
+        return result
+    raise AssertionError("unreachable retry loop exit")
+
+
+def _attempt_step_name(step_name: str, *, attempt: int, attempts: int) -> str:
+    if attempts <= 1:
+        return step_name
+    return f"{step_name} attempt {attempt}/{attempts}"
+
+
+def _log_step_retrying(
+    job_id: str,
+    step_name: str,
+    *,
+    attempt: int,
+    attempts: int,
+) -> None:
+    print(
+        f"[{job_id}] {step_name}: retrying after timeout "
+        f"(attempt {attempt + 1}/{attempts})",
+        file=sys.stderr,
+        flush=True,
+    )
 
 
 def _log_step_started(

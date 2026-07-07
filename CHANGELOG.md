@@ -1,5 +1,18 @@
 # linkedin-career-mcp CHANGELOG
 
+## 4.6.0 - Add retryable partial batch workflows
+
+* Add default retry knobs for v1 LLM calls, second-pass API calls, Codex manual
+  passes, and Codex highlighting so timeout-prone workflow steps get one
+  automatic retry before failing the row.
+* Change tracker background batch chains to run job-aware stages that keep
+  successful rows moving through v2, manual pass, and highlighting when a sibling
+  job fails.
+* Report partial batch failures in tracker action status without marking the
+  whole action failed when at least one job completes.
+* Add regression coverage for retry defaults, timeout retry behavior, and
+  partial-success batch sequencing.
+
 ## 4.5.0 - Refresh Oracle AI platform MRO evidence
 
 * Update `profile/MP-MASTER-RESUME.txt` with the latest OLAM MCP, ONDA reporting,

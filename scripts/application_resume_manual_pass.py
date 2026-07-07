@@ -93,6 +93,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
         help="Maximum seconds to wait for each Codex manual pass.",
     )
+    parser.add_argument(
+        "--retry-count",
+        type=int,
+        default=int(os.environ.get("LINKEDIN_CAREER_MCP_CODEX_RETRIES", "1")),
+        help="Number of timeout retries for each Codex manual pass.",
+    )
     return parser
 
 
@@ -126,6 +132,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 codex_model=args.codex_model,
                 codex_reasoning_effort=args.codex_reasoning_effort,
                 timeout_seconds=args.timeout_seconds,
+                retry_count=args.retry_count,
                 artifact_dir=args.artifact_dir,
                 dry_run=args.dry_run,
             )

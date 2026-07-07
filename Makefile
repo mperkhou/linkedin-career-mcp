@@ -17,12 +17,15 @@ MASTER_RESUME ?= profile/MASTER-RESUME.yml
 JOD_MODEL ?= z-ai/glm-5.2
 CORE_SKILL_MODEL ?= $(JOD_MODEL)
 FIRST_DRAFT_LLM_TIMEOUT_SECONDS ?= 300
+FIRST_DRAFT_LLM_RETRIES ?= 1
 SECOND_PASS_MODEL ?= z-ai/glm-5.2
 SECOND_PASS_TIMEOUT_SECONDS ?= 600
+SECOND_PASS_RETRIES ?= 1
 CODEX_COMMAND ?= codex
 CODEX_MODEL ?= gpt-5.5
 CODEX_REASONING_EFFORT ?= xhigh
 CODEX_TIMEOUT_SECONDS ?= 900
+CODEX_RETRIES ?= 1
 MANUAL_PASS_MASTER_RESUME_TEXT ?= profile/MP-MASTER-RESUME.txt
 HIGHLIGHT_RESUME_VARIANT ?=
 HIGHLIGHT_EXPERIENCE_COMPANY ?=
@@ -88,7 +91,7 @@ regenerate-draft-resumes: venv
 	if [ "$(FIRST_DRAFT_FORCE)" = "1" ] || [ "$(FIRST_DRAFT_FORCE)" = "true" ]; then \
 		force_arg="--force"; \
 	fi; \
-	$(VENV_PYTHON) scripts/application_resume_generate_drafts.py --master-resume "$(MASTER_RESUME)" --api-model "$(CORE_SKILL_MODEL)" --jod-model "$(JOD_MODEL)" --llm-timeout-seconds "$(FIRST_DRAFT_LLM_TIMEOUT_SECONDS)" $$job_args $$force_arg
+	$(VENV_PYTHON) scripts/application_resume_generate_drafts.py --master-resume "$(MASTER_RESUME)" --api-model "$(CORE_SKILL_MODEL)" --jod-model "$(JOD_MODEL)" --llm-timeout-seconds "$(FIRST_DRAFT_LLM_TIMEOUT_SECONDS)" --llm-retries "$(FIRST_DRAFT_LLM_RETRIES)" $$job_args $$force_arg
 
 regenerate-resumes: regenerate-draft-resumes refine-draft-resumes
 
@@ -121,7 +124,7 @@ refine-draft-resumes: venv
 			job_args="$$job_args --job-id $$job_id"; \
 		done; \
 	fi; \
-	$(VENV)/bin/linkedin-career-refine-resume $$job_args --master-resume "$(MASTER_RESUME)" --api-model "$(SECOND_PASS_MODEL)" --api-timeout-seconds "$(SECOND_PASS_TIMEOUT_SECONDS)"
+	$(VENV)/bin/linkedin-career-refine-resume $$job_args --master-resume "$(MASTER_RESUME)" --api-model "$(SECOND_PASS_MODEL)" --api-timeout-seconds "$(SECOND_PASS_TIMEOUT_SECONDS)" --api-retries "$(SECOND_PASS_RETRIES)"
 
 highlight-draft-resumes: venv
 	@job_args=""; \
@@ -140,7 +143,7 @@ highlight-draft-resumes: venv
 	if [ -n "$(HIGHLIGHT_EXPERIENCE_JOB_ORDER)" ]; then \
 		filter_args="$$filter_args --experience-job-order $(HIGHLIGHT_EXPERIENCE_JOB_ORDER)"; \
 	fi; \
-	$(VENV_PYTHON) scripts/application_resume_highlight_drafts.py --codex-command "$(CODEX_COMMAND)" --codex-model "$(CODEX_MODEL)" --codex-reasoning-effort "$(CODEX_REASONING_EFFORT)" --timeout-seconds "$(CODEX_TIMEOUT_SECONDS)" $$job_args $$filter_args
+	$(VENV_PYTHON) scripts/application_resume_highlight_drafts.py --codex-command "$(CODEX_COMMAND)" --codex-model "$(CODEX_MODEL)" --codex-reasoning-effort "$(CODEX_REASONING_EFFORT)" --timeout-seconds "$(CODEX_TIMEOUT_SECONDS)" --retry-count "$(CODEX_RETRIES)" $$job_args $$filter_args
 
 manual-pass-resumes: venv
 	@if [ "$(JOB_IDS)" = "all" ]; then \
@@ -151,7 +154,7 @@ manual-pass-resumes: venv
 	for job_id in $(JOB_IDS); do \
 		job_args="$$job_args --job-id $$job_id"; \
 	done; \
-	$(VENV_PYTHON) scripts/application_resume_manual_pass.py --master-resume "$(MASTER_RESUME)" --master-resume-text "$(MANUAL_PASS_MASTER_RESUME_TEXT)" --codex-command "$(CODEX_COMMAND)" --codex-model "$(CODEX_MODEL)" --codex-reasoning-effort "$(CODEX_REASONING_EFFORT)" --timeout-seconds "$(CODEX_TIMEOUT_SECONDS)" $$job_args
+	$(VENV_PYTHON) scripts/application_resume_manual_pass.py --master-resume "$(MASTER_RESUME)" --master-resume-text "$(MANUAL_PASS_MASTER_RESUME_TEXT)" --codex-command "$(CODEX_COMMAND)" --codex-model "$(CODEX_MODEL)" --codex-reasoning-effort "$(CODEX_REASONING_EFFORT)" --timeout-seconds "$(CODEX_TIMEOUT_SECONDS)" --retry-count "$(CODEX_RETRIES)" $$job_args
 
 launch-website: venv
 	$(VENV)/bin/linkedin-career-webapp --host "$(WEBSITE_HOST)" --port "$(WEBSITE_PORT)" --open-browser

@@ -31,6 +31,7 @@ def test_first_draft_llm_timeout_defaults_to_300_seconds() -> None:
     args = drafts.build_arg_parser().parse_args([])
 
     assert args.llm_timeout_seconds == 300.0
+    assert args.llm_retries == 1
 
 
 @pytest.mark.asyncio
@@ -74,3 +75,30 @@ async def test_first_draft_llm_step_logs_elapsed_completion(capsys) -> None:
         r"\[url-123\] JOD target extraction: completed in \d+\.\ds",
         stderr,
     )
+
+
+@pytest.mark.asyncio
+async def test_first_draft_llm_step_retries_timeout_once(capsys) -> None:
+    calls = 0
+
+    async def flaky_operation() -> dict[str, bool]:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            await asyncio.sleep(1)
+        return {"ok": True}
+
+    result = await drafts._run_llm_step(
+        job_id="url-123",
+        step_name="Oracle experience rewrite",
+        timeout_seconds=0.01,
+        retry_count=1,
+        operation=flaky_operation,
+    )
+
+    stderr = capsys.readouterr().err
+    assert result == {"ok": True}
+    assert calls == 2
+    assert "Oracle experience rewrite attempt 1/2: timed out" in stderr
+    assert "Oracle experience rewrite: retrying after timeout (attempt 2/2)" in stderr
+    assert "Oracle experience rewrite attempt 2/2: completed" in stderr

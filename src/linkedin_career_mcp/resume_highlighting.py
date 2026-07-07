@@ -6,6 +6,7 @@ import json
 import re
 import shlex
 import subprocess
+import sys
 import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -168,60 +169,74 @@ def run_codex_highlight(
     codex_model: str = DEFAULT_CODEX_MODEL,
     codex_reasoning_effort: str = DEFAULT_CODEX_REASONING_EFFORT,
     timeout_seconds: int = DEFAULT_CODEX_TIMEOUT_SECONDS,
+    retry_count: int = 0,
 ) -> str:
     command = shlex.split(codex_command)
     if not command:
         raise ResumeHighlightError("Codex command cannot be empty.")
 
-    with tempfile.TemporaryDirectory(prefix="resume-highlight-") as temp_dir:
-        output_path = Path(temp_dir) / "codex-output.txt"
-        args = [
-            *command,
-            "--ask-for-approval",
-            "never",
-        ]
-        _append_codex_reasoning_effort(args, codex_reasoning_effort)
-        args.extend(
-            [
-                "exec",
-                "-C",
-                str(project_root),
-                "--sandbox",
-                "read-only",
-                "--output-last-message",
-                str(output_path),
+    attempts = max(1, retry_count + 1)
+    for attempt in range(1, attempts + 1):
+        with tempfile.TemporaryDirectory(prefix="resume-highlight-") as temp_dir:
+            output_path = Path(temp_dir) / "codex-output.txt"
+            args = [
+                *command,
+                "--ask-for-approval",
+                "never",
             ]
-        )
-        if codex_model:
-            args.extend(["--model", codex_model])
-        args.append("-")
-
-        try:
-            completed = subprocess.run(  # noqa: S603
-                args,
-                input=prompt,
-                text=True,
-                capture_output=True,
-                timeout=timeout_seconds,
-                check=False,
+            _append_codex_reasoning_effort(args, codex_reasoning_effort)
+            args.extend(
+                [
+                    "exec",
+                    "-C",
+                    str(project_root),
+                    "--sandbox",
+                    "read-only",
+                    "--output-last-message",
+                    str(output_path),
+                ]
             )
-        except subprocess.TimeoutExpired as exc:
-            raise ResumeHighlightError(
-                f"Codex highlighting timed out after {timeout_seconds} seconds."
-            ) from exc
+            if codex_model:
+                args.extend(["--model", codex_model])
+            args.append("-")
 
-        if completed.returncode != 0:
-            stderr = _short_process_output(completed.stderr or completed.stdout)
-            raise ResumeHighlightError(
-                f"Codex highlighting exited with status {completed.returncode}: {stderr}"
-            )
-        if not output_path.is_file():
-            raise ResumeHighlightError("Codex did not write a final-message output file.")
+            try:
+                completed = subprocess.run(  # noqa: S603
+                    args,
+                    input=prompt,
+                    text=True,
+                    capture_output=True,
+                    timeout=timeout_seconds,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired as exc:
+                if attempt < attempts:
+                    print(
+                        (
+                            "Codex highlighting timed out; retrying "
+                            f"(attempt {attempt + 1}/{attempts})"
+                        ),
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    continue
+                raise ResumeHighlightError(
+                    f"Codex highlighting timed out after {timeout_seconds} seconds."
+                ) from exc
 
-        response = output_path.read_text(encoding="utf-8").strip()
-        if not response:
-            raise ResumeHighlightError("Codex returned an empty highlighting response.")
-        return response
+            if completed.returncode != 0:
+                stderr = _short_process_output(completed.stderr or completed.stdout)
+                raise ResumeHighlightError(
+                    f"Codex highlighting exited with status {completed.returncode}: {stderr}"
+                )
+            if not output_path.is_file():
+                raise ResumeHighlightError("Codex did not write a final-message output file.")
+
+            response = output_path.read_text(encoding="utf-8").strip()
+            if not response:
+                raise ResumeHighlightError("Codex returned an empty highlighting response.")
+            return response
+    raise AssertionError("unreachable retry loop exit")
 
 
 def _append_codex_reasoning_effort(args: list[str], codex_reasoning_effort: str) -> None:

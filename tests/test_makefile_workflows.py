@@ -34,6 +34,7 @@ def test_regenerate_draft_resumes_make_target_uses_final_jod_workflow() -> None:
     assert '--api-model "z-ai/glm-5.2"' in output
     assert '--jod-model "z-ai/glm-5.2"' in output
     assert '--llm-timeout-seconds "300"' in output
+    assert '--llm-retries "1"' in output
     assert "for job_id in url-123" in output
     assert 'job_args="$job_args --job-id $job_id"' in output
     assert "$job_args $force_arg" in output
@@ -55,6 +56,7 @@ def test_regenerate_draft_resumes_make_target_honors_resume_and_model_overrides(
     assert '--api-model "core/example"' in output
     assert '--jod-model "example/model"' in output
     assert '--llm-timeout-seconds "45"' in output
+    assert '--llm-retries "1"' in output
     assert "for job_id in url-123" in output
     assert "$job_args $force_arg" in output
 
@@ -74,7 +76,9 @@ def test_regenerate_resumes_make_target_runs_v1_then_v2_workflow() -> None:
     assert '--api-model "z-ai/glm-5.2"' in output
     assert '--jod-model "z-ai/glm-5.2"' in output
     assert '--llm-timeout-seconds "300"' in output
+    assert '--llm-retries "1"' in output
     assert '--api-timeout-seconds "600"' in output
+    assert '--api-retries "1"' in output
     assert "for job_id in url-123" in output
 
 
@@ -89,6 +93,7 @@ def test_refine_draft_resumes_make_target_uses_glm_second_pass_model() -> None:
     assert '--master-resume "profile/MASTER-RESUME.yml"' in output
     assert '--api-model "z-ai/glm-5.2"' in output
     assert '--api-timeout-seconds "600"' in output
+    assert '--api-retries "1"' in output
     assert "for job_id in url-123" in output
 
 
@@ -99,6 +104,7 @@ def test_refine_draft_resumes_make_target_defaults_to_all_active() -> None:
     assert 'job_args="--all-active"' in output
     assert '--api-model "z-ai/glm-5.2"' in output
     assert '--api-timeout-seconds "600"' in output
+    assert '--api-retries "1"' in output
 
 
 def test_highlight_draft_resumes_make_target_uses_codex_workflow() -> None:
@@ -118,6 +124,7 @@ def test_highlight_draft_resumes_make_target_uses_codex_workflow() -> None:
     assert '--codex-model "gpt-5.5"' in output
     assert '--codex-reasoning-effort "xhigh"' in output
     assert '--timeout-seconds "900"' in output
+    assert '--retry-count "1"' in output
     assert "--variant-key v2" in output
     assert "--experience-company Oracle" in output
     assert "for job_id in url-123" in output
@@ -141,5 +148,6 @@ def test_manual_pass_resumes_make_target_uses_codex_workflow() -> None:
     assert '--codex-model "gpt-5.5"' in output
     assert '--codex-reasoning-effort "xhigh"' in output
     assert '--timeout-seconds "900"' in output
+    assert '--retry-count "1"' in output
     assert "for job_id in url-123" in output
     assert 'job_args="$job_args --job-id $job_id"' in output

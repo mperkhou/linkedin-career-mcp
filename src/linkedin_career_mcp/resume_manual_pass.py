@@ -4,6 +4,7 @@ import json
 import shlex
 import sqlite3
 import subprocess
+import sys
 import tempfile
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
@@ -61,6 +62,7 @@ def run_manual_resume_pass_for_job(
     codex_model: str = DEFAULT_CODEX_MODEL,
     codex_reasoning_effort: str = DEFAULT_CODEX_REASONING_EFFORT,
     timeout_seconds: int = DEFAULT_CODEX_TIMEOUT_SECONDS,
+    retry_count: int = 0,
     artifact_dir: Path | None = None,
     dry_run: bool = False,
 ) -> dict[str, Any]:
@@ -86,6 +88,7 @@ def run_manual_resume_pass_for_job(
         codex_model=codex_model,
         codex_reasoning_effort=codex_reasoning_effort,
         timeout_seconds=timeout_seconds,
+        retry_count=retry_count,
     )
     parsed_response = parse_manual_pass_response(response_text)
     aro_yaml = yaml.safe_dump(
@@ -266,59 +269,75 @@ def run_codex_manual_pass(
     codex_model: str = DEFAULT_CODEX_MODEL,
     codex_reasoning_effort: str = DEFAULT_CODEX_REASONING_EFFORT,
     timeout_seconds: int = DEFAULT_CODEX_TIMEOUT_SECONDS,
+    retry_count: int = 0,
 ) -> str:
     command = shlex.split(codex_command)
     if not command:
         raise ResumeManualPassError("Codex command cannot be empty.")
 
-    with tempfile.TemporaryDirectory(prefix="resume-manual-pass-") as temp_dir:
-        output_path = Path(temp_dir) / "codex-output.txt"
-        args = [
-            *command,
-            "--ask-for-approval",
-            "never",
-        ]
-        _append_codex_reasoning_effort(args, codex_reasoning_effort)
-        args.extend(
-            [
-                "exec",
-                "-C",
-                str(project_root),
-                "--sandbox",
-                "read-only",
-                "--output-last-message",
-                str(output_path),
+    attempts = max(1, retry_count + 1)
+    for attempt in range(1, attempts + 1):
+        with tempfile.TemporaryDirectory(prefix="resume-manual-pass-") as temp_dir:
+            output_path = Path(temp_dir) / "codex-output.txt"
+            args = [
+                *command,
+                "--ask-for-approval",
+                "never",
             ]
-        )
-        if codex_model:
-            args.extend(["--model", codex_model])
-        args.append("-")
-
-        try:
-            completed = subprocess.run(  # noqa: S603
-                args,
-                input=prompt,
-                text=True,
-                capture_output=True,
-                timeout=timeout_seconds,
-                check=False,
+            _append_codex_reasoning_effort(args, codex_reasoning_effort)
+            args.extend(
+                [
+                    "exec",
+                    "-C",
+                    str(project_root),
+                    "--sandbox",
+                    "read-only",
+                    "--output-last-message",
+                    str(output_path),
+                ]
             )
-        except subprocess.TimeoutExpired as exc:
-            raise ResumeManualPassError(
-                f"Codex manual pass timed out after {timeout_seconds} seconds."
-            ) from exc
+            if codex_model:
+                args.extend(["--model", codex_model])
+            args.append("-")
 
-        if completed.returncode != 0:
-            stderr = _short_process_output(completed.stderr or completed.stdout)
-            raise ResumeManualPassError(
-                f"Codex manual pass exited with status {completed.returncode}: {stderr}"
-            )
-        if not output_path.is_file():
-            raise ResumeManualPassError("Codex did not write a final-message output file.")
-        response = output_path.read_text(encoding="utf-8").strip()
-        if not response:
-            raise ResumeManualPassError("Codex returned an empty manual-pass response.")
-        return response
+            try:
+                completed = subprocess.run(  # noqa: S603
+                    args,
+                    input=prompt,
+                    text=True,
+                    capture_output=True,
+                    timeout=timeout_seconds,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired as exc:
+                if attempt < attempts:
+                    print(
+                        (
+                            "Codex manual pass timed out; retrying "
+                            f"(attempt {attempt + 1}/{attempts})"
+                        ),
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    continue
+                raise ResumeManualPassError(
+                    f"Codex manual pass timed out after {timeout_seconds} seconds."
+                ) from exc
+
+            if completed.returncode != 0:
+                stderr = _short_process_output(completed.stderr or completed.stdout)
+                raise ResumeManualPassError(
+                    f"Codex manual pass exited with status {completed.returncode}: {stderr}"
+                )
+            if not output_path.is_file():
+                raise ResumeManualPassError(
+                    "Codex did not write a final-message output file."
+                )
+            response = output_path.read_text(encoding="utf-8").strip()
+            if not response:
+                raise ResumeManualPassError("Codex returned an empty manual-pass response.")
+            return response
+    raise AssertionError("unreachable retry loop exit")
 
 
 def parse_manual_pass_response(response_text: str) -> ManualPassResponse:

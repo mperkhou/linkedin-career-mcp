@@ -112,6 +112,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Maximum seconds to wait for each Codex highlighting call.",
     )
     parser.add_argument(
+        "--retry-count",
+        type=int,
+        default=int(os.environ.get("LINKEDIN_CAREER_MCP_CODEX_RETRIES", "1")),
+        help="Number of timeout retries for each Codex highlighting call.",
+    )
+    parser.add_argument(
         "--max-strong-spans-per-bullet",
         type=int,
         default=3,
@@ -170,6 +176,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 codex_model=args.codex_model,
                 codex_reasoning_effort=args.codex_reasoning_effort,
                 timeout_seconds=args.timeout_seconds,
+                retry_count=args.retry_count,
                 max_strong_spans_per_bullet=args.max_strong_spans_per_bullet,
                 experience_company=args.experience_company,
                 experience_job_order=args.experience_job_order,
@@ -210,6 +217,7 @@ def _highlight_row(
     codex_model: str,
     codex_reasoning_effort: str,
     timeout_seconds: int,
+    retry_count: int,
     max_strong_spans_per_bullet: int,
     experience_company: str | None,
     experience_job_order: str | None,
@@ -252,6 +260,7 @@ def _highlight_row(
         codex_model=codex_model,
         codex_reasoning_effort=codex_reasoning_effort,
         timeout_seconds=timeout_seconds,
+        retry_count=retry_count,
     )
     _write_artifact(
         artifact_dir=artifact_dir,
