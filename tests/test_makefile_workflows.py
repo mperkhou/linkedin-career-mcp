@@ -22,6 +22,22 @@ def _make_dry_run(*args: str) -> str:
     return result.stdout
 
 
+def test_skill_link_make_target_links_agentic_controller_by_default() -> None:
+    output = _make_dry_run("skill-link")
+
+    assert "linkedin-career-mcp" in output
+    assert "master-resume-yaml" in output
+    assert "manual-resume-passthrough" in output
+    assert "agentic-workflow-controller" in output
+
+
+def test_skill_link_make_target_honors_single_skill_override() -> None:
+    output = _make_dry_run("skill-link", "SKILL_NAME=agentic-workflow-controller")
+
+    assert "agentic-workflow-controller" in output
+    assert "linkedin-career-mcp master-resume-yaml manual-resume-passthrough" not in output
+
+
 def test_regenerate_draft_resumes_make_target_uses_final_jod_workflow() -> None:
     output = _make_dry_run(
         "regenerate-draft-resumes",

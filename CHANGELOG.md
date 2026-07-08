@@ -1,5 +1,13 @@
 # linkedin-career-mcp CHANGELOG
 
+## 4.7.1 - Link agentic workflow controller by default
+
+* Add `agentic-workflow-controller` to the default `make skill-link` skill set
+  so fresh installs and setup refreshes expose the controller alongside the
+  repo's existing workflow skills.
+* Add regression coverage for the default skill-link list and bump the package
+  version to `4.7.1`.
+
 ## 4.7.0 - Add agentic workflow controller skill
 
 * Add an `agentic-workflow-controller` skill for staged implementation runs
