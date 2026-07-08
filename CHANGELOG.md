@@ -1,5 +1,17 @@
 # linkedin-career-mcp CHANGELOG
 
+## 4.7.0 - Add agentic workflow controller skill
+
+* Add an `agentic-workflow-controller` skill for staged implementation runs
+  that combine P-step execution, G-step reassessment gates, pause conditions,
+  and local JSON workflow state.
+* Add tracked workflow tracker and plan templates plus a small helper script
+  that initializes ignored runtime copies under `tmp/agentic-workflows/`.
+* Document the controller as procedural Codex guidance rather than a background
+  daemon, keeping repo release and safety guardrails anchored in `AGENTS.md`.
+* Add regression coverage for the controller skill, tracked templates, runtime
+  state initialization, validation, and overwrite protection.
+
 ## 4.6.0 - Add retryable partial batch workflows
 
 * Add default retry knobs for v1 LLM calls, second-pass API calls, Codex manual
