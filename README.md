@@ -23,6 +23,12 @@ that need to apply across Codex sessions. [ADR 0005](docs/adr/0005-canonical-age
 documents that decision, and the [4.3.0 release notes](docs/release-notes/4.3.0.md)
 summarize the implementation.
 
+For larger repo changes, the `agentic-workflow-controller` skill provides a
+lightweight staged workflow pattern: a committed plan/template describes P-step
+implementation work and G-step reassessment gates, while the live cursor is an
+ignored JSON file under `tmp/agentic-workflows/`. The controller is procedural
+guidance for Codex sessions, not a background service or permission bypass.
+
 ## Terms
 
 - **JOD**: Job Opening Description. This is the parsed posting text after trimming low-signal boilerplate such as benefits, compensation, legal notices, and generic company copy.
@@ -546,6 +552,9 @@ The active workflow modules are intentionally smaller than the retired artifact 
 - `src/linkedin_career_mcp/resume_highlighting.py`: guarded Codex JSON-patch workflow for selective resume bullet emphasis.
 - `src/linkedin_career_mcp/resume_rendering.py`: HTML/PDF rendering.
 - `src/linkedin_career_mcp/webapp.py`: database-backed review, edit, download, rescore, and background actions.
+- `skills/agentic-workflow-controller/`: procedural skill, tracked templates,
+  and helper script for staged P/G implementation workflows with local JSON
+  state under ignored `tmp/agentic-workflows/`.
 
 Keep the MRO neutral: empty `jod_matched_items`, zero match counts, source-evidence bullets, and no job-specific pruning. Job-specific generated bullets belong in the ARO stored on the application row.
 

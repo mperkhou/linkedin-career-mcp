@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agentic Workflow Controller"
+  short_description: "Track gated implementation workflows."
+  default_prompt: "Use $agentic-workflow-controller to start or continue a staged implementation workflow from a tracked plan and local JSON state."

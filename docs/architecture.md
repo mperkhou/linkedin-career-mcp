@@ -50,6 +50,17 @@ This keeps agent behavior aligned across tracker workflows, Codex manual pass,
 Codex highlighting, release closeout, and application-writing work without
 duplicating the same operational rules in every human-facing document.
 
+The `skills/agentic-workflow-controller/` skill extends that guidance for large
+multi-step repo changes. It defines a procedural controller pattern for staged
+implementation prompts, P-step execution, G-step reassessment gates, validation
+evidence, and pause conditions. The tracked skill assets define the plan and
+tracker templates; a live workflow copies them into ignored
+`tmp/agentic-workflows/<workflow_id>/` state so progress can be resumed without
+committing noisy cursor data. The controller does not run as a daemon, grant
+extra permissions, or replace `AGENTS.md`; it gives Codex sessions a repeatable
+way to execute already-authorized work while preserving release, artifact, and
+resume-evidence guardrails.
+
 ## Core Layers
 
 ```text

@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Agentic workflow runtime tracker",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "workflow_id",
+    "release_version",
+    "objective",
+    "state",
+    "current_step",
+    "planned_steps",
+    "completed_steps",
+    "gates",
+    "pause_conditions",
+    "validation",
+    "branch",
+    "pull_request",
+    "artifacts",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "workflow_id": { "type": "string", "minLength": 1 },
+    "release_version": { "type": "string", "minLength": 1 },
+    "objective": { "type": "string", "minLength": 1 },
+    "state": {
+      "type": "string",
+      "enum": ["running", "paused", "complete", "blocked"]
+    },
+    "current_step": {
+      "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
+    },
+    "planned_steps": { "type": "array" },
+    "completed_steps": { "type": "array" },
+    "gates": { "type": "array" },
+    "pause_conditions": { "type": "array" },
+    "validation": { "type": "array" },
+    "branch": {
+      "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
+    },
+    "pull_request": {
+      "anyOf": [
+        { "type": "string", "minLength": 1 },
+        { "type": "integer" },
+        { "type": "null" }
+      ]
+    },
+    "artifacts": { "type": "array" },
+    "created_at": { "type": "string", "minLength": 1 },
+    "updated_at": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": false
+}

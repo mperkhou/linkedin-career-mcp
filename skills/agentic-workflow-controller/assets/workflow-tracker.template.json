@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "workflow_id": "__WORKFLOW_ID__",
+  "release_version": "__VERSION__",
+  "objective": "__OBJECTIVE__",
+  "state": "running",
+  "current_step": null,
+  "planned_steps": [],
+  "completed_steps": [],
+  "gates": [],
+  "pause_conditions": [],
+  "validation": [],
+  "branch": null,
+  "pull_request": null,
+  "artifacts": [],
+  "created_at": "__CREATED_AT__",
+  "updated_at": "__CREATED_AT__"
+}
