@@ -43,3 +43,24 @@ def test_agents_guidance_is_linked_from_docs() -> None:
     assert "AGENTS.md" in architecture
     assert "AGENTS.md" in adr
     assert "AGENTS.md" in release_notes
+
+
+def test_agentic_orchestration_docs_describe_evidence_routes() -> None:
+    readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+    adr = (PROJECT_ROOT / "docs/adr/0006-agentic-workflow-evidence-routes.md").read_text(
+        encoding="utf-8"
+    )
+    release_notes = (PROJECT_ROOT / "docs/release-notes/4.9.0.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "P steps" in readme
+    assert "G gates" in readme
+    assert "evidence_routes" in readme
+    assert "local_fallback" in readme
+    assert "subagents gather findings" in readme
+    assert "main agent owns edits" in readme
+    assert "reduces repeated prompt/response management" in adr
+    assert "separates read-only evidence gathering from mutation authority" in adr
+    assert "subagents are unavailable" in adr
+    assert "evidence routes" in release_notes
