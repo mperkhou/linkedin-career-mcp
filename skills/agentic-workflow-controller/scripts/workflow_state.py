@@ -34,7 +34,12 @@ REQUIRED_KEYS: dict[str, type | tuple[type, ...]] = {
     "created_at": str,
     "updated_at": str,
 }
+OPTIONAL_KEYS: dict[str, type | tuple[type, ...]] = {
+    "evidence_routes": list,
+}
 VALID_STATES = {"running", "paused", "complete", "blocked"}
+VALID_ROUTE_STATUSES = {"running", "complete", "failed"}
+VALID_ROUTE_EXECUTION_MODES = {"subagent", "local_fallback"}
 
 
 class WorkflowStateError(RuntimeError):
@@ -97,13 +102,37 @@ def _validate_payload(payload: dict[str, Any]) -> list[str]:
             errors.append(
                 f"{key} must be {expected_type}, got {type(payload[key]).__name__}"
             )
-    extra_keys = sorted(set(payload) - set(REQUIRED_KEYS))
+    for key, expected_type in OPTIONAL_KEYS.items():
+        if key not in payload:
+            continue
+        if not isinstance(payload[key], expected_type):
+            errors.append(
+                f"{key} must be {expected_type}, got {type(payload[key]).__name__}"
+            )
+    extra_keys = sorted(set(payload) - set(REQUIRED_KEYS) - set(OPTIONAL_KEYS))
     for key in extra_keys:
         errors.append(f"unexpected key: {key}")
     if payload.get("schema_version") != 1:
         errors.append("schema_version must be 1")
     if payload.get("state") not in VALID_STATES:
         errors.append(f"state must be one of {sorted(VALID_STATES)}")
+    for index, route in enumerate(payload.get("evidence_routes") or []):
+        if not isinstance(route, dict):
+            errors.append(f"evidence_routes[{index}] must be an object")
+            continue
+        for key in ("route_id", "step_id", "title", "status", "execution_mode"):
+            if not route.get(key):
+                errors.append(f"evidence_routes[{index}].{key} is required")
+        if route.get("status") not in VALID_ROUTE_STATUSES:
+            errors.append(
+                f"evidence_routes[{index}].status must be one of "
+                f"{sorted(VALID_ROUTE_STATUSES)}"
+            )
+        if route.get("execution_mode") not in VALID_ROUTE_EXECUTION_MODES:
+            errors.append(
+                f"evidence_routes[{index}].execution_mode must be one of "
+                f"{sorted(VALID_ROUTE_EXECUTION_MODES)}"
+            )
     return errors
 
 
@@ -121,6 +150,46 @@ def _save_tracker(path: Path, payload: dict[str, Any]) -> None:
     if errors:
         raise WorkflowStateError("; ".join(errors))
     _write_json(path, payload)
+
+
+def _routes_dir(tracker_path: Path) -> Path:
+    return tracker_path.parent / "routes"
+
+
+def _route_artifact_path(tracker_path: Path, route_id: str) -> Path:
+    return _routes_dir(tracker_path) / f"{route_id}.md"
+
+
+def _route_prompt_path(tracker_path: Path, route_id: str) -> Path:
+    return _routes_dir(tracker_path) / f"{route_id}.prompt.md"
+
+
+def _relative_to_project(path: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(PROJECT_ROOT))
+    except ValueError:
+        return str(path)
+
+
+def _route_list(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    routes = payload.setdefault("evidence_routes", [])
+    if not isinstance(routes, list):
+        raise WorkflowStateError("evidence_routes must be a list")
+    return routes
+
+
+def _find_route(payload: dict[str, Any], route_id: str) -> dict[str, Any]:
+    for route in _route_list(payload):
+        if route.get("route_id") == route_id:
+            return route
+    raise WorkflowStateError(f"evidence route not found: {route_id}")
+
+
+def _write_optional_text(path: Path, text: str | None) -> None:
+    if text is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
 
 
 def init_workflow(args: argparse.Namespace) -> dict[str, Any]:
@@ -164,6 +233,7 @@ def init_workflow(args: argparse.Namespace) -> dict[str, Any]:
 
 def status(args: argparse.Namespace) -> dict[str, Any]:
     payload = _load_valid_tracker(args.tracker)
+    routes = payload.get("evidence_routes") or []
     return {
         "workflow_id": payload["workflow_id"],
         "release_version": payload["release_version"],
@@ -171,6 +241,7 @@ def status(args: argparse.Namespace) -> dict[str, Any]:
         "current_step": payload["current_step"],
         "completed_steps": len(payload["completed_steps"]),
         "gates": len(payload["gates"]),
+        "evidence_routes": len(routes),
         "pause_conditions": len(payload["pause_conditions"]),
         "updated_at": payload["updated_at"],
     }
@@ -243,6 +314,86 @@ def validate(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def route_start(args: argparse.Namespace) -> dict[str, Any]:
+    payload = _load_valid_tracker(args.tracker)
+    routes = _route_list(payload)
+    if any(route.get("route_id") == args.route_id for route in routes):
+        raise WorkflowStateError(f"evidence route already exists: {args.route_id}")
+    if args.execution_mode not in VALID_ROUTE_EXECUTION_MODES:
+        raise WorkflowStateError(
+            f"execution_mode must be one of {sorted(VALID_ROUTE_EXECUTION_MODES)}"
+        )
+
+    routes_directory = _routes_dir(args.tracker)
+    routes_directory.mkdir(parents=True, exist_ok=True)
+    prompt_path = args.prompt_path or _route_prompt_path(args.tracker, args.route_id)
+    artifact_path = args.artifact_path or _route_artifact_path(args.tracker, args.route_id)
+    _write_optional_text(prompt_path, args.prompt_text)
+    created_at = _now()
+    routes.append(
+        {
+            "route_id": args.route_id,
+            "step_id": args.step_id,
+            "title": args.title,
+            "status": "running",
+            "execution_mode": args.execution_mode,
+            "prompt_path": _relative_to_project(prompt_path),
+            "prompt_summary": args.prompt_summary,
+            "artifact_path": _relative_to_project(artifact_path),
+            "summary": "",
+            "findings": [],
+            "recommendation": "",
+            "created_at": created_at,
+            "updated_at": created_at,
+        }
+    )
+    _save_tracker(args.tracker, payload)
+    return status(args)
+
+
+def route_complete(args: argparse.Namespace) -> dict[str, Any]:
+    payload = _load_valid_tracker(args.tracker)
+    route = _find_route(payload, args.route_id)
+    artifact_path = Path(args.artifact_path) if args.artifact_path else Path(route["artifact_path"])
+    if not artifact_path.is_absolute():
+        artifact_path = PROJECT_ROOT / artifact_path
+    _write_optional_text(artifact_path, args.artifact_text)
+    route.update(
+        {
+            "status": "complete",
+            "summary": args.summary,
+            "findings": args.finding or [],
+            "recommendation": args.recommendation,
+            "artifact_path": _relative_to_project(artifact_path),
+            "updated_at": _now(),
+        }
+    )
+    _save_tracker(args.tracker, payload)
+    return status(args)
+
+
+def route_fail(args: argparse.Namespace) -> dict[str, Any]:
+    payload = _load_valid_tracker(args.tracker)
+    route = _find_route(payload, args.route_id)
+    artifact_path = Path(args.artifact_path) if args.artifact_path else Path(route["artifact_path"])
+    if not artifact_path.is_absolute():
+        artifact_path = PROJECT_ROOT / artifact_path
+    _write_optional_text(artifact_path, args.artifact_text)
+    route.update(
+        {
+            "status": "failed",
+            "summary": args.summary,
+            "findings": args.finding or [],
+            "recommendation": args.recommendation,
+            "error": args.error,
+            "artifact_path": _relative_to_project(artifact_path),
+            "updated_at": _now(),
+        }
+    )
+    _save_tracker(args.tracker, payload)
+    return status(args)
+
+
 def _tracker_arg(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("tracker", type=Path, help="Path to runtime tracker.json.")
 
@@ -305,6 +456,52 @@ def build_parser() -> argparse.ArgumentParser:
     validate_parser = subparsers.add_parser("validate", help="Validate tracker shape.")
     _tracker_arg(validate_parser)
     validate_parser.set_defaults(func=validate)
+
+    route_start_parser = subparsers.add_parser(
+        "route-start",
+        help="Record a read-only evidence route as running.",
+    )
+    _tracker_arg(route_start_parser)
+    route_start_parser.add_argument("route_id")
+    route_start_parser.add_argument("--step-id", required=True)
+    route_start_parser.add_argument("--title", required=True)
+    route_start_parser.add_argument(
+        "--execution-mode",
+        choices=sorted(VALID_ROUTE_EXECUTION_MODES),
+        default="local_fallback",
+    )
+    route_start_parser.add_argument("--prompt-path", type=Path)
+    route_start_parser.add_argument("--prompt-summary", default="")
+    route_start_parser.add_argument("--prompt-text")
+    route_start_parser.add_argument("--artifact-path", type=Path)
+    route_start_parser.set_defaults(func=route_start)
+
+    route_complete_parser = subparsers.add_parser(
+        "route-complete",
+        help="Mark an evidence route complete with findings.",
+    )
+    _tracker_arg(route_complete_parser)
+    route_complete_parser.add_argument("route_id")
+    route_complete_parser.add_argument("--summary", default="")
+    route_complete_parser.add_argument("--finding", action="append")
+    route_complete_parser.add_argument("--recommendation", default="")
+    route_complete_parser.add_argument("--artifact-path", type=Path)
+    route_complete_parser.add_argument("--artifact-text")
+    route_complete_parser.set_defaults(func=route_complete)
+
+    route_fail_parser = subparsers.add_parser(
+        "route-fail",
+        help="Mark an evidence route failed with findings.",
+    )
+    _tracker_arg(route_fail_parser)
+    route_fail_parser.add_argument("route_id")
+    route_fail_parser.add_argument("--summary", default="")
+    route_fail_parser.add_argument("--finding", action="append")
+    route_fail_parser.add_argument("--recommendation", default="")
+    route_fail_parser.add_argument("--error", required=True)
+    route_fail_parser.add_argument("--artifact-path", type=Path)
+    route_fail_parser.add_argument("--artifact-text")
+    route_fail_parser.set_defaults(func=route_fail)
 
     return parser
 

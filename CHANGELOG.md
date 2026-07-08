@@ -1,5 +1,19 @@
 # linkedin-career-mcp CHANGELOG
 
+## 4.9.0 - Add evidence-route workflow orchestration
+
+* Extend the agentic workflow controller with read-only evidence routes so
+  P-step investigations can run through subagents or local fallback prompts
+  before G-step reassessment.
+* Add route lifecycle tracking to the runtime JSON state, including prompt and
+  artifact paths, findings, recommendations, execution mode, and timestamps.
+* Document the orchestration layer in the README and ADR 0006, clarifying why
+  the project uses guided automation to reduce repeated prompt/response loops
+  while preserving main-agent control over edits and release closeout.
+* Add regression coverage for route lifecycle commands, tracker compatibility,
+  skill guardrails, documentation links, and release metadata.
+* Bump the package version to `4.9.0`.
+
 ## 4.8.0 - Render older professional experience
 
 * Render Stamats Communications and VIDA Diagnostics through the same

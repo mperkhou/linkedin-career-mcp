@@ -29,6 +29,52 @@ implementation work and G-step reassessment gates, while the live cursor is an
 ignored JSON file under `tmp/agentic-workflows/`. The controller is procedural
 guidance for Codex sessions, not a background service or permission bypass.
 
+The orchestration layer exists to reduce repetitive prompt/response management
+for larger changes while keeping automation guided and reviewable. A typical
+plan uses P steps for work phases and G gates for reassessment. [ADR 0006](docs/adr/0006-agentic-workflow-evidence-routes.md)
+documents why evidence routes are part of that layer.
+
+```text
+P01 - Readiness and evidence collection
+G01 - Confirm scope before edits
+P02 - Implement the scoped change
+P03 - Generate tmp-only validation artifacts
+G02 - Compare evidence and decide whether to continue, amend, or pause
+Pn  - Final validation and release closeout
+Gn  - Pause before remote merge/tag unless approved
+```
+
+The runtime tracker stores the live cursor and evidence. A simplified tracker
+fragment looks like:
+
+```json
+{
+  "workflow_id": "v4-9-0-example",
+  "current_step": "G02",
+  "completed_steps": [{"step_id": "P03", "evidence": ["tmp PDF rendered"]}],
+  "evidence_routes": [
+    {
+      "route_id": "P03-evidence-layout",
+      "step_id": "P03",
+      "status": "complete",
+      "execution_mode": "subagent",
+      "summary": "The sample stayed within the page budget.",
+      "recommendation": "continue"
+    }
+  ],
+  "gates": []
+}
+```
+
+Evidence routes are read-only investigations attached to a P step. When Codex
+subagents are available, the main agent can send a route such as
+`P03-evidence-layout` or `P03-evidence-generation-quality` to a subagent so the
+UI exposes a separate clickable work item. When subagents are unavailable, the
+main agent can run the same route prompt locally and record it as
+`local_fallback`. In either mode, subagents gather findings and
+recommendations; the main agent owns edits, tracker updates, G-gate decisions,
+commits, PRs, merges, and release tags.
+
 ## Terms
 
 - **JOD**: Job Opening Description. This is the parsed posting text after trimming low-signal boilerplate such as benefits, compensation, legal notices, and generic company copy.
