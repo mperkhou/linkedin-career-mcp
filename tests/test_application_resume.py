@@ -20,6 +20,8 @@ from linkedin_career_mcp.application_resume import (
 from scripts.application_resume_pass_one import main as application_resume_pass_one_main
 from scripts.application_resume_regenerate_aros import _preserve_job_specific_aro_sections
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
 
 def test_initialize_application_resume_object_resets_job_specific_fields(
     tmp_path: Path,
@@ -276,7 +278,9 @@ def test_jod_bullet_rewrite_targets_rendered_non_oracle_jobs() -> None:
     )
     jobs_to_rewrite = experience_jobs_for_jod_bullet_rewrite(attached)
 
-    assert [job["order"] for job in jobs_to_rewrite] == [2, 3]
+    assert [job["order"] for job in jobs_to_rewrite] == [2, 3, 4, 5]
+    assert [job["min_bullet_points"] for job in jobs_to_rewrite] == [2, 2, 2, 2]
+    assert [job["max_bullet_points"] for job in jobs_to_rewrite] == [5, 5, 5, 5]
 
     prompt = build_experience_job_bullet_rewrite_prompt(
         job_opening_description=jod_object,
@@ -327,6 +331,41 @@ def test_jod_bullet_rewrite_targets_rendered_non_oracle_jobs() -> None:
             "render": True,
         },
     ]
+
+
+def test_master_resume_renders_older_non_oracle_roles_with_parity_policy() -> None:
+    aro = initialize_application_resume_object(PROJECT_ROOT / "profile" / "MASTER-RESUME.yml")
+    jobs = aro["professional_experience"]["jobs"]
+    jobs_by_order = {job["order"]: job for job in jobs}
+
+    assert [
+        jobs_by_order[order]["line_1"]["company_name_text"]
+        for order in (2, 3, 4, 5)
+    ] == [
+        "University of Iowa Hospitals and Clinics | Iowa City, IA",
+        "Steindler Orthopedic Clinic | Iowa City, IA",
+        "Stamats Communications | Cedar Rapids, IA",
+        "VIDA Diagnostics | Coralville, IA",
+    ]
+    assert [
+        (
+            jobs_by_order[order]["render"],
+            jobs_by_order[order]["min_bullet_points"],
+            jobs_by_order[order]["max_bullet_points"],
+        )
+        for order in (2, 3, 4, 5)
+    ] == [(True, 2, 5), (True, 2, 5), (True, 2, 5), (True, 2, 5)]
+    assert [job["order"] for job in experience_jobs_for_jod_bullet_rewrite(aro)] == [
+        2,
+        3,
+        4,
+        5,
+    ]
+    assert all(
+        bullet["render"] is False
+        for order in (4, 5)
+        for bullet in jobs_by_order[order]["bullet_points"]
+    )
 
 
 def test_jod_bullet_rewrite_can_replace_oracle_paragraph_evidence() -> None:
@@ -512,17 +551,17 @@ def _sample_selection_aro() -> dict[str, object]:
                     4,
                     "Stamats Communications | Cedar Rapids, IA",
                     evidence_counts=[1, 0, 0, 0, 0, 3, 0],
-                    render=False,
-                    min_bullets=0,
-                    max_bullets=2,
+                    render=True,
+                    min_bullets=2,
+                    max_bullets=5,
                 ),
                 _selection_job(
                     5,
                     "VIDA Diagnostics | Coralville, IA",
                     evidence_counts=[1, 0, 1, 0, 1, 0, 0, 0, 0, 0],
-                    render=False,
-                    min_bullets=0,
-                    max_bullets=2,
+                    render=True,
+                    min_bullets=2,
+                    max_bullets=5,
                 ),
             ]
         }

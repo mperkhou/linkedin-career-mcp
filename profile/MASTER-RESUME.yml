@@ -2583,9 +2583,9 @@ professional_experience:
       bullet_point_total_match_count: 0
       render: false
   - order: 4
-    render: false
-    min_bullet_points: 0
-    max_bullet_points: 2
+    render: true
+    min_bullet_points: 2
+    max_bullet_points: 5
     line_1:
       company_name_text: Stamats Communications | Cedar Rapids, IA
       position_name_text: Systems Administrator (Contract)
@@ -2727,9 +2727,9 @@ professional_experience:
       bullet_point_total_match_count: 0
       render: false
   - order: 5
-    render: false
-    min_bullet_points: 0
-    max_bullet_points: 2
+    render: true
+    min_bullet_points: 2
+    max_bullet_points: 5
     line_1:
       company_name_text: VIDA Diagnostics | Coralville, IA
       position_name_text: Systems Engineer
