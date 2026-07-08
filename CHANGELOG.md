@@ -1,5 +1,18 @@
 # linkedin-career-mcp CHANGELOG
 
+## 4.8.0 - Render older professional experience
+
+* Render Stamats Communications and VIDA Diagnostics through the same
+  non-Oracle v1 resume rewrite path already used for University of Iowa and
+  Steindler so generated resumes show the older professional timeline behind
+  the 10+ years summary claim.
+* Keep Stamats and VIDA on the existing rendered non-Oracle bullet policy:
+  two to five generated bullets per role, with source bullets remaining hidden
+  until the job-aware v1 rewrite produces rendered bullets.
+* Add the committed agentic workflow plan, release notes, and regression
+  coverage for role inclusion, render settings, and v1 timeout/retry handling.
+* Bump the package version to `4.8.0`.
+
 ## 4.7.1 - Link agentic workflow controller by default
 
 * Add `agentic-workflow-controller` to the default `make skill-link` skill set
