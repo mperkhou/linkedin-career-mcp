@@ -1,5 +1,22 @@
 # linkedin-career-mcp CHANGELOG
 
+## 4.10.0 - Split agentic workflow bootstrap and execution
+
+* Add a thin `agentic-workflow-init` skill that owns workflow bootstrap:
+  branch setup, committed canonical plan creation, bootstrap changelog entry,
+  bootstrap commit, tracker initialization, plan digest binding, and kickoff
+  prompt generation.
+* Reframe `agentic-workflow-controller` as the executor/resumer for existing
+  committed workflow plans, with runtime tracker state acting as a cursor and
+  evidence log rather than a competing plan.
+* Harden workflow tracker state with plan revision/digest binding, attempted
+  steps, immutable completed steps, atomic writes, lock files, path confinement,
+  artifact manifests, and recursive secret rejection.
+* Document the bootstrap-to-controller lifecycle, gate amendment contract, and
+  artifact storage boundaries in the README, ADR 0007, workflow docs, and
+  release notes.
+* Bump the package version to `4.10.0`.
+
 ## 4.9.0 - Add evidence-route workflow orchestration
 
 * Extend the agentic workflow controller with read-only evidence routes so

@@ -50,16 +50,22 @@ This keeps agent behavior aligned across tracker workflows, Codex manual pass,
 Codex highlighting, release closeout, and application-writing work without
 duplicating the same operational rules in every human-facing document.
 
-The `skills/agentic-workflow-controller/` skill extends that guidance for large
-multi-step repo changes. It defines a procedural controller pattern for staged
-implementation prompts, P-step execution, G-step reassessment gates, validation
-evidence, and pause conditions. The tracked skill assets define the plan and
-tracker templates; a live workflow copies them into ignored
-`tmp/agentic-workflows/<workflow_id>/` state so progress can be resumed without
-committing noisy cursor data. The controller does not run as a daemon, grant
-extra permissions, or replace `AGENTS.md`; it gives Codex sessions a repeatable
-way to execute already-authorized work while preserving release, artifact, and
-resume-evidence guardrails.
+The agentic workflow layer extends that guidance for large multi-step repo
+changes. `skills/agentic-workflow-init/` owns bootstrap: readiness checks,
+branch creation, SemVer confirmation, committed canonical plan creation,
+bootstrap changelog entry, bootstrap commit, runtime tracker initialization,
+plan digest binding, and kickoff prompt generation.
+
+`skills/agentic-workflow-controller/` then executes or resumes the committed
+plan. It defines a procedural controller pattern for staged implementation
+prompts, P-step execution, G-step reassessment gates, validation evidence,
+read-only evidence routes, artifact manifests, and pause conditions. The
+runtime tracker under `tmp/agentic-workflows/<workflow_id>/` is a cursor and
+evidence log, not a second plan; it binds to the committed plan path, revision,
+digest, branch, version, and bootstrap commit. The controller does not run as a
+daemon, grant extra permissions, or replace `AGENTS.md`; it gives Codex
+sessions a repeatable way to execute already-authorized work while preserving
+release, artifact, and resume-evidence guardrails.
 
 ## Core Layers
 

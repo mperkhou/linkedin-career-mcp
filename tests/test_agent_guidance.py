@@ -50,17 +50,35 @@ def test_agentic_orchestration_docs_describe_evidence_routes() -> None:
     adr = (PROJECT_ROOT / "docs/adr/0006-agentic-workflow-evidence-routes.md").read_text(
         encoding="utf-8"
     )
+    bootstrap_adr = (
+        PROJECT_ROOT / "docs/adr/0007-agentic-workflow-bootstrap-and-plan-binding.md"
+    ).read_text(encoding="utf-8")
+    workflow_docs = (PROJECT_ROOT / "docs/agentic-workflows/README.md").read_text(
+        encoding="utf-8"
+    )
     release_notes = (PROJECT_ROOT / "docs/release-notes/4.9.0.md").read_text(
+        encoding="utf-8"
+    )
+    release_410_notes = (PROJECT_ROOT / "docs/release-notes/4.10.0.md").read_text(
         encoding="utf-8"
     )
 
     assert "P steps" in readme
     assert "G gates" in readme
     assert "evidence_routes" in readme
+    assert "agentic-workflow-init" in readme
+    assert "agentic-workflow-controller" in readme
     assert "local_fallback" in readme
     assert "subagents gather findings" in readme
     assert "main agent owns edits" in readme
     assert "reduces repeated prompt/response management" in adr
     assert "separates read-only evidence gathering from mutation authority" in adr
     assert "subagents are unavailable" in adr
+    assert "bootstrap layer creates" in bootstrap_adr
+    assert "plan digest" in bootstrap_adr
+    assert "Bootstrap Skill Vs Controller Skill" in workflow_docs
+    assert "plan digest" in workflow_docs
+    assert "Artifact Storage" in workflow_docs
     assert "evidence routes" in release_notes
+    assert "agentic-workflow-init" in release_410_notes
+    assert "plan digest" in release_410_notes

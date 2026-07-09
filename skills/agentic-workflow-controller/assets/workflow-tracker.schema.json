@@ -24,6 +24,9 @@
     "schema_version": { "type": "integer", "const": 1 },
     "workflow_id": { "type": "string", "minLength": 1 },
     "release_version": { "type": "string", "minLength": 1 },
+    "target_version": {
+      "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
+    },
     "objective": { "type": "string", "minLength": 1 },
     "state": {
       "type": "string",
@@ -33,6 +36,23 @@
       "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
     },
     "planned_steps": { "type": "array" },
+    "attempted_steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["step_id", "attempted_at", "note", "evidence"],
+        "properties": {
+          "step_id": { "type": "string", "minLength": 1 },
+          "attempted_at": { "type": "string", "minLength": 1 },
+          "note": { "type": "string" },
+          "evidence": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
     "completed_steps": { "type": "array" },
     "evidence_routes": {
       "type": "array",
@@ -85,6 +105,21 @@
     "branch": {
       "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
     },
+    "plan_path": {
+      "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
+    },
+    "plan_revision": {
+      "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }]
+    },
+    "plan_digest": {
+      "anyOf": [
+        { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        { "type": "null" }
+      ]
+    },
+    "bootstrap_commit": {
+      "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
+    },
     "pull_request": {
       "anyOf": [
         { "type": "string", "minLength": 1 },
@@ -93,6 +128,24 @@
       ]
     },
     "artifacts": { "type": "array" },
+    "artifact_manifests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "manifest_id", "step_id", "storage_root", "recorded_at"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "manifest_id": { "type": "string", "minLength": 1 },
+          "step_id": { "type": "string", "minLength": 1 },
+          "storage_root": {
+            "type": "string",
+            "enum": ["repo", "external"]
+          },
+          "recorded_at": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      }
+    },
     "created_at": { "type": "string", "minLength": 1 },
     "updated_at": { "type": "string", "minLength": 1 }
   },
