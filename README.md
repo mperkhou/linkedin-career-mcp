@@ -23,16 +23,20 @@ that need to apply across Codex sessions. [ADR 0005](docs/adr/0005-canonical-age
 documents that decision, and the [4.3.0 release notes](docs/release-notes/4.3.0.md)
 summarize the implementation.
 
-For larger repo changes, the `agentic-workflow-controller` skill provides a
-lightweight staged workflow pattern: a committed plan/template describes P-step
-implementation work and G-step reassessment gates, while the live cursor is an
-ignored JSON file under `tmp/agentic-workflows/`. The controller is procedural
-guidance for Codex sessions, not a background service or permission bypass.
+For larger repo changes, the agentic workflow layer now separates bootstrap
+from execution. `agentic-workflow-init` creates the branch, target version,
+committed canonical plan, bootstrap changelog entry, bootstrap commit, ignored
+runtime tracker, plan digest binding, and kickoff prompt. Then
+`agentic-workflow-controller` executes or resumes the committed plan. The
+controller is procedural guidance for Codex sessions, not a background service
+or permission bypass.
 
 The orchestration layer exists to reduce repetitive prompt/response management
 for larger changes while keeping automation guided and reviewable. A typical
 plan uses P steps for work phases and G gates for reassessment. [ADR 0006](docs/adr/0006-agentic-workflow-evidence-routes.md)
-documents why evidence routes are part of that layer.
+documents why evidence routes are part of that layer, and [ADR 0007](docs/adr/0007-agentic-workflow-bootstrap-and-plan-binding.md)
+documents why workflow bootstrap, execution, and plan binding are separate.
+The full lifecycle is summarized in [docs/agentic-workflows/README.md](docs/agentic-workflows/README.md).
 
 ```text
 P01 - Readiness and evidence collection
@@ -49,8 +53,12 @@ fragment looks like:
 
 ```json
 {
-  "workflow_id": "v4-9-0-example",
+  "workflow_id": "v4-10-0-example",
+  "plan_path": "docs/agentic-workflows/4.10.0-example.md",
+  "plan_revision": 1,
+  "plan_digest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
   "current_step": "G02",
+  "attempted_steps": [{"step_id": "P03", "evidence": ["tmp PDF rendered"]}],
   "completed_steps": [{"step_id": "P03", "evidence": ["tmp PDF rendered"]}],
   "evidence_routes": [
     {
@@ -598,9 +606,12 @@ The active workflow modules are intentionally smaller than the retired artifact 
 - `src/linkedin_career_mcp/resume_highlighting.py`: guarded Codex JSON-patch workflow for selective resume bullet emphasis.
 - `src/linkedin_career_mcp/resume_rendering.py`: HTML/PDF rendering.
 - `src/linkedin_career_mcp/webapp.py`: database-backed review, edit, download, rescore, and background actions.
-- `skills/agentic-workflow-controller/`: procedural skill, tracked templates,
-  and helper script for staged P/G implementation workflows with local JSON
-  state under ignored `tmp/agentic-workflows/`.
+- `skills/agentic-workflow-init/`: thin bootstrap skill for creating committed
+  workflow plans, bootstrap changelog entries, tracker bindings, and kickoff
+  prompts before implementation starts.
+- `skills/agentic-workflow-controller/`: executor/resumer skill, tracked
+  templates, schemas, and helper script for staged P/G implementation workflows
+  with local JSON state under ignored `tmp/agentic-workflows/`.
 
 Keep the MRO neutral: empty `jod_matched_items`, zero match counts, source-evidence bullets, and no job-specific pruning. Job-specific generated bullets belong in the ARO stored on the application row.
 

@@ -128,6 +128,7 @@ The current tools search public LinkedIn job listings and fetch public job detai
 - ARO means Application Resume Object: a per-job deep copy of the MRO plus JOD match lists, generated experience bullets, render flags, and edited content.
 - CLO means Cover Letter Object: manually edited rich text stored and rendered through the tracker.
 - Application tracking columns `applied_to` and `date_applied` are user-managed and are not automatically filled beyond the default `No`.
-- Use `skills/agentic-workflow-controller/SKILL.md` when a repo change is
-  intentionally structured as a P-step/G-gate workflow with local JSON runtime
-  state under `tmp/agentic-workflows/`.
+- Use `skills/agentic-workflow-init/SKILL.md` to bootstrap a new committed
+  workflow plan, then `skills/agentic-workflow-controller/SKILL.md` to execute
+  or resume staged P-step/G-gate work with local JSON runtime state under
+  `tmp/agentic-workflows/`.

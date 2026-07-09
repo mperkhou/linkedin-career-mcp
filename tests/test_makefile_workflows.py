@@ -28,6 +28,7 @@ def test_skill_link_make_target_links_agentic_controller_by_default() -> None:
     assert "linkedin-career-mcp" in output
     assert "master-resume-yaml" in output
     assert "manual-resume-passthrough" in output
+    assert "agentic-workflow-init" in output
     assert "agentic-workflow-controller" in output
 
 

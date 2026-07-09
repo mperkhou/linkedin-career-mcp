@@ -1,4 +1,4 @@
 interface:
   display_name: "Agentic Workflow Controller"
-  short_description: "Track gated workflows and read-only evidence routes."
-  default_prompt: "Use $agentic-workflow-controller to start or continue a staged implementation workflow with P steps, G gates, evidence routes, and local JSON state."
+  short_description: "Execute or resume committed workflow plans."
+  default_prompt: "Use $agentic-workflow-controller to execute or resume an initialized workflow with a committed plan, tracker binding, P steps, G gates, and evidence routes."
