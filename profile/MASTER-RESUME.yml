@@ -38,8 +38,7 @@ professional_summary:
     background in advanced mathematics and algorithmic problem-solving with hands-on
     expertise in CI/CD, Infrastructure as Code (IaC), and modern multi-tenant cloud
     architectures.
-  summary_note: 'Note: This resume is custom tailored for every job position using
-    my automated agentic workflow found at: mperkhou/linkedin-career-mcp'
+  summary_note: ''
 core_technical_skills:
   render: true
   header_text: Core Technical Skills
@@ -3186,8 +3185,7 @@ portfolio:
   - order: 1
     title_text: LinkedIn Career MCP
     url: https://github.com/mperkhou/linkedin-career-mcp
-    description_text: a local MCP workflow that turns a candidate profile into efficient
-      LinkedIn searches, fetches high-fit postings, and tracks each opportunity through
-      a SQLite/workbook-backed local UI. For each role, it cleans the job description,
-      generates tailored resumes and cover letters, then uses ATS scoring and repair
-      loops to iteratively improve the resume against the posting.
+    description_text: A local-first Python and MCP platform for orchestrating
+      evidence-grounded career data and document workflows, with SQLite-backed state,
+      versioned artifacts, retryable batch processing, ATS diagnostics, human review
+      gates, and agentic workflow controls.

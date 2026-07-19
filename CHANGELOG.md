@@ -1,5 +1,16 @@
 # linkedin-career-mcp CHANGELOG
 
+## 4.10.1 - Remove resume automation disclaimer
+
+* Remove the automated-tailoring disclaimer from the canonical master-resume
+  text and MRO while preserving generic summary-note rendering support.
+* Reframe the LinkedIn Career MCP portfolio entry around the project's local
+  Python/MCP platform, SQLite-backed state, versioned artifacts, diagnostics,
+  review gates, and workflow controls.
+* Remove the disclaimer-only bare repository-slug linkification special case;
+  normal HTTP/HTTPS linkification remains supported.
+* Bump the package version to `4.10.1`.
+
 ## 4.10.0 - Split agentic workflow bootstrap and execution
 
 * Add a thin `agentic-workflow-init` skill that owns workflow bootstrap:
