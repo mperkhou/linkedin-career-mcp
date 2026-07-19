@@ -5,6 +5,10 @@ from bs4 import BeautifulSoup
 
 from scripts.render_resume_html import render_resume_html
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+CANONICAL_RESUME_PATH = PROJECT_ROOT / "profile" / "MASTER-RESUME.yml"
+RESUME_TEMPLATE_PATH = PROJECT_ROOT / "templates" / "resume" / "master_resume.html.j2"
+
 
 def test_resume_html_template_renders_trimmed_application_object(tmp_path: Path) -> None:
     yaml_path = tmp_path / "trimmed-resume.yaml"
@@ -254,8 +258,8 @@ def test_resume_html_template_caps_matched_additional_skills(tmp_path: Path) -> 
     assert "<strong>Platform:</strong> Python" in html
 
 
-def test_resume_html_template_links_repo_slug_in_summary_note(tmp_path: Path) -> None:
-    yaml_path = tmp_path / "summary-note-link.yaml"
+def test_resume_html_template_renders_generic_summary_note_http_links(tmp_path: Path) -> None:
+    yaml_path = tmp_path / "summary-note-http-links.yaml"
     yaml_path.write_text(
         yaml.safe_dump(
             {
@@ -263,7 +267,7 @@ def test_resume_html_template_links_repo_slug_in_summary_note(tmp_path: Path) ->
                 "professional_summary": {
                     "paragraph": "Platform engineer.",
                     "summary_note": (
-                        "Note: workflow found at: mperkhou/linkedin-career-mcp"
+                        "See https://example.com/portfolio and http://example.test/guide."
                     ),
                 },
             },
@@ -277,10 +281,40 @@ def test_resume_html_template_links_repo_slug_in_summary_note(tmp_path: Path) ->
         template_path=Path("templates/resume/master_resume.html.j2"),
     )
 
+    assert '<p class="summary-note">' in html
     assert (
-        '<a href="https://github.com/mperkhou/linkedin-career-mcp">'
-        "mperkhou/linkedin-career-mcp</a>"
-    ) in html
+        '<a href="https://example.com/portfolio">https://example.com/portfolio</a>'
+        in html
+    )
+    assert '<a href="http://example.test/guide">http://example.test/guide</a>.' in html
+
+
+def test_canonical_resume_omits_automation_disclaimer_and_preserves_portfolio() -> None:
+    master_resume = yaml.safe_load(CANONICAL_RESUME_PATH.read_text(encoding="utf-8"))
+    summary = master_resume["professional_summary"]
+    project = master_resume["portfolio"]["projects"][0]
+
+    assert summary.get("summary_note", "") == ""
+    assert "custom tailored for every job position" not in yaml.safe_dump(master_resume)
+    assert project["title_text"] == "LinkedIn Career MCP"
+    assert project["url"] == "https://github.com/mperkhou/linkedin-career-mcp"
+    assert project["description_text"] == (
+        "A local-first Python and MCP platform for orchestrating evidence-grounded "
+        "career data and document workflows, with SQLite-backed state, versioned "
+        "artifacts, retryable batch processing, ATS diagnostics, human review gates, "
+        "and agentic workflow controls."
+    )
+
+    html = render_resume_html(
+        yaml_path=CANONICAL_RESUME_PATH,
+        template_path=RESUME_TEMPLATE_PATH,
+    )
+
+    assert "custom tailored for every job position" not in html.lower()
+    assert "automated agentic workflow" not in html.lower()
+    assert "LinkedIn Career MCP" in html
+    assert project["description_text"] in html
+    assert 'href="https://github.com/mperkhou/linkedin-career-mcp"' in html
 
 
 def test_resume_html_template_groups_supporting_sections_with_optional_page_break(

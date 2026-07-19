@@ -2,7 +2,6 @@ Max Perkhounkov
 Iowa City, IA | 641-781-0477 | mperkhounkov1@gmail.com | [linkedin.com/in/maxim-perkhounkov](https://www.linkedin.com/in/maxim-perkhounkov/)
 Professional Summary
 Analytical and metrics-driven Senior Platform Software Engineer with over 10 years of multi-disciplinary experience architecting scalable distributed systems, developer tooling, and cloud automation frameworks. Proven track record leading enterprise-level integrations, optimizing platform resilience, and implementing secure API and observability pipelines across 40,000+ devices. Combines a strong background in advanced mathematics and algorithmic problem-solving with hands-on expertise in CI/CD, Infrastructure as Code (IaC), and modern multi-tenant cloud architectures.
-Note: This resume is custom tailored for every job position using my automated agentic workflow found at: mperkhou/linkedin-career-mcp
 Core Technical Skills
 - Languages & Frameworks: Python, Ruby, JavaScript, Node.js, React.js, Go, Bash, PowerShell, Ruby on Rails, Django
 - Distributed Systems & Cloud: AWS, Azure, Oracle Cloud Infrastructure (OCI), ElasticSearch, OpenSearch
@@ -132,4 +131,4 @@ Certifications
 - Oracle Cloud Infrastructure (OCI) Engineer | Certification (August, 2024)
 - Oracle Cloud Infrastructure AI Foundations Associate | Certification (May, 2026)
 Portfolio
-[LinkedIn Career MCP](https://github.com/mperkhou/linkedin-career-mcp): a local MCP workflow that turns a candidate profile into efficient LinkedIn searches, fetches high-fit postings, and tracks each opportunity through a SQLite/workbook-backed local UI. For each role, it cleans the job description, generates tailored resumes and cover letters, then uses ATS scoring and repair loops to iteratively improve the resume against the posting.
+[LinkedIn Career MCP](https://github.com/mperkhou/linkedin-career-mcp): A local-first Python and MCP platform for orchestrating evidence-grounded career data and document workflows, with SQLite-backed state, versioned artifacts, retryable batch processing, ATS diagnostics, human review gates, and agentic workflow controls.

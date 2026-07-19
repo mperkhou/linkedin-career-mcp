@@ -20,10 +20,7 @@ _RESUME_RICH_TAG_RE = re.compile(
     r"</?\s*(a|b|br|div|em|i|p|span|strong)\b",
     re.IGNORECASE,
 )
-_RESUME_LINK_RE = re.compile(r"https?://[^\s<>)]*|mperkhou/linkedin-career-mcp")
-_RESUME_TEXT_LINKS = {
-    "mperkhou/linkedin-career-mcp": "https://github.com/mperkhou/linkedin-career-mcp",
-}
+_RESUME_LINK_RE = re.compile(r"https?://[^\s<>)]*")
 MAX_RENDERED_JOD_MATCHED_SKILLS_PER_CATEGORY = 8
 
 
@@ -33,7 +30,7 @@ def linkify(value: object) -> Markup:
     cursor = 0
     for match in _RESUME_LINK_RE.finditer(text):
         label = match.group(0)
-        url = _RESUME_TEXT_LINKS.get(label, label).rstrip(".,")
+        url = label.rstrip(".,")
         trailing = label[len(label.rstrip(".,")) :]
         parts.append(escape(text[cursor : match.start()]))
         escaped_url = escape(url)
