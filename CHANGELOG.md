@@ -1,5 +1,18 @@
 # linkedin-career-mcp CHANGELOG
 
+## 4.11.0 - Strengthen shared platform resume evidence
+
+* Reframe the professional summary and Oracle role overview around team-owned
+  shared automation platforms and governed agentic delivery.
+* Preserve separate OLAM, Chef/ORC, and ONDA scale narratives with explicit
+  team-versus-individual attribution.
+* Document the federated OLAM and Chef operating models, including shared
+  playbooks and frameworks, downstream domain ownership, peer review, and
+  Oracle APEX publishing.
+* Add three grounded optional skills and rebuild the affected evidence
+  linkages.
+* Bump the package version to `4.11.0`.
+
 ## 4.10.1 - Remove resume automation disclaimer
 
 * Remove the automated-tailoring disclaimer from the canonical master-resume
