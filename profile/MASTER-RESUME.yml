@@ -30,14 +30,12 @@ header_top:
 professional_summary:
   render: true
   header_text: Professional Summary
-  paragraph: Analytical and metrics-driven Senior Platform Software Engineer with
-    over 10 years of multi-disciplinary experience architecting scalable distributed
-    systems, developer tooling, and cloud automation frameworks. Proven track record
-    leading enterprise-level integrations, optimizing platform resilience, and implementing
-    secure API and observability pipelines across 40,000+ devices. Combines a strong
-    background in advanced mathematics and algorithmic problem-solving with hands-on
-    expertise in CI/CD, Infrastructure as Code (IaC), and modern multi-tenant cloud
-    architectures.
+  paragraph: Senior Platform Software Engineer with 10+ years of experience building
+    shared enterprise automation platforms, distributed systems, developer tooling,
+    and cloud automation. At Oracle, I contribute to a team that builds and operates
+    shared automation platforms supporting more than 40,000 non-network systems. Governed
+    agentic workflows increasingly serve as the primary engineering delivery layer
+    for planning, implementation, validation, release controls, and human approval.
   summary_note: ''
 core_technical_skills:
   render: true
@@ -155,6 +153,7 @@ core_technical_skills:
       - platform reliability
       - Scalability
       - service orchestration
+      - self-service automation platforms
       - metadata services
       - asset inventory systems
       - asset-cache services
@@ -176,6 +175,7 @@ core_technical_skills:
       - source-control backed backups
       - legacy configuration modernization
       - platform lifecycle management
+      - platform governance
       - production release paths
       - planned change review
       - ticket-ready remediation plans
@@ -248,6 +248,7 @@ core_technical_skills:
       - Jenkins/CloudLab CI/CD release paths
       - cookbook migration
       - policyfile automation
+      - configuration management at scale
       - artifact migration
       - versioned artifact sources
       - configuration pattern migration
@@ -503,7 +504,12 @@ professional_experience:
         Engineer
       position_dates_text: Feb 2022 - Present
     line_2:
-      position_intro_text: null
+      position_intro_text: Oracle’s Platform Development and Automation Frameworks (PDAF)
+        team develops and operates the shared OLAM platform and Oracle’s Chef-based ORC
+        platform across commercial and government environments, including Oracle Health/Cerner.
+        Within that federated model, I contribute platform implementation, operational
+        hardening, reusable engineering workflows, and training and enablement for downstream
+        engineering and SRE teams.
     bullet_points:
     - order: 1
       categories:
@@ -527,6 +533,7 @@ professional_experience:
         - credential automation
         - job scheduling automation
         - rolling upgrade automation
+        - configuration management at scale
         jod_match_count: 0
       - category: Data & Observability
         matched:
@@ -534,25 +541,32 @@ professional_experience:
         jod_match_count: 0
       - category: Distributed Systems & Cloud
         matched:
-        - Containerization
+        - Oracle Cloud Infrastructure (OCI)
+        - production/staging environments
+        - enterprise Ansible/AWX clusters
         jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - platform reliability
         - production troubleshooting
-        - stakeholder enablement
+        - platform lifecycle management
         jod_match_count: 0
-      text: 'OLAM Platform Operations and Ansible Automation: My OLAM work developed
-        into a broad platform-operations skill set across inventory automation, execution
-        environments, workflow reliability, stakeholder support, and production troubleshooting.
-        I worked on OLAM 2.1 and 2.2 behavior, including single-node deployment patterns,
-        scheduling fixes, funicular behavior, execution node rebuilds, rolling upgrades,
-        inventory sync automation, and stable-service restoration after stuck-job
-        failures. A recurring theme was taking operational problems that were visible
-        to stakeholders and converting them into durable automation or clearer platform
-        behavior, such as dynamic inventory creation, credential handling, workflow
-        logging, and better instance-group alignment. That work gave the PDAF team
-        a more reliable OLAM platform for internal automation and later ONDA workloads.'
+      text: >-
+        OLAM Platform Operations and Ansible Automation: PDAF develops and operates
+        multiple shared OLAM deployments and clusters across commercial and government
+        environments, including Oracle Health/Cerner. The platform spans development,
+        staging, and production environments and supports more than 40,000 non-network
+        systems, mostly OCI instances. PDAF provides the clusters, shared OLAM playbooks
+        and frameworks such as dynamic-inventory tooling, operational support, guidance,
+        and training, while downstream engineering and SRE teams generally write their
+        domain-specific playbooks.
+        Within that team-owned scope, my OLAM/AWX work covered OLAM 2.1 and 2.2 deployment
+        patterns, scheduling and deployment-workflow fixes, execution-node rebuilds,
+        rolling upgrades, inventory synchronization, credential handling, workflow
+        logging, instance-group alignment, and recovery from stuck-job failures. I
+        turned recurring operational issues into reusable Ansible automation and clearer
+        platform behavior, improving reliability for internal automation and later
+        ONDA workloads.
       bullet_point_total_match_count: 0
       render: true
     - order: 2
@@ -699,46 +713,44 @@ professional_experience:
         matched:
         - Automation & IaC
         - Data & Observability
-        - Distributed Systems & Cloud
         - Platform & API Engineering
-        - Languages & Frameworks
       skills:
       - category: Automation & IaC
         matched:
         - Chef (Cookbooks/Policies)
         - policyfile automation
         - Oracle Linux Automation Manager (OLAM)
-        - cookbook migration
+        - configuration management at scale
+        - artifact migration
+        - versioned artifact sources
         jod_match_count: 0
       - category: Data & Observability
         matched:
         - Logstash
         - alert routing
-        - OCI metrics monitoring
-        jod_match_count: 0
-      - category: Distributed Systems & Cloud
-        matched:
-        - Containerization
         jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - release engineering
+        - platform lifecycle management
+        - production release paths
+        - platform governance
         jod_match_count: 0
-      - category: Languages & Frameworks
-        matched:
-        - Python
-        jod_match_count: 0
-      text: 'Chef Policy Maintenance and Release Hygiene: My Chef work centered on
-        keeping platform automation current while the supported systems and ownership
-        model changed around it. I updated and published Chef Server, OLAM, GASS,
-        and Logstash cookbook/policy changes for OCEAN routing, monitoring behavior,
-        gallery/artifact source migrations, version pins, yum repositories, POSIX/receptor
-        requirements, and DB execution environment support. This was not only cookbook
-        maintenance; it was the glue that kept monitoring scripts, OLAM automation,
-        Logstash behavior, and Chef-managed infrastructure aligned with the team structure
-        and artifact-source changes. The work reduced operational drift by moving
-        fixes into repeatable policy and cookbook releases instead of relying on manual
-        host edits.'
+      text: >-
+        Chef Policy Maintenance and Release Hygiene: PDAF develops and operates Oracle’s
+        Chef-based ORC platform across commercial and government environments, including
+        Oracle Health/Cerner. It spans well over 40,000 servers; 40,000 was the scale
+        before the Cerner acquisition. Chef and OLAM populations may overlap and were
+        measured at different times, so their counts are not additive. PDAF owns the
+        Chef-server estate, guardrails, policy lifecycle and publishing mechanisms,
+        and selected base cookbooks; downstream business-unit and Oracle Health engineering/SRE
+        teams generally own domain-specific cookbooks, peer-review their changes, and
+        submit merged changes through the PDAF-managed Oracle APEX publishing application.
+        Within that model, I updated and published Chef Server, OLAM, GASS, Logstash,
+        and related shared-platform cookbook/policy changes for alert routing, monitoring,
+        artifact-source migrations, version pins, package repositories, POSIX/receptor
+        requirements, and database execution-environment support. Repeatable releases
+        reduced drift and manual host changes.
       bullet_point_total_match_count: 0
       render: true
     - order: 6
@@ -1338,7 +1350,6 @@ professional_experience:
         matched:
         - AI Tools
         - Automation & IaC
-        - Distributed Systems & Cloud
         - Platform & API Engineering
         - Security & Compliance
         - Languages & Frameworks
@@ -1346,31 +1357,23 @@ professional_experience:
       - category: AI Tools
         matched:
         - Codex
-        - Cline
         - MCP server development
         - Codex skills
         - MCP (Model Context Protocol)
         - OLAM MCP server
-        - portable agentic workflows
         jod_match_count: 0
       - category: Automation & IaC
         matched:
         - Oracle Linux Automation Manager (OLAM)
-        - AWX
-        - CI/CD automation
-        - branch and merge-request CI pipelines
-        jod_match_count: 0
-      - category: Distributed Systems & Cloud
-        matched:
-        - cloud-facing interfaces
+        - continuous integration
         jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - local-first runtime architecture
-        - service orchestration
+        - self-service automation platforms
         - API Integration
         - package validation
-        - skill validation
+        - platform governance
         jod_match_count: 0
       - category: Security & Compliance
         matched:
@@ -1379,7 +1382,6 @@ professional_experience:
         - production write controls
         - controlled API access
         - secret-bearing argument rejection
-        - secret redaction
         jod_match_count: 0
       - category: Languages & Frameworks
         matched:
@@ -1566,22 +1568,22 @@ professional_experience:
       skills:
       - category: AI Tools
         matched:
-        - Codex
-        - Codex skills
+        - agentic workflows
+        - portable agentic workflows
         - agent harnesses
-        - autonomous engineering workflows
         - checkpointed agent workflows
         - controller skills
-        - agent contribution guidelines
+        - AI governance
+        - Human-in-the-Loop (HITL) guardrails
         jod_match_count: 0
       - category: Automation & IaC
         matched:
+        - Oracle Linux Automation Manager (OLAM)
         - agentic release workflows
         - deterministic workflow transitions
         - GitLab merge request workflows
         - branch and merge-request CI pipelines
         - CI/CD automation
-        - semantic versioning
         jod_match_count: 0
       - category: Platform & API Engineering
         matched:
@@ -1589,12 +1591,14 @@ professional_experience:
         - repository workflow automation
         - release engineering
         - validation frameworks
+        - Jira work tracking
+        - source-control automation
+        - planned change review
         jod_match_count: 0
       - category: Security & Compliance
         matched:
-        - secret redaction
         - human approval workflows
-        - sensitive path validation
+        - secret-bearing argument rejection
         jod_match_count: 0
       - category: Languages & Frameworks
         matched:
@@ -1604,20 +1608,21 @@ professional_experience:
       text: >-
         Portable Agent Harness and Governed Delivery Workflow: I built a purpose-specific
         agent harness to execute the OLAM MCP migration as a portable, reviewable
-        workflow instead of a personal productivity shortcut. A 25-phase roadmap
+        workflow rather than a personal productivity shortcut. A 25-phase roadmap
         combines independently reviewable implementation increments with evidence-based
         reassessment gates; a canonical runbook supplies prompts and exit criteria;
-        a tracked JSON checkpoint records durable state and authority; a controller
-        skill resumes the correct phase; and a deterministic helper enforces ordered
-        transitions, atomic persistence, branch/Jira conventions, and secret rejection.
-        Each increment starts from updated main, creates a scoped branch, updates
-        the changelog and semantic version, runs focused and full validation, creates
-        a GitLab merge request, waits for CI, merges only through GitLab, and fast-forwards
-        local main. The workflow safely resumed across explicit pauses, model and
-        reasoning-level changes, stale checkpoints, test corrections, and a temporarily
-        wedged merge request, stopping when CI evidence was unavailable rather than
-        bypassing governance. (Representative Jiras and repo evidence: GPDAF-21112;
-        `~/dev/dev-tools/olam-mcp`)
+        a tracked JSON checkpoint records durable state and authority; and a controller
+        skill plus deterministic CLI helper enforce ordered transitions, atomic persistence,
+        Jira and source-control conventions, and secret rejection. The governed workflow
+        covers planning, implementation, Jira and source-control operations, focused
+        and full validation, CI and release execution, and human approval, with task-sensitive
+        model and reasoning selection. Each increment starts from updated main, uses
+        a scoped branch, updates release metadata, runs validation, opens a GitLab merge
+        request, waits for CI, merges only through GitLab, and fast-forwards local main.
+        It resumed safely across explicit pauses, model/reasoning changes, stale checkpoints,
+        test corrections, and a temporarily wedged merge request, stopping when CI
+        evidence was unavailable rather than bypassing governance. (Representative
+        Jiras and repo evidence: GPDAF-21112; `~/dev/dev-tools/olam-mcp`)
       bullet_point_total_match_count: 0
       render: true
     - order: 23
@@ -1935,18 +1940,17 @@ professional_experience:
         - Automation & IaC
         - Data & Observability
         - Platform & API Engineering
-        - Security & Compliance
       skills:
       - category: Automation & IaC
         matched:
         - Oracle Linux Automation Manager (OLAM)
+        - Chef (Cookbooks/Policies)
         - ONDA
         - restore automation
         jod_match_count: 0
       - category: Data & Observability
         matched:
         - OpenSearch
-        - OCI metrics monitoring
         jod_match_count: 0
       - category: Platform & API Engineering
         matched:
@@ -1954,67 +1958,59 @@ professional_experience:
         - stakeholder enablement
         - Confluence documentation
         jod_match_count: 0
-      - category: Security & Compliance
-        matched:
-        - incident management
-        jod_match_count: 0
-      text: 'Documentation, Demos, Training, and Handoff: I also contributed through
-        documentation, demos, remediation guides, Confluence pages, training, and
-        handoff work. Examples include OpenSearch remediation guides, OLAM/ONDA restore
-        documentation, ONDA restore demo preparation, monitoring handoffs, and training/certification
-        items that supported the team''s ability to operate or transfer ownership.
-        This work matters because platform systems only become sustainable when the
-        knowledge is written down, tested in front of stakeholders, and handed off
-        in a way that others can use. It also helped connect my implementation work
-        to team adoption rather than leaving it as isolated code.'
+      text: >-
+        Documentation, Demos, Training, and Handoff: PDAF provides platform training,
+        guidance, and enablement so downstream business-unit and Oracle Health engineering/SRE
+        teams can build and operate domain-specific automation on the shared OLAM and
+        Chef/ORC platforms. Within that model, I created documentation, remediation
+        guides, and Confluence pages and contributed to demos, training, and handoffs,
+        including OpenSearch remediation guidance, OLAM/ONDA restore documentation
+        and demo preparation, and monitoring handoffs. This work made my implementation
+        contributions usable beyond isolated code and helped teams adopt shared frameworks,
+        operate workflows safely, and transfer ownership with durable guidance.
       bullet_point_total_match_count: 0
       render: true
     - order: 30
       categories:
         assigned:
         - ONDA Project Contribution
-        - What ONDA Is
+        - ONDA Program Scope
         matched:
         - Automation & IaC
         - Platform & API Engineering
         - Security & Compliance
-        - Languages & Frameworks
       skills:
       - category: Automation & IaC
         matched:
         - ONDA
         - network automation
+        - network device automation
         - Oracle Linux Automation Manager (OLAM)
+        - scheduled backup automation
         - job scheduling automation
         - configuration backup automation
         - restore automation
         jod_match_count: 0
       - category: Platform & API Engineering
         matched:
-        - vendor-extensible service design
         - AssetHub
         - metadata services
         jod_match_count: 0
       - category: Security & Compliance
         matched:
         - secrets management
-        - secret redaction
+        - source-control sanitization
         jod_match_count: 0
-      - category: Languages & Frameworks
-        matched:
-        - Python
-        jod_match_count: 0
-      text: 'What ONDA Is: ONDA, or OLAM Network Device Automation, is the OLAM-based
-        replacement for HP Network Automation in OHAI network device management. The
-        ONDA v1 initiative frames the project as replacing and extending HPNA with
-        OLAM-driven scheduled backups, restore, bulk configuration changes, sanitized
-        SCM storage, secret handling, metadata collection, and AssetHub integration
-        across a fleet of 11,000+ devices. The project spans multiple epics: ONDA
-        Secret Management, backup/restore/bulk change, scheduled snapshots, vendor
-        onboarding, data collection, logging, AssetHub integration, and future enhancements.
-        It is a team project, but the scope of my contribution was concentrated in
-        the engineering paths that made the Python utility, vendor model, data collection,
-        and production feedback loops work.'
+      text: >-
+        ONDA Program Scope: ONDA (OLAM Network Device Automation) is a separate, team-owned
+        initiative built on OLAM to replace Hewlett Packard Network Automation (HPNA)
+        for Oracle Health network-device management across more than 12,000 devices.
+        The program covers scheduled backups and restores, bulk configuration changes,
+        sanitized source-control storage, secret handling, metadata collection, logging,
+        vendor onboarding, and AssetHub integration. PDAF supplies the shared OLAM
+        platform, clusters, common frameworks, operations, and training, while downstream
+        teams generally own domain playbooks. This paragraph defines the program scope;
+        my implementation contributions are documented separately.
       bullet_point_total_match_count: 0
       render: true
     - order: 31
@@ -2023,75 +2019,80 @@ professional_experience:
         - ONDA Project Contribution
         - My ONDA Implementation Contribution
         matched:
-        - AI Tools
         - Automation & IaC
+        - Data & Observability
         - Platform & API Engineering
         - Security & Compliance
         - Languages & Frameworks
       skills:
-      - category: AI Tools
-        matched:
-        - Oracle Code Assist (OCA)
-        jod_match_count: 0
       - category: Automation & IaC
         matched:
         - ONDA
         - network automation
         - job scheduling automation
-        - runtime image publishing
         - onda-sm Python package
         - onda-playbooks
         - network fact collection
         - configuration backup automation
         - restore automation
+        - vendor-extensible automation
+        - automated resource cleanup
+        - AWX fact-cache troubleshooting
+        jod_match_count: 0
+      - category: Data & Observability
+        matched:
+        - automated reporting
+        - automation schedule reporting
+        - fact-cache analysis
+        - resource timing analysis
         jod_match_count: 0
       - category: Platform & API Engineering
         matched:
         - vendor-extensible service design
         - AssetHub
         - metadata services
+        - restore-point metadata
+        - source-control backed backups
+        - platform reliability
+        - production troubleshooting
         jod_match_count: 0
       - category: Security & Compliance
         matched:
         - secrets management
         - encrypted secret storage
-        - secret redaction
+        - source-control sanitization
         jod_match_count: 0
       - category: Languages & Frameworks
         matched:
         - Python
         jod_match_count: 0
-      text: 'My ONDA Implementation Contribution: My ONDA implementation contribution
-        centered on creating reusable building blocks rather than one-off scripts.
-        In `onda-sm`, I built and hardened the service path for sanitized SCM-backed
-        backups, encrypted secret handling, restore metadata, local restore/retrieve
-        behavior, tests, execution-environment readiness, and production cleanup.
-        In `onda-playbooks`, I focused on the data-collection path: facts, network
-        resources, role dispatch, summary reporting, schedule validation, and early
-        AssetHub push framework. Together, those contributions helped the team move
-        ONDA from a broad HPNA replacement goal into working components that could
-        be tested, operated, debugged, and extended across a large multi-vendor network
-        fleet.'
+      text: >-
+        My ONDA Implementation Contribution: Within the team-owned ONDA program, my
+        implementation work centered on reusable components rather than ownership
+        of the program. In the Python `onda-sm` package, I built and hardened sanitized
+        source-control-backed backups, encrypted secret handling, restore metadata,
+        local restore/retrieve workflows, tests, execution-environment readiness,
+        and production cleanup. In `onda-playbooks`, I built data-collection roles
+        and playbooks for facts, network resources, vendor/model dispatch, summary
+        reporting, schedule validation, and the early AssetHub publishing framework.
+        I also developed reporting workflows and troubleshot production issues involving
+        source-control publishing, executor cleanup, AWX fact caching, schedule groups,
+        and execution timing. These contributions helped turn the broader HPNA-replacement
+        goal into components that could be tested, operated, debugged, and extended
+        across a large multi-vendor fleet.
       bullet_point_total_match_count: 0
       render: true
     - order: 32
       categories:
         assigned:
-        - Overall Contribution Narrative
-        - Cross-Platform Engineering Growth
+        - Shared Platform Stewardship and Federated Enablement
+        - Federated Platform Stewardship
         matched:
-        - AI Tools
         - Automation & IaC
         - Data & Observability
         - Distributed Systems & Cloud
         - Platform & API Engineering
-        - Security & Compliance
-        - Languages & Frameworks
       skills:
-      - category: AI Tools
-        matched:
-        - AI-assisted workflow reuse
-        jod_match_count: 0
       - category: Automation & IaC
         matched:
         - Oracle Linux Automation Manager (OLAM)
@@ -2103,10 +2104,7 @@ professional_experience:
         - OpenSearch
         - Logstash
         - Filebeat
-        - index lifecycle management (ILM)
-        - Observability Dashboards
-        - alert routing
-        - OCI metrics monitoring
+        - Observability
         jod_match_count: 0
       - category: Distributed Systems & Cloud
         matched:
@@ -2115,108 +2113,90 @@ professional_experience:
       - category: Platform & API Engineering
         matched:
         - infrastructure platform engineering
+        - platform reliability
+        - production troubleshooting
+        - release engineering
+        - technical documentation
+        - stakeholder enablement
         - AssetHub
-        - metadata services
         jod_match_count: 0
-      - category: Security & Compliance
-        matched:
-        - incident management
-        jod_match_count: 0
-      - category: Languages & Frameworks
-        matched:
-        - Python
-        jod_match_count: 0
-      text: 'Cross-Platform Engineering Growth: From 2023 through June 2026, my work
-        for the PDAF team consistently sat at the intersection of infrastructure operations,
-        automation engineering, observability, and platform modernization. The 2023
-        ELK/OpenSearch work shows a growth path from maintaining monitors and scripts
-        to understanding full observability pipelines, migration correctness, index
-        lifecycle behavior, data shipping, notification routing, remediation, dashboards,
-        and operator-facing incident tooling. That foundation carried forward into
-        OLAM, Chef, Logstash/Filebeat, OpenSearch, OCEAN/monitoring, OCI infrastructure,
-        ONDA, and AssetHub-oriented metadata collection. Across these areas, the recurring
-        skill was converting operational pain into automation, clearer monitoring,
-        safer release paths, reusable utilities, and documented workflows that made
-        the PDAF team more effective.'
+      text: >-
+        Federated Platform Stewardship: My Oracle work contributes to PDAF’s stewardship
+        of shared OLAM and Chef/ORC automation platforms across commercial and government
+        environments, including Oracle Health/Cerner. PDAF owns shared deployments,
+        guardrails, platform lifecycle and publishing mechanisms, selected base cookbooks,
+        reusable OLAM frameworks, operations, training, and guidance; downstream engineering
+        and SRE teams generally own domain-specific cookbooks and playbooks. Within
+        that federated model, I contribute implementation, operational hardening, troubleshooting,
+        observability, reusable utilities, release workflows, documentation, and enablement
+        across OLAM, Chef, ONDA, OpenSearch, Logstash/Filebeat, OCI, and AssetHub. The
+        recurring pattern is turning operational pain into reusable automation, safer
+        delivery, clearer ownership, and durable guidance.
       bullet_point_total_match_count: 0
       render: true
     - order: 33
       categories:
         assigned:
-        - Overall Contribution Narrative
-        - AI as an Engineering Amplifier
+        - Governed Agentic Delivery
+        - Governed Agentic Delivery
         matched:
         - AI Tools
         - Automation & IaC
-        - Data & Observability
-        - Distributed Systems & Cloud
         - Platform & API Engineering
         - Security & Compliance
-        - Languages & Frameworks
       skills:
       - category: AI Tools
         matched:
-        - AI-assisted workflow reuse
         - Codex
         - Cline
         - MCP (Model Context Protocol)
-        - MCP server development
         - Codex skills
+        - Cline rules
+        - Agentic AI
+        - agentic workflows
         - AI-assisted TDD
         - AI-assisted operational reporting
-        - agent harnesses
+        - LLM orchestration
+        - portable agentic workflows
         - checkpointed agent workflows
         - agent contribution guidelines
+        - AI governance
+        - Human-in-the-Loop (HITL) guardrails
+        - CX/OCI/Jira skill bundles
         jod_match_count: 0
       - category: Automation & IaC
         matched:
         - Oracle Linux Automation Manager (OLAM)
         - AWX
-        - onda-sm Python package
-        - ONDA
         - agentic release workflows
-        jod_match_count: 0
-      - category: Data & Observability
-        matched:
-        - automation schedule reporting
-        - historical SQLite tracking
-        jod_match_count: 0
-      - category: Distributed Systems & Cloud
-        matched:
-        - Oracle Cloud Infrastructure (OCI)
+        - CI/CD automation
         jod_match_count: 0
       - category: Platform & API Engineering
         matched:
-        - infrastructure platform engineering
         - Jira work tracking
+        - source-control automation
         - repository workflow automation
+        - release engineering
+        - validation frameworks
         - durable state checkpoints
         jod_match_count: 0
       - category: Security & Compliance
         matched:
         - human approval workflows
-        - audit logging
-        jod_match_count: 0
-      - category: Languages & Frameworks
-        matched:
-        - CLI tooling
-        - JSON
+        - least-privilege operations
         jod_match_count: 0
       text: >-
-        AI as an Engineering Amplifier: Starting in late 2025 and becoming explicit
-        in 2026, I began using AI-assisted workflows, Codex, Cline, MCP servers,
-        and Codex skills as a practical engineering layer rather than a novelty.
-        The strongest value was not faster text generation; it was creating repeatable
-        workflows for diagnosis, TDD, repo hygiene, ticket-ready writeups, OLAM/AWX
-        reporting, tracker-backed operational evidence, Jira handoff, and safety
-        guardrails around operational tools. By codifying these practices in `.clinerules`,
-        `olam-mcp`, `git-repo-workflow`, `onda-sm-workflow`, Jira skills, OCI skills,
-        CX skills, runbooks, checkpoints, and agent contribution guidelines, I helped
-        turn personal productivity into a portable, reviewable, and auditable model
-        for autonomous engineering that other future operators can inspect, reuse,
-        and improve. This is an important personal-development thread because it shows
-        the same pattern as the observability work: move from ad hoc fixes to repeatable
-        systems.
+        Governed Agentic Delivery: Beginning in late 2025 and becoming explicit in
+        2026, I developed governed agentic workflows as an increasingly important engineering
+        delivery layer for diagnosis, planning, implementation, test-driven development,
+        Jira and source-control operations, OLAM/AWX reporting, validation, CI and
+        release workflows, and human-approved delivery. I used Codex, Cline, MCP servers,
+        and Codex skills and codified these practices in `.clinerules`, `olam-mcp`,
+        `git-repo-workflow`, `onda-sm-workflow`, Jira, OCI, and CX skills, runbooks,
+        checkpoints, and contribution guidelines. Task-sensitive model and reasoning
+        selection, explicit approval gates, scoped authority, secret protection, and
+        durable evidence make the workflows portable, reviewable, auditable, and safe
+        for other operators to inspect, reuse, and improve.
       bullet_point_total_match_count: 0
       render: true
   - order: 2
