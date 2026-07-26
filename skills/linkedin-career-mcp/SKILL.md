@@ -92,12 +92,15 @@ The current tools search public LinkedIn job listings and fetch public job detai
 - Use `make sync-draft-to-aro JOB_IDS=<job_id>` to render the stored ARO object into the database-backed draft HTML/PDF and refresh ATS scoring without re-querying the LLM.
 - Use `make manual-pass-resumes JOB_IDS=<job_id>` after `v1` and `v2` exist to
   store a Codex-reviewed `manual` variant. The command does not select the
-  manual variant automatically. Codex manual pass and highlighting runs pin
-  `CODEX_REASONING_EFFORT=xhigh` by default; override it or set it empty only
-  when intentionally inheriting Codex CLI config.
+  manual variant automatically. `MANUAL_PASS_PROFILE` selects `economy`
+  (`gpt-5.6-terra`/`high`), `regular` (`gpt-5.6-sol`/`high`, the default), or
+  `premium` (`gpt-5.6-sol`/`xhigh`). Target-specific model and effort overrides
+  take precedence independently; an explicitly empty effort inherits Codex CLI
+  configuration.
 - Use `make highlight-draft-resumes JOB_IDS=<job_id>` for the guarded Codex
-  highlighting workflow. It polishes the currently selected resume variant
-  (`v1`, `v2`, or `manual`) and is separate from v2 refinement.
+  highlighting workflow. It defaults independently to
+  `gpt-5.6-luna`/`high`, polishes the currently selected resume variant (`v1`,
+  `v2`, or `manual`), and is separate from v2 refinement.
 - Cover letters are manual Cover Letter Objects (CLOs) edited in the Flask tracker and rendered to stored PDF blobs on save.
 - The Flask tracker is launched with `make launch-website`. Resume,
   cover-letter, description, Add popup, and workflow actions read/write the

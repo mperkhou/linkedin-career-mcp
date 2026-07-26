@@ -235,15 +235,39 @@ def test_run_codex_highlight_places_approval_flag_before_exec(tmp_path, monkeypa
         "prompt",
         project_root=tmp_path,
         codex_command="codex",
-        codex_model="gpt-5.5",
+        codex_model="highlight/model",
     )
 
     assert response == '{"bullet_updates": []}'
     assert captured_args.index("--ask-for-approval") < captured_args.index("exec")
     assert captured_args[captured_args.index("--ask-for-approval") + 1] == "never"
     assert "-c" in captured_args
-    assert 'model_reasoning_effort="xhigh"' in captured_args
-    assert captured_args.index('model_reasoning_effort="xhigh"') < captured_args.index("exec")
+    assert 'model_reasoning_effort="high"' in captured_args
+    assert captured_args.index('model_reasoning_effort="high"') < captured_args.index("exec")
+    assert captured_args[captured_args.index("--model") + 1] == "highlight/model"
+
+
+def test_run_codex_highlight_empty_effort_inherits_codex_config(tmp_path, monkeypatch):
+    captured_args: list[str] = []
+
+    def fake_run(args, **kwargs):
+        captured_args.extend(args)
+        output_path = args[args.index("--output-last-message") + 1]
+        with open(output_path, "w", encoding="utf-8") as output_file:
+            output_file.write('{"bullet_updates": []}')
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    run_codex_highlight(
+        "prompt",
+        project_root=tmp_path,
+        codex_model="highlight/model",
+        codex_reasoning_effort="",
+    )
+
+    assert "--model" in captured_args
+    assert all(not arg.startswith("model_reasoning_effort=") for arg in captured_args)
 
 
 def test_run_codex_highlight_retries_timeout(tmp_path, monkeypatch):

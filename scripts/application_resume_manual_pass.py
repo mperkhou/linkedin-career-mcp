@@ -8,18 +8,34 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from linkedin_career_mcp.resume_highlighting import (
+from linkedin_career_mcp.codex_cli import (
     DEFAULT_CODEX_COMMAND,
-    DEFAULT_CODEX_MODEL,
-    DEFAULT_CODEX_REASONING_EFFORT,
     DEFAULT_CODEX_TIMEOUT_SECONDS,
 )
-from linkedin_career_mcp.resume_manual_pass import run_manual_resume_pass_for_job
+from linkedin_career_mcp.resume_manual_pass import (
+    DEFAULT_CODEX_MODEL,
+    DEFAULT_CODEX_REASONING_EFFORT,
+    run_manual_resume_pass_for_job,
+)
+from linkedin_career_mcp.resume_manual_profiles import (
+    DEFAULT_MANUAL_PASS_PROFILE,
+    ResolvedManualPassConfig,
+    parse_manual_pass_profile_key,
+    resolve_manual_pass_config,
+)
 from linkedin_career_mcp.webapp import (
     DEFAULT_DATABASE,
     DEFAULT_OUTPUT_DIR,
     DEFAULT_RESUME_TEMPLATE,
 )
+
+MANUAL_PASS_PROFILE_ENV = "LINKEDIN_CAREER_MCP_MANUAL_PASS_PROFILE"
+MANUAL_PASS_CODEX_MODEL_ENV = "LINKEDIN_CAREER_MCP_MANUAL_PASS_CODEX_MODEL"
+MANUAL_PASS_CODEX_REASONING_EFFORT_ENV = (
+    "LINKEDIN_CAREER_MCP_MANUAL_PASS_CODEX_REASONING_EFFORT"
+)
+LEGACY_CODEX_MODEL_ENV = "LINKEDIN_CAREER_MCP_CODEX_MODEL"
+LEGACY_CODEX_REASONING_EFFORT_ENV = "LINKEDIN_CAREER_MCP_CODEX_REASONING_EFFORT"
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -70,17 +86,27 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Codex CLI command. Defaults to env or 'codex'.",
     )
     parser.add_argument(
+        "--manual-pass-profile",
+        type=parse_manual_pass_profile_key,
+        help=(
+            "Allowlisted manual-pass profile. Defaults to "
+            f"{MANUAL_PASS_PROFILE_ENV} or {DEFAULT_MANUAL_PASS_PROFILE.value}."
+        ),
+    )
+    parser.add_argument(
         "--codex-model",
-        default=os.environ.get("LINKEDIN_CAREER_MCP_CODEX_MODEL", DEFAULT_CODEX_MODEL),
-        help="Codex model used for the manual pass.",
+        help=(
+            "Manual-pass model override. Defaults to workflow env, deprecated shared "
+            f"env, or the selected profile ({DEFAULT_CODEX_MODEL} for regular)."
+        ),
     )
     parser.add_argument(
         "--codex-reasoning-effort",
-        default=os.environ.get(
-            "LINKEDIN_CAREER_MCP_CODEX_REASONING_EFFORT",
-            DEFAULT_CODEX_REASONING_EFFORT,
+        help=(
+            "Manual-pass reasoning override. Defaults to workflow env, deprecated "
+            f"shared env, or the selected profile ({DEFAULT_CODEX_REASONING_EFFORT} "
+            "for regular). Pass an empty value to inherit Codex configuration."
         ),
-        help="Codex reasoning effort for the manual pass. Pass an empty value to inherit config.",
     )
     parser.add_argument(
         "--timeout-seconds",
@@ -103,7 +129,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = build_arg_parser().parse_args(argv)
+    parser = build_arg_parser()
+    args = parser.parse_args(argv)
+    try:
+        codex_config = _resolve_codex_config(args)
+    except ValueError as exc:
+        parser.error(str(exc))
     job_ids = _selected_job_ids(args.job_ids)
     processed = 0
     failed = 0
@@ -112,8 +143,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(
         (
             f"Codex manual pass candidates: {len(job_ids)} "
-            f"(database={args.database}, codex_model={args.codex_model}, "
-            f"codex_reasoning_effort={args.codex_reasoning_effort or 'inherit'})"
+            f"(database={args.database}, profile={codex_config.profile.key.value}, "
+            f"codex_model={codex_config.model or 'inherit'}, "
+            f"codex_reasoning_effort={codex_config.reasoning_effort or 'inherit'})"
         ),
         file=sys.stderr,
         flush=True,
@@ -129,8 +161,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 master_resume_text_path=args.master_resume_text,
                 template_path=args.template,
                 codex_command=args.codex_command,
-                codex_model=args.codex_model,
-                codex_reasoning_effort=args.codex_reasoning_effort,
+                manual_pass_profile=codex_config.profile.key,
+                codex_model=codex_config.model,
+                codex_reasoning_effort=codex_config.reasoning_effort,
                 timeout_seconds=args.timeout_seconds,
                 retry_count=args.retry_count,
                 artifact_dir=args.artifact_dir,
@@ -169,6 +202,33 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     print(json.dumps(summary, sort_keys=True))
     return 1 if failed else 0
+
+
+def _resolve_codex_config(args: argparse.Namespace) -> ResolvedManualPassConfig:
+    profile = args.manual_pass_profile
+    if profile is None:
+        profile = os.environ.get(MANUAL_PASS_PROFILE_ENV, DEFAULT_MANUAL_PASS_PROFILE.value)
+    return resolve_manual_pass_config(
+        profile=profile,
+        workflow_model_override=_cli_or_environment(
+            args.codex_model,
+            MANUAL_PASS_CODEX_MODEL_ENV,
+        ),
+        workflow_reasoning_effort_override=_cli_or_environment(
+            args.codex_reasoning_effort,
+            MANUAL_PASS_CODEX_REASONING_EFFORT_ENV,
+        ),
+        legacy_model_override=os.environ.get(LEGACY_CODEX_MODEL_ENV),
+        legacy_reasoning_effort_override=os.environ.get(
+            LEGACY_CODEX_REASONING_EFFORT_ENV
+        ),
+    )
+
+
+def _cli_or_environment(cli_value: str | None, environment_name: str) -> str | None:
+    if cli_value is not None:
+        return cli_value
+    return os.environ.get(environment_name)
 
 
 def _selected_job_ids(values: Sequence[str]) -> list[str]:

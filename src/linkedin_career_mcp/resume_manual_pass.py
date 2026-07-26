@@ -14,13 +14,18 @@ from typing import Any
 import yaml
 
 from linkedin_career_mcp.ats import calculate_ats_diagnostics, extract_pdf_text
-from linkedin_career_mcp.errors import WorkflowError
-from linkedin_career_mcp.resume_highlighting import (
+from linkedin_career_mcp.codex_cli import (
     DEFAULT_CODEX_COMMAND,
-    DEFAULT_CODEX_MODEL,
-    DEFAULT_CODEX_REASONING_EFFORT,
     DEFAULT_CODEX_TIMEOUT_SECONDS,
-    _append_codex_reasoning_effort,
+    append_codex_reasoning_effort,
+)
+from linkedin_career_mcp.errors import WorkflowError
+from linkedin_career_mcp.resume_manual_profiles import (
+    DEFAULT_MANUAL_PASS_PROFILE,
+    MANUAL_PASS_PROFILES,
+    ManualPassProfileKey,
+    ResolvedManualPassConfig,
+    resolve_manual_pass_config,
 )
 from linkedin_career_mcp.resume_rendering import (
     render_resume_html_from_mapping,
@@ -37,6 +42,10 @@ from linkedin_career_mcp.webapp import (
 MANUAL_PASS_INPUT_BUNDLE_SCHEMA_VERSION = "manual_resume_pass_input_bundle.v1"
 MANUAL_PASS_RESPONSE_SCHEMA_VERSION = "manual_resume_pass_response.v1"
 MANUAL_PASS_VALIDATION_SCHEMA_VERSION = "manual_resume_pass_validation.v1"
+DEFAULT_CODEX_MODEL = MANUAL_PASS_PROFILES[DEFAULT_MANUAL_PASS_PROFILE].model
+DEFAULT_CODEX_REASONING_EFFORT = MANUAL_PASS_PROFILES[
+    DEFAULT_MANUAL_PASS_PROFILE
+].reasoning_effort
 
 
 class ResumeManualPassError(WorkflowError):
@@ -59,13 +68,19 @@ def run_manual_resume_pass_for_job(
     master_resume_text_path: Path | None,
     template_path: Path,
     codex_command: str = DEFAULT_CODEX_COMMAND,
-    codex_model: str = DEFAULT_CODEX_MODEL,
-    codex_reasoning_effort: str = DEFAULT_CODEX_REASONING_EFFORT,
+    manual_pass_profile: str | ManualPassProfileKey = DEFAULT_MANUAL_PASS_PROFILE,
+    codex_model: str | None = None,
+    codex_reasoning_effort: str | None = None,
     timeout_seconds: int = DEFAULT_CODEX_TIMEOUT_SECONDS,
     retry_count: int = 0,
     artifact_dir: Path | None = None,
     dry_run: bool = False,
 ) -> dict[str, Any]:
+    codex_config = resolve_manual_pass_config(
+        profile=manual_pass_profile,
+        workflow_model_override=codex_model,
+        workflow_reasoning_effort_override=codex_reasoning_effort,
+    )
     row, v1_variant, v2_variant = _load_manual_pass_rows(
         database_path=database_path,
         job_id=job_id,
@@ -85,8 +100,8 @@ def run_manual_resume_pass_for_job(
         prompt,
         project_root=_project_root(),
         codex_command=codex_command,
-        codex_model=codex_model,
-        codex_reasoning_effort=codex_reasoning_effort,
+        codex_model=codex_config.model,
+        codex_reasoning_effort=codex_config.reasoning_effort,
         timeout_seconds=timeout_seconds,
         retry_count=retry_count,
     )
@@ -114,12 +129,10 @@ def run_manual_resume_pass_for_job(
         "reviewer_notes": parsed_response.reviewer_notes,
         "parent_variant_key": SECOND_PASS_RESUME_VARIANT,
     }
-    model_metadata = {
-        "client": "Codex CLI",
-        "model": codex_model,
-        "reasoning_effort": codex_reasoning_effort,
-        "codex_command": codex_command,
-    }
+    model_metadata = build_manual_pass_model_metadata(
+        config=codex_config,
+        codex_command=codex_command,
+    )
     parsed_response_payload = {
         "schema_version": MANUAL_PASS_RESPONSE_SCHEMA_VERSION,
         "rationale": parsed_response.rationale,
@@ -178,7 +191,23 @@ def run_manual_resume_pass_for_job(
         "v2_ats_score": v2_variant["ats_score"],
         "unsupported_terms": parsed_response.unsupported_terms,
         "reviewer_notes": parsed_response.reviewer_notes,
-        "model": codex_model,
+        "profile": codex_config.profile.key.value,
+        "model": codex_config.model,
+        "reasoning_effort": codex_config.reasoning_effort,
+    }
+
+
+def build_manual_pass_model_metadata(
+    *,
+    config: ResolvedManualPassConfig,
+    codex_command: str,
+) -> dict[str, str]:
+    return {
+        "client": "Codex CLI",
+        "profile": config.profile.key.value,
+        "model": config.model,
+        "reasoning_effort": config.reasoning_effort,
+        "codex_command": codex_command,
     }
 
 
@@ -284,7 +313,7 @@ def run_codex_manual_pass(
                 "--ask-for-approval",
                 "never",
             ]
-            _append_codex_reasoning_effort(args, codex_reasoning_effort)
+            append_codex_reasoning_effort(args, codex_reasoning_effort)
             args.extend(
                 [
                     "exec",

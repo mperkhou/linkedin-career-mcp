@@ -54,9 +54,11 @@ or switch the selected resume automatically.
 4. Build the manual variant:
    - Prefer the app-triggerable path:
      `make manual-pass-resumes JOB_IDS=<job_id>`.
-   - The Makefile pins Codex reasoning effort to `xhigh` by default through
-     `CODEX_REASONING_EFFORT`; override only when a different Codex reasoning
-     depth is intentional.
+   - The default `MANUAL_PASS_PROFILE=regular` uses
+     `gpt-5.6-sol` with `high` reasoning. Use `economy`
+     (`gpt-5.6-terra`/`high`) or `premium` (`gpt-5.6-sol`/`xhigh`) when
+     intentional, or use the workflow-specific model/effort overrides for an
+     operator-selected configuration.
    - The script builds the v1/v2 evidence bundle, including the v2 critique,
      validation report, accepted and rejected changes, unsupported terms, ATS
      diagnostics, JOD text, prompt JOD text, and master-resume evidence.

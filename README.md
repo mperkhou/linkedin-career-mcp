@@ -543,20 +543,37 @@ The optional Codex highlighting workflow runs after resume generation and
 polishes the currently selected resume variant (`v1`, `v2`, or `manual`). The
 Codex CLI returns JSON patches, and Python validates that only `<strong>` tags
 were added before writing the selected variant, re-rendering HTML/PDF, and
-keeping that variant active. Codex-powered manual pass and highlighting runs
-pin reasoning effort to `xhigh` by default so workflow quality does not depend
-on the caller's global Codex config:
+keeping that variant active. Manual-pass and highlighting model configuration
+is independent. The manual pass uses one of three allowlisted profiles:
+
+| Profile | Model | Reasoning effort |
+| --- | --- | --- |
+| `economy` | `gpt-5.6-terra` | `high` |
+| `regular` (default) | `gpt-5.6-sol` | `high` |
+| `premium` | `gpt-5.6-sol` | `xhigh` |
+
+Highlighting has a fixed default of `gpt-5.6-luna` with `high` reasoning:
 
 ```bash
-CODEX_MODEL=gpt-5.5 make highlight-draft-resumes JOB_IDS="4424184336"
+MANUAL_PASS_PROFILE=premium make manual-pass-resumes JOB_IDS="4424184336"
+HIGHLIGHT_CODEX_MODEL=gpt-5.6-luna make highlight-draft-resumes JOB_IDS="4424184336"
 ```
 
-Override the Codex command, reasoning effort, or per-row timeout when needed:
+Workflow-specific model and effort values take precedence independently, then
+deprecated shared overrides, then the selected manual profile or highlighting
+default. An explicitly empty reasoning effort inherits Codex CLI configuration.
+Override the Codex command, model, effort, or per-row timeout when needed:
 
 - `CODEX_COMMAND`: Makefile override for the Codex CLI command.
-- `CODEX_MODEL`: Makefile override for the Codex model, default `gpt-5.5`.
-- `CODEX_REASONING_EFFORT`: Makefile override for Codex reasoning effort,
-  default `xhigh`; set to an empty value to inherit Codex CLI config.
+- `MANUAL_PASS_PROFILE`: `economy`, `regular`, or `premium`; default `regular`.
+- `MANUAL_PASS_CODEX_MODEL`: explicit manual-pass model override.
+- `MANUAL_PASS_CODEX_REASONING_EFFORT`: explicit manual-pass reasoning override;
+  set it empty to inherit Codex CLI configuration.
+- `HIGHLIGHT_CODEX_MODEL`: highlighting model, default `gpt-5.6-luna`.
+- `HIGHLIGHT_CODEX_REASONING_EFFORT`: highlighting reasoning effort, default
+  `high`; set it empty to inherit Codex CLI configuration.
+- `CODEX_MODEL` and `CODEX_REASONING_EFFORT`: deprecated shared compatibility
+  fallbacks used only when the matching workflow-specific value is absent.
 - `CODEX_TIMEOUT_SECONDS`: Makefile override for the Codex CLI timeout.
 - `HIGHLIGHT_RESUME_VARIANT`: optional variant key override for highlighting,
   such as `v2`; empty means highlight the currently selected resume variant.
@@ -567,9 +584,16 @@ Override the Codex command, reasoning effort, or per-row timeout when needed:
 - `HIGHLIGHT_EXPERIENCE_JOB_ORDER`: optional ARO job-order filter for the
   rendered Professional Experience jobs sent to Codex.
 - `LINKEDIN_CAREER_MCP_CODEX_COMMAND`: script-level Codex command fallback.
-- `LINKEDIN_CAREER_MCP_CODEX_MODEL`: script-level model fallback.
-- `LINKEDIN_CAREER_MCP_CODEX_REASONING_EFFORT`: script-level Codex reasoning
-  effort fallback.
+- `LINKEDIN_CAREER_MCP_MANUAL_PASS_PROFILE`,
+  `LINKEDIN_CAREER_MCP_MANUAL_PASS_CODEX_MODEL`, and
+  `LINKEDIN_CAREER_MCP_MANUAL_PASS_CODEX_REASONING_EFFORT`: script-level
+  manual-pass configuration.
+- `LINKEDIN_CAREER_MCP_HIGHLIGHT_CODEX_MODEL` and
+  `LINKEDIN_CAREER_MCP_HIGHLIGHT_CODEX_REASONING_EFFORT`: script-level
+  highlighting configuration.
+- `LINKEDIN_CAREER_MCP_CODEX_MODEL` and
+  `LINKEDIN_CAREER_MCP_CODEX_REASONING_EFFORT`: deprecated script-level shared
+  fallbacks.
 - `LINKEDIN_CAREER_MCP_CODEX_TIMEOUT_SECONDS`: script-level timeout fallback.
 
 The important local files are:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -7,17 +8,37 @@ from pathlib import Path
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+_CODEX_CONFIG_ENVIRONMENT_NAMES = (
+    "CODEX_MODEL",
+    "CODEX_REASONING_EFFORT",
+    "MANUAL_PASS_PROFILE",
+    "MANUAL_PASS_CODEX_MODEL",
+    "MANUAL_PASS_CODEX_REASONING_EFFORT",
+    "HIGHLIGHT_CODEX_MODEL",
+    "HIGHLIGHT_CODEX_REASONING_EFFORT",
+    "LINKEDIN_CAREER_MCP_MANUAL_PASS_PROFILE",
+    "LINKEDIN_CAREER_MCP_MANUAL_PASS_CODEX_MODEL",
+    "LINKEDIN_CAREER_MCP_MANUAL_PASS_CODEX_REASONING_EFFORT",
+    "LINKEDIN_CAREER_MCP_HIGHLIGHT_CODEX_MODEL",
+    "LINKEDIN_CAREER_MCP_HIGHLIGHT_CODEX_REASONING_EFFORT",
+    "LINKEDIN_CAREER_MCP_CODEX_MODEL",
+    "LINKEDIN_CAREER_MCP_CODEX_REASONING_EFFORT",
+)
 
 
 def _make_dry_run(*args: str) -> str:
     if shutil.which("make") is None:
         pytest.skip("make is not available")
+    environment = os.environ.copy()
+    for name in _CODEX_CONFIG_ENVIRONMENT_NAMES:
+        environment.pop(name, None)
     result = subprocess.run(  # noqa: S603
         ["make", "-n", *args],
         cwd=PROJECT_ROOT,
         check=True,
         capture_output=True,
         text=True,
+        env=environment,
     )
     return result.stdout
 
@@ -124,13 +145,15 @@ def test_refine_draft_resumes_make_target_defaults_to_all_active() -> None:
     assert '--api-retries "1"' in output
 
 
-def test_highlight_draft_resumes_make_target_uses_codex_workflow() -> None:
+def test_highlight_draft_resumes_make_target_uses_workflow_specific_overrides() -> None:
     output = _make_dry_run(
         "highlight-draft-resumes",
         "JOB_IDS=url-123",
         "CODEX_COMMAND=codex",
-        "CODEX_MODEL=gpt-5.5",
-        "CODEX_REASONING_EFFORT=xhigh",
+        "CODEX_MODEL=legacy/model",
+        "CODEX_REASONING_EFFORT=medium",
+        "HIGHLIGHT_CODEX_MODEL=highlight/model",
+        "HIGHLIGHT_CODEX_REASONING_EFFORT=high",
         "CODEX_TIMEOUT_SECONDS=900",
         "HIGHLIGHT_RESUME_VARIANT=v2",
         "HIGHLIGHT_EXPERIENCE_COMPANY=Oracle",
@@ -138,8 +161,10 @@ def test_highlight_draft_resumes_make_target_uses_codex_workflow() -> None:
 
     assert "scripts/application_resume_highlight_drafts.py" in output
     assert '--codex-command "codex"' in output
-    assert '--codex-model "gpt-5.5"' in output
-    assert '--codex-reasoning-effort "xhigh"' in output
+    assert '--codex-model "highlight/model"' in output
+    assert '--codex-reasoning-effort "high"' in output
+    assert "legacy/model" not in output
+    assert '--codex-reasoning-effort "medium"' not in output
     assert '--timeout-seconds "900"' in output
     assert '--retry-count "1"' in output
     assert "--variant-key v2" in output
@@ -148,13 +173,16 @@ def test_highlight_draft_resumes_make_target_uses_codex_workflow() -> None:
     assert 'job_args="$job_args --job-id $job_id"' in output
 
 
-def test_manual_pass_resumes_make_target_uses_codex_workflow() -> None:
+def test_manual_pass_resumes_make_target_uses_profile_and_workflow_overrides() -> None:
     output = _make_dry_run(
         "manual-pass-resumes",
         "JOB_IDS=url-123",
         "CODEX_COMMAND=codex",
-        "CODEX_MODEL=gpt-5.5",
-        "CODEX_REASONING_EFFORT=xhigh",
+        "MANUAL_PASS_PROFILE=premium",
+        "MANUAL_PASS_CODEX_MODEL=manual/model",
+        "MANUAL_PASS_CODEX_REASONING_EFFORT=xhigh",
+        "CODEX_MODEL=legacy/model",
+        "CODEX_REASONING_EFFORT=medium",
         "CODEX_TIMEOUT_SECONDS=900",
     )
 
@@ -162,9 +190,118 @@ def test_manual_pass_resumes_make_target_uses_codex_workflow() -> None:
     assert '--master-resume "profile/MASTER-RESUME.yml"' in output
     assert '--master-resume-text "profile/MP-MASTER-RESUME.txt"' in output
     assert '--codex-command "codex"' in output
-    assert '--codex-model "gpt-5.5"' in output
+    assert '--manual-pass-profile "premium"' in output
+    assert '--codex-model "manual/model"' in output
     assert '--codex-reasoning-effort "xhigh"' in output
+    assert "legacy/model" not in output
+    assert '--codex-reasoning-effort "medium"' not in output
     assert '--timeout-seconds "900"' in output
     assert '--retry-count "1"' in output
     assert "for job_id in url-123" in output
     assert 'job_args="$job_args --job-id $job_id"' in output
+
+
+def test_codex_make_targets_use_distinct_defaults_without_overrides() -> None:
+    manual_output = _make_dry_run("manual-pass-resumes", "JOB_IDS=url-123")
+    highlight_output = _make_dry_run("highlight-draft-resumes", "JOB_IDS=url-123")
+
+    assert '--manual-pass-profile "regular"' in manual_output
+    assert "--codex-model" not in manual_output
+    assert "--codex-reasoning-effort" not in manual_output
+    assert '--codex-model "gpt-5.6-luna"' in highlight_output
+    assert '--codex-reasoning-effort "high"' in highlight_output
+
+
+def test_codex_make_targets_apply_legacy_fallbacks_per_field() -> None:
+    manual_output = _make_dry_run(
+        "manual-pass-resumes",
+        "JOB_IDS=url-123",
+        "MANUAL_PASS_PROFILE=economy",
+        "MANUAL_PASS_CODEX_MODEL=manual/model",
+        "CODEX_REASONING_EFFORT=medium",
+    )
+    highlight_output = _make_dry_run(
+        "highlight-draft-resumes",
+        "JOB_IDS=url-123",
+        "CODEX_MODEL=legacy/model",
+        "HIGHLIGHT_CODEX_REASONING_EFFORT=xhigh",
+    )
+
+    assert '--manual-pass-profile "economy"' in manual_output
+    assert '--codex-model "manual/model"' in manual_output
+    assert '--codex-reasoning-effort "medium"' in manual_output
+    assert '--codex-model "legacy/model"' in highlight_output
+    assert '--codex-reasoning-effort "xhigh"' in highlight_output
+
+
+def test_codex_make_targets_apply_inverse_per_field_precedence() -> None:
+    manual_output = _make_dry_run(
+        "manual-pass-resumes",
+        "JOB_IDS=url-123",
+        "CODEX_MODEL=legacy/model",
+        "MANUAL_PASS_CODEX_REASONING_EFFORT=ultra",
+    )
+    highlight_output = _make_dry_run(
+        "highlight-draft-resumes",
+        "JOB_IDS=url-123",
+        "HIGHLIGHT_CODEX_MODEL=highlight/model",
+        "CODEX_REASONING_EFFORT=medium",
+    )
+
+    assert '--codex-model "legacy/model"' in manual_output
+    assert '--codex-reasoning-effort "ultra"' in manual_output
+    assert '--codex-model "highlight/model"' in highlight_output
+    assert '--codex-reasoning-effort "medium"' in highlight_output
+
+
+def test_workflow_environment_overrides_suppress_legacy_make_fallbacks() -> None:
+    manual_output = _make_dry_run(
+        "manual-pass-resumes",
+        "JOB_IDS=url-123",
+        "LINKEDIN_CAREER_MCP_MANUAL_PASS_CODEX_MODEL=workflow-env/model",
+        "CODEX_MODEL=legacy/model",
+    )
+    highlight_output = _make_dry_run(
+        "highlight-draft-resumes",
+        "JOB_IDS=url-123",
+        "LINKEDIN_CAREER_MCP_HIGHLIGHT_CODEX_REASONING_EFFORT=",
+        "CODEX_REASONING_EFFORT=xhigh",
+    )
+
+    assert "--codex-model" not in manual_output
+    assert "legacy/model" not in manual_output
+    assert "--codex-reasoning-effort" not in highlight_output
+    assert "xhigh" not in highlight_output
+
+
+@pytest.mark.parametrize("target", ["manual-pass-resumes", "highlight-draft-resumes"])
+def test_codex_make_targets_preserve_explicit_empty_legacy_effort(target: str) -> None:
+    output = _make_dry_run(
+        target,
+        "JOB_IDS=url-123",
+        "CODEX_REASONING_EFFORT=",
+    )
+
+    assert '--codex-reasoning-effort ""' in output
+
+
+@pytest.mark.parametrize(
+    ("target", "workflow_variable"),
+    [
+        ("manual-pass-resumes", "MANUAL_PASS_CODEX_REASONING_EFFORT="),
+        ("highlight-draft-resumes", "HIGHLIGHT_CODEX_REASONING_EFFORT="),
+    ],
+)
+def test_codex_make_targets_preserve_explicit_empty_effort(
+    target: str,
+    workflow_variable: str,
+) -> None:
+    output = _make_dry_run(
+        target,
+        "JOB_IDS=url-123",
+        "CODEX_REASONING_EFFORT=xhigh",
+        workflow_variable,
+    )
+
+    assert '--codex-reasoning-effort ""' in output
+    assert '--codex-reasoning-effort "xhigh"' not in output
