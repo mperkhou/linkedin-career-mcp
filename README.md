@@ -322,6 +322,28 @@ The main Actions menu runs the same workflow family against selected tracker
 rows, including a combined v1 plus v2 plus Codex manual pass action and optional
 chained highlighting for supported generation workflows.
 
+Every Flask workflow that can run a manual pass uses the same compact native
+profile selector:
+
+- `Economy — Terra / High`
+- `Regular — Sol / High (Recommended)`, the initial value
+- `Premium — Sol / X-High`
+
+The Actions menu starts with no selected mode and keeps the selector hidden and
+disabled until either `Run v1 + v2 + Codex Manual Pass` or the standalone manual
+pass mode is selected. The Add Seed form starts with v1 and v2 selected and
+manual pass unchecked. The Add LinkedIn URL and Other URL forms start with
+highlighting checked and with v2 and manual pass unchecked; manual pass remains
+unavailable until v2 is selected. In every Add form, clearing v2 disables and
+unchecks manual pass and hides and disables its profile selector. Hidden
+selectors are not submitted.
+
+The browser submits only the allowlisted profile key, never a raw Codex model or
+reasoning value. The server resolves a missing key to `regular` for
+backward-compatible and JavaScript-free requests, rejects an invalid key before
+starting a background action, and carries the resolved choice as per-run data
+instead of changing a process-wide default.
+
 ![Annotated add seed workflow](docs/assets/tracker-add-seed-annotated.png)
 
 ![Annotated tracker actions menu](docs/assets/tracker-actions-menu-annotated.png)
@@ -465,7 +487,11 @@ make manual-pass-resumes JOB_IDS="4424184336"
 ```
 
 This stores `manual` resume variants. Automatic resume selection prefers manual
-over v2 and v1 unless the tracker row has an explicit variant selection.
+over v2 and v1 unless the tracker row has an explicit variant selection. A
+profile is execution configuration, not a new variant type: every profile
+upserts the same `(job_id, "manual")` record, so a rerun replaces that job's one
+manual variant while leaving `v1`, `v2`, and an explicit Review-page selection
+intact.
 
 Run validation:
 
@@ -559,9 +585,24 @@ MANUAL_PASS_PROFILE=premium make manual-pass-resumes JOB_IDS="4424184336"
 HIGHLIGHT_CODEX_MODEL=gpt-5.6-luna make highlight-draft-resumes JOB_IDS="4424184336"
 ```
 
-Workflow-specific model and effort values take precedence independently, then
-deprecated shared overrides, then the selected manual profile or highlighting
-default. An explicitly empty reasoning effort inherits Codex CLI configuration.
+The manual-pass profile never controls highlighting. Profile selection resolves
+from an explicit `--manual-pass-profile` or `MANUAL_PASS_PROFILE`, then
+`LINKEDIN_CAREER_MCP_MANUAL_PASS_PROFILE`, then `regular`. Model and reasoning
+effort resolve independently, in this order:
+
+1. A direct script option or workflow-specific Make override:
+   `MANUAL_PASS_CODEX_MODEL`/`MANUAL_PASS_CODEX_REASONING_EFFORT` or
+   `HIGHLIGHT_CODEX_MODEL`/`HIGHLIGHT_CODEX_REASONING_EFFORT`.
+2. The matching workflow-specific `LINKEDIN_CAREER_MCP_*` environment value.
+3. The deprecated shared Make fallback `CODEX_MODEL` or
+   `CODEX_REASONING_EFFORT`.
+4. The deprecated shared script fallback `LINKEDIN_CAREER_MCP_CODEX_MODEL` or
+   `LINKEDIN_CAREER_MCP_CODEX_REASONING_EFFORT`.
+5. The selected manual profile or the fixed highlighting default.
+
+An explicitly empty reasoning effort is presence-aware and inherits Codex CLI
+configuration. `CODEX_COMMAND`, timeout, and retry settings remain shared
+operational controls; only the shared model and effort overrides are deprecated.
 Override the Codex command, model, effort, or per-row timeout when needed:
 
 - `CODEX_COMMAND`: Makefile override for the Codex CLI command.
@@ -595,6 +636,25 @@ Override the Codex command, model, effort, or per-row timeout when needed:
   `LINKEDIN_CAREER_MCP_CODEX_REASONING_EFFORT`: deprecated script-level shared
   fallbacks.
 - `LINKEDIN_CAREER_MCP_CODEX_TIMEOUT_SECONDS`: script-level timeout fallback.
+
+Manual-pass metadata records the selected profile, resolved model and reasoning
+effort, Codex client, and command. Highlighting updates the same target variant
+while preserving its source, parent, evidence, critique, validation, artifact,
+and generation/manual metadata, then records the highlighting client, model,
+effort, and command separately under nested `highlighting` metadata. It does not
+create another variant or change the manual pass's provenance.
+
+No database migration is required for v4.12.0, and existing `v1`, `v2`, and
+`manual` rows remain valid until an operator reruns a workflow. In v4.11 and
+earlier, the unset shared Codex model/effort default was
+`gpt-5.5`/`xhigh` for both manual pass and highlighting. With those shared
+values unset in v4.12.0, manual pass uses the `regular`
+`gpt-5.6-sol`/`high` profile and highlighting uses its independent
+`gpt-5.6-luna`/`high` default. Existing explicit shared overrides still work as
+deprecated fallbacks; unset or replace them to adopt the split defaults.
+Model-quality comparisons among the three manual profiles have not yet been
+run, so `Regular` is the configured recommended default rather than a
+benchmark-derived winner.
 
 The important local files are:
 

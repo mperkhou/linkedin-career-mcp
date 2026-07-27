@@ -1,5 +1,22 @@
 # linkedin-career-mcp CHANGELOG
 
+## 4.12.0 - Add scoped Codex manual-pass profiles
+
+* Add the allowlisted `economy`, `regular`, and `premium` manual-pass profiles,
+  with `regular` (`gpt-5.6-sol`/`high`) as the default.
+* Keep resume highlighting independently fixed at
+  `gpt-5.6-luna`/`high`; manual-pass profiles never control highlighting.
+* Add conditional profile selectors to every Flask manual-pass workflow and
+  carry each choice immutably into only that run's manual-pass command.
+* Preserve deprecated shared model/effort overrides as compatibility fallbacks
+  behind workflow-specific overrides and the new split defaults.
+* Record manual-pass profile and resolved Codex configuration while preserving
+  generation/manual provenance and adding separate highlighting provenance.
+* Keep one DB-backed `manual` variant per application with no database migration,
+  and add command, server, concurrency, provenance, and browser regression
+  coverage.
+* Bump the package version to `4.12.0`.
+
 ## 4.11.0 - Strengthen shared platform resume evidence
 
 * Reframe the professional summary and Oracle role overview around team-owned
