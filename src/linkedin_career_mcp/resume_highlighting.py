@@ -15,12 +15,15 @@ from typing import Any
 
 from bs4 import BeautifulSoup
 
+from linkedin_career_mcp.codex_cli import (
+    DEFAULT_CODEX_COMMAND,
+    DEFAULT_CODEX_TIMEOUT_SECONDS,
+    append_codex_reasoning_effort,
+)
 from linkedin_career_mcp.errors import WorkflowError
 
-DEFAULT_CODEX_COMMAND = "codex"
-DEFAULT_CODEX_MODEL = "gpt-5.5"
-DEFAULT_CODEX_REASONING_EFFORT = "xhigh"
-DEFAULT_CODEX_TIMEOUT_SECONDS = 900
+DEFAULT_CODEX_MODEL = "gpt-5.6-luna"
+DEFAULT_CODEX_REASONING_EFFORT = "high"
 DEFAULT_MAX_STRONG_SPANS_PER_BULLET = 3
 DEFAULT_MIN_STRONG_SPANS_PER_BULLET = 1
 _STRONG_TAG_RE = re.compile(r"</?\s*strong\s*>", re.IGNORECASE)
@@ -184,7 +187,7 @@ def run_codex_highlight(
                 "--ask-for-approval",
                 "never",
             ]
-            _append_codex_reasoning_effort(args, codex_reasoning_effort)
+            append_codex_reasoning_effort(args, codex_reasoning_effort)
             args.extend(
                 [
                     "exec",
@@ -237,13 +240,6 @@ def run_codex_highlight(
                 raise ResumeHighlightError("Codex returned an empty highlighting response.")
             return response
     raise AssertionError("unreachable retry loop exit")
-
-
-def _append_codex_reasoning_effort(args: list[str], codex_reasoning_effort: str) -> None:
-    effort = codex_reasoning_effort.strip()
-    if not effort:
-        return
-    args.extend(["-c", f"model_reasoning_effort={json.dumps(effort)}"])
 
 
 def apply_highlight_response(

@@ -12,6 +12,7 @@ from typing import Any
 
 import yaml
 
+from linkedin_career_mcp.codex_cli import CodexModelConfig, resolve_codex_model_config
 from linkedin_career_mcp.resume_highlighting import (
     DEFAULT_CODEX_COMMAND,
     DEFAULT_CODEX_MODEL,
@@ -37,6 +38,13 @@ from linkedin_career_mcp.webapp import (
     connect_database,
     store_application_resume_variant,
 )
+
+HIGHLIGHT_CODEX_MODEL_ENV = "LINKEDIN_CAREER_MCP_HIGHLIGHT_CODEX_MODEL"
+HIGHLIGHT_CODEX_REASONING_EFFORT_ENV = (
+    "LINKEDIN_CAREER_MCP_HIGHLIGHT_CODEX_REASONING_EFFORT"
+)
+LEGACY_CODEX_MODEL_ENV = "LINKEDIN_CAREER_MCP_CODEX_MODEL"
+LEGACY_CODEX_REASONING_EFFORT_ENV = "LINKEDIN_CAREER_MCP_CODEX_REASONING_EFFORT"
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -89,16 +97,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--codex-model",
-        default=os.environ.get("LINKEDIN_CAREER_MCP_CODEX_MODEL", DEFAULT_CODEX_MODEL),
-        help="Codex model used for the polish step.",
+        help=(
+            "Highlighting model override. Defaults to workflow env, deprecated shared "
+            f"env, or {DEFAULT_CODEX_MODEL}."
+        ),
     )
     parser.add_argument(
         "--codex-reasoning-effort",
-        default=os.environ.get(
-            "LINKEDIN_CAREER_MCP_CODEX_REASONING_EFFORT",
-            DEFAULT_CODEX_REASONING_EFFORT,
+        help=(
+            "Highlighting reasoning override. Defaults to workflow env, deprecated "
+            f"shared env, or {DEFAULT_CODEX_REASONING_EFFORT}. Pass an empty value "
+            "to inherit Codex configuration."
         ),
-        help="Codex reasoning effort for the polish step. Pass an empty value to inherit config.",
     )
     parser.add_argument(
         "--timeout-seconds",
@@ -136,6 +146,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
+    codex_config = _resolve_codex_config(args)
     rows = _load_rows(
         database_path=args.database,
         job_ids=set(args.job_ids or []),
@@ -145,8 +156,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(
         (
             f"Candidates: {len(rows)} (database={args.database}, "
-            f"codex_model={args.codex_model}, "
-            f"codex_reasoning_effort={args.codex_reasoning_effort or 'inherit'})"
+            f"codex_model={codex_config.model or 'inherit'}, "
+            f"codex_reasoning_effort={codex_config.reasoning_effort or 'inherit'})"
         ),
         file=sys.stderr,
         flush=True,
@@ -173,8 +184,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 artifact_dir=args.artifact_dir,
                 dry_run=args.dry_run,
                 codex_command=args.codex_command,
-                codex_model=args.codex_model,
-                codex_reasoning_effort=args.codex_reasoning_effort,
+                codex_model=codex_config.model,
+                codex_reasoning_effort=codex_config.reasoning_effort,
                 timeout_seconds=args.timeout_seconds,
                 retry_count=args.retry_count,
                 max_strong_spans_per_bullet=args.max_strong_spans_per_bullet,
@@ -204,6 +215,31 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     print(json.dumps(summary, sort_keys=True))
     return 1 if failed else 0
+
+
+def _resolve_codex_config(args: argparse.Namespace) -> CodexModelConfig:
+    return resolve_codex_model_config(
+        default_model=DEFAULT_CODEX_MODEL,
+        default_reasoning_effort=DEFAULT_CODEX_REASONING_EFFORT,
+        workflow_model_override=_cli_or_environment(
+            args.codex_model,
+            HIGHLIGHT_CODEX_MODEL_ENV,
+        ),
+        workflow_reasoning_effort_override=_cli_or_environment(
+            args.codex_reasoning_effort,
+            HIGHLIGHT_CODEX_REASONING_EFFORT_ENV,
+        ),
+        legacy_model_override=os.environ.get(LEGACY_CODEX_MODEL_ENV),
+        legacy_reasoning_effort_override=os.environ.get(
+            LEGACY_CODEX_REASONING_EFFORT_ENV
+        ),
+    )
+
+
+def _cli_or_environment(cli_value: str | None, environment_name: str) -> str | None:
+    if cli_value is not None:
+        return cli_value
+    return os.environ.get(environment_name)
 
 
 def _highlight_row(
@@ -296,6 +332,12 @@ def _highlight_row(
         pdf_path.write_bytes(resume_pdf)
 
     if not dry_run:
+        model_metadata = _highlight_model_metadata(
+            row["model_metadata_json"],
+            codex_command=codex_command,
+            codex_model=codex_model,
+            codex_reasoning_effort=codex_reasoning_effort,
+        )
         store_application_resume_variant(
             database_path=database_path,
             job_id=job_id,
@@ -306,10 +348,42 @@ def _highlight_row(
             application_resume_object=aro_yaml,
             resume_html=resume_html,
             resume_pdf=resume_pdf,
-            resume_html_filename=html_path.name if html_path is not None else None,
-            resume_filename=pdf_path.name if pdf_path is not None else None,
-            source_resume_html_path=str(html_path) if html_path is not None else "",
-            source_resume_path=str(pdf_path) if pdf_path is not None else "",
+            ats_diagnostics=_json_value(
+                row["ats_diagnostics_json"],
+                field_name="ats_diagnostics_json",
+            ),
+            evidence_packet=_json_value(
+                row["evidence_packet_json"],
+                field_name="evidence_packet_json",
+            ),
+            external_critique=_json_value(
+                row["external_critique_json"],
+                field_name="external_critique_json",
+            ),
+            critique_prompt=row["critique_prompt"],
+            critique_response=row["critique_response"],
+            critique=_json_value(row["critique_json"], field_name="critique_json"),
+            validation=_json_value(
+                row["validation_json"],
+                field_name="validation_json",
+            ),
+            model_metadata=model_metadata,
+            resume_html_filename=(
+                html_path.name if html_path is not None else row["resume_html_filename"]
+            ),
+            resume_filename=(
+                pdf_path.name if pdf_path is not None else row["resume_filename"]
+            ),
+            source_resume_html_path=(
+                str(html_path)
+                if html_path is not None
+                else str(row["source_resume_html_path"] or "")
+            ),
+            source_resume_path=(
+                str(pdf_path)
+                if pdf_path is not None
+                else str(row["source_resume_path"] or "")
+            ),
             select_after_store=True,
             selection_mode=_selected_variant_selection_mode(row),
         )
@@ -353,6 +427,18 @@ def _load_rows(
                 selected_variant.variant_label,
                 selected_variant.source AS variant_source,
                 selected_variant.parent_variant_key,
+                selected_variant.resume_html_filename,
+                selected_variant.source_resume_html_path,
+                selected_variant.resume_filename,
+                selected_variant.source_resume_path,
+                selected_variant.ats_diagnostics_json,
+                selected_variant.evidence_packet_json,
+                selected_variant.external_critique_json,
+                selected_variant.critique_prompt,
+                selected_variant.critique_response,
+                selected_variant.critique_json,
+                selected_variant.validation_json,
+                selected_variant.model_metadata_json,
                 COALESCE(
                     selected_variant.application_resume_object,
                     applications.application_resume_object
@@ -423,6 +509,38 @@ def _selected_parent_variant_key(row: sqlite3.Row) -> str | None:
 
 def _selected_variant_selection_mode(row: sqlite3.Row) -> str:
     return str(row["resume_variant_selection_mode"] or AUTO_RESUME_VARIANT_SELECTION_MODE)
+
+
+def _highlight_model_metadata(
+    value: object,
+    *,
+    codex_command: str,
+    codex_model: str,
+    codex_reasoning_effort: str,
+) -> dict[str, Any]:
+    existing = _json_value(value, field_name="model_metadata_json")
+    if existing is None:
+        metadata: dict[str, Any] = {}
+    elif isinstance(existing, Mapping):
+        metadata = dict(existing)
+    else:
+        raise ResumeHighlightError("model_metadata_json must contain a JSON object.")
+    metadata["highlighting"] = {
+        "client": "Codex CLI",
+        "model": codex_model,
+        "reasoning_effort": codex_reasoning_effort,
+        "codex_command": codex_command,
+    }
+    return metadata
+
+
+def _json_value(value: object, *, field_name: str) -> Any | None:
+    if value is None or value == "":
+        return None
+    try:
+        return json.loads(str(value))
+    except json.JSONDecodeError as exc:
+        raise ResumeHighlightError(f"{field_name} contains invalid JSON: {exc}") from exc
 
 
 def _write_artifact(

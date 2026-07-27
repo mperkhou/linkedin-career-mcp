@@ -22,14 +22,28 @@ SECOND_PASS_MODEL ?= z-ai/glm-5.2
 SECOND_PASS_TIMEOUT_SECONDS ?= 600
 SECOND_PASS_RETRIES ?= 1
 CODEX_COMMAND ?= codex
-CODEX_MODEL ?= gpt-5.5
-CODEX_REASONING_EFFORT ?= xhigh
+# Deprecated shared model/effort fallbacks. Empty file defaults mean "not set";
+# command-line and environment values remain presence-aware compatibility inputs.
+CODEX_MODEL ?=
+CODEX_REASONING_EFFORT ?=
 CODEX_TIMEOUT_SECONDS ?= 900
 CODEX_RETRIES ?= 1
 MANUAL_PASS_MASTER_RESUME_TEXT ?= profile/MP-MASTER-RESUME.txt
+MANUAL_PASS_PROFILE ?= regular
+MANUAL_PASS_CODEX_MODEL ?=
+MANUAL_PASS_CODEX_REASONING_EFFORT ?=
+HIGHLIGHT_CODEX_MODEL ?= gpt-5.6-luna
+HIGHLIGHT_CODEX_REASONING_EFFORT ?= high
 HIGHLIGHT_RESUME_VARIANT ?=
 HIGHLIGHT_EXPERIENCE_COMPANY ?=
 HIGHLIGHT_EXPERIENCE_JOB_ORDER ?=
+
+explicit_make_value = $(if $(filter file undefined default automatic,$(origin $(1))),,1)
+manual_pass_profile_arg = $(if $(call explicit_make_value,MANUAL_PASS_PROFILE),--manual-pass-profile "$(MANUAL_PASS_PROFILE)",$(if $(call explicit_make_value,LINKEDIN_CAREER_MCP_MANUAL_PASS_PROFILE),,--manual-pass-profile "$(MANUAL_PASS_PROFILE)"))
+manual_pass_codex_model_arg = $(if $(call explicit_make_value,MANUAL_PASS_CODEX_MODEL),--codex-model "$(MANUAL_PASS_CODEX_MODEL)",$(if $(call explicit_make_value,LINKEDIN_CAREER_MCP_MANUAL_PASS_CODEX_MODEL),,$(if $(call explicit_make_value,CODEX_MODEL),--codex-model "$(CODEX_MODEL)",$(if $(call explicit_make_value,LINKEDIN_CAREER_MCP_CODEX_MODEL),,))))
+manual_pass_codex_effort_arg = $(if $(call explicit_make_value,MANUAL_PASS_CODEX_REASONING_EFFORT),--codex-reasoning-effort "$(MANUAL_PASS_CODEX_REASONING_EFFORT)",$(if $(call explicit_make_value,LINKEDIN_CAREER_MCP_MANUAL_PASS_CODEX_REASONING_EFFORT),,$(if $(call explicit_make_value,CODEX_REASONING_EFFORT),--codex-reasoning-effort "$(CODEX_REASONING_EFFORT)",$(if $(call explicit_make_value,LINKEDIN_CAREER_MCP_CODEX_REASONING_EFFORT),,))))
+highlight_codex_model_arg = $(if $(call explicit_make_value,HIGHLIGHT_CODEX_MODEL),--codex-model "$(HIGHLIGHT_CODEX_MODEL)",$(if $(call explicit_make_value,LINKEDIN_CAREER_MCP_HIGHLIGHT_CODEX_MODEL),,$(if $(call explicit_make_value,CODEX_MODEL),--codex-model "$(CODEX_MODEL)",$(if $(call explicit_make_value,LINKEDIN_CAREER_MCP_CODEX_MODEL),,--codex-model "$(HIGHLIGHT_CODEX_MODEL)"))))
+highlight_codex_effort_arg = $(if $(call explicit_make_value,HIGHLIGHT_CODEX_REASONING_EFFORT),--codex-reasoning-effort "$(HIGHLIGHT_CODEX_REASONING_EFFORT)",$(if $(call explicit_make_value,LINKEDIN_CAREER_MCP_HIGHLIGHT_CODEX_REASONING_EFFORT),,$(if $(call explicit_make_value,CODEX_REASONING_EFFORT),--codex-reasoning-effort "$(CODEX_REASONING_EFFORT)",$(if $(call explicit_make_value,LINKEDIN_CAREER_MCP_CODEX_REASONING_EFFORT),,--codex-reasoning-effort "$(HIGHLIGHT_CODEX_REASONING_EFFORT)"))))
 
 .PHONY: install install-python install-browser install-ollama ollama-model venv skill-link seed-jobs regenerate-resumes regenerate-draft-resumes regenerate-resume-variants regenerate-aro-objects sync-draft-to-aro refine-draft-resumes highlight-draft-resumes manual-pass-resumes launch-website stop-website restart-website test lint clean
 
@@ -143,7 +157,7 @@ highlight-draft-resumes: venv
 	if [ -n "$(HIGHLIGHT_EXPERIENCE_JOB_ORDER)" ]; then \
 		filter_args="$$filter_args --experience-job-order $(HIGHLIGHT_EXPERIENCE_JOB_ORDER)"; \
 	fi; \
-	$(VENV_PYTHON) scripts/application_resume_highlight_drafts.py --codex-command "$(CODEX_COMMAND)" --codex-model "$(CODEX_MODEL)" --codex-reasoning-effort "$(CODEX_REASONING_EFFORT)" --timeout-seconds "$(CODEX_TIMEOUT_SECONDS)" --retry-count "$(CODEX_RETRIES)" $$job_args $$filter_args
+	$(VENV_PYTHON) scripts/application_resume_highlight_drafts.py --codex-command "$(CODEX_COMMAND)" $(highlight_codex_model_arg) $(highlight_codex_effort_arg) --timeout-seconds "$(CODEX_TIMEOUT_SECONDS)" --retry-count "$(CODEX_RETRIES)" $$job_args $$filter_args
 
 manual-pass-resumes: venv
 	@if [ "$(JOB_IDS)" = "all" ]; then \
@@ -154,7 +168,7 @@ manual-pass-resumes: venv
 	for job_id in $(JOB_IDS); do \
 		job_args="$$job_args --job-id $$job_id"; \
 	done; \
-	$(VENV_PYTHON) scripts/application_resume_manual_pass.py --master-resume "$(MASTER_RESUME)" --master-resume-text "$(MANUAL_PASS_MASTER_RESUME_TEXT)" --codex-command "$(CODEX_COMMAND)" --codex-model "$(CODEX_MODEL)" --codex-reasoning-effort "$(CODEX_REASONING_EFFORT)" --timeout-seconds "$(CODEX_TIMEOUT_SECONDS)" --retry-count "$(CODEX_RETRIES)" $$job_args
+	$(VENV_PYTHON) scripts/application_resume_manual_pass.py --master-resume "$(MASTER_RESUME)" --master-resume-text "$(MANUAL_PASS_MASTER_RESUME_TEXT)" --codex-command "$(CODEX_COMMAND)" $(manual_pass_profile_arg) $(manual_pass_codex_model_arg) $(manual_pass_codex_effort_arg) --timeout-seconds "$(CODEX_TIMEOUT_SECONDS)" --retry-count "$(CODEX_RETRIES)" $$job_args
 
 launch-website: venv
 	$(VENV)/bin/linkedin-career-webapp --host "$(WEBSITE_HOST)" --port "$(WEBSITE_PORT)" --open-browser

@@ -14,7 +14,9 @@ variants for a job row in `output/tracking/applications.sqlite3`. The goal is a
 factual manual pass, not a keyword-stuffing pass. In the current tracker, the
 app-triggered workflow stores the result as a `manual` resume variant in
 `application_resume_variants`; it does not overwrite the v1 or v2 variant rows
-or switch the selected resume automatically.
+and every profile upserts the same one manual row for the job. It preserves an
+explicit Review-page selection; when selection is automatic, the normal
+preference becomes `manual`, then `v2`, then `v1`.
 
 ## Inputs
 
@@ -54,9 +56,21 @@ or switch the selected resume automatically.
 4. Build the manual variant:
    - Prefer the app-triggerable path:
      `make manual-pass-resumes JOB_IDS=<job_id>`.
-   - The Makefile pins Codex reasoning effort to `xhigh` by default through
-     `CODEX_REASONING_EFFORT`; override only when a different Codex reasoning
-     depth is intentional.
+   - Select only an allowlisted profile:
+     - `economy`: `gpt-5.6-terra` with `high` reasoning.
+     - `regular`: `gpt-5.6-sol` with `high` reasoning; this is the default.
+     - `premium`: `gpt-5.6-sol` with `xhigh` reasoning.
+   - For example:
+     `MANUAL_PASS_PROFILE=premium make manual-pass-resumes JOB_IDS=<job_id>`.
+     Model and effort overrides resolve independently from a direct script
+     option or workflow-specific Make value, then the matching
+     `LINKEDIN_CAREER_MCP_MANUAL_PASS_CODEX_*` environment value, then the
+     deprecated shared Make and script environment fallbacks, then the selected
+     profile. An explicitly empty effort inherits Codex CLI configuration.
+     Existing `CODEX_MODEL`, `CODEX_REASONING_EFFORT`,
+     `LINKEDIN_CAREER_MCP_CODEX_MODEL`, and
+     `LINKEDIN_CAREER_MCP_CODEX_REASONING_EFFORT` inputs remain compatibility
+     fallbacks but are deprecated.
    - The script builds the v1/v2 evidence bundle, including the v2 critique,
      validation report, accepted and rejected changes, unsupported terms, ATS
      diagnostics, JOD text, prompt JOD text, and master-resume evidence.
@@ -65,15 +79,24 @@ or switch the selected resume automatically.
      `manual` variant through the same DB-backed model used by v1/v2.
    - Re-query `application_resume_variants` and verify the `manual` row has ARO,
      HTML, PDF, ATS diagnostics, the Codex prompt/response, validation payload,
-     and model metadata.
-   - Do not switch the selected resume automatically. Use the tracker variant
-     review page to select `Manual pass` when it is ready.
+     and model metadata. Its metadata must include the profile and resolved
+     model, reasoning effort, client, and command.
+   - Confirm an explicit selection remains unchanged. For a row in automatic
+     selection mode, confirm the normal `manual > v2 > v1` preference makes the
+     new manual variant active.
 
 5. Tracker review:
    - Open `/resumes/<job_id>/variants` in the Flask tracker.
    - Compare v1, v2, and Manual pass ATS movement, diff, accepted/rejected
      evidence, unsupported terms, and artifact links.
-   - Select `Use manual pass` only after review. This action is reversible.
+   - If an explicit selection should move to the reviewed manual result, select
+     `Use manual pass` only after review. This action is reversible.
+
+   If highlighting is chained after the manual pass, it targets `manual` but
+   uses its own independent `gpt-5.6-luna`/`high` default. A manual profile must
+   never configure highlighting. Verify that highlighting preserved the
+   generation/manual metadata and added separate nested `highlighting`
+   provenance with its resolved client, model, effort, and command.
 
 6. Visual verification:
    - Render the stored PDF to PNG with `pdftoppm`.
@@ -89,8 +112,9 @@ When finished, report:
 - ATS movement and remaining missing high-value terms.
 - PDF, HTML, and manual variant details.
 - DB checkpoint path, if one was created.
-- Confirmation that the `manual` resume variant was stored and remains
-  unselected until explicitly chosen from the tracker.
+- Confirmation that the one `manual` resume variant was stored, the previous
+  manual row was replaced on rerun, and explicit or automatic selection behaved
+  as described above.
 - Verification commands run.
 
 ## Guardrails
@@ -100,5 +124,7 @@ When finished, report:
 - Do not add skills solely because ATS or Jack & Jill suggested them.
 - Do not remove user notes or unrelated row state.
 - Do not mark `applied_to` or `date_applied` unless the user asks.
+- Treat profiles as execution configuration, not variant keys. Keep one
+  `manual` variant and never let a manual profile control highlighting.
 - Keep the final PDF to a clean two-page layout unless the target role clearly
   warrants a different format.

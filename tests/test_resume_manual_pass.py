@@ -169,7 +169,9 @@ def test_run_manual_resume_pass_for_job_stores_manual_variant_and_defaults_to_it
         master_resume_text_path=master_resume_text_path,
         template_path=webapp.DEFAULT_RESUME_TEMPLATE,
         codex_command="codex",
-        codex_model="gpt-5.5",
+        manual_pass_profile="premium",
+        codex_model="operator/model",
+        codex_reasoning_effort="",
         timeout_seconds=30,
     )
 
@@ -206,8 +208,11 @@ def test_run_manual_resume_pass_for_job_stores_manual_variant_and_defaults_to_it
     validation = json.loads(manual_variant["validation_json"])
     assert validation["unsupported_terms"] == ["Kubernetes"]
     model_metadata = json.loads(manual_variant["model_metadata_json"])
-    assert model_metadata["model"] == "gpt-5.5"
-    assert model_metadata["reasoning_effort"] == "xhigh"
+    assert model_metadata["profile"] == "premium"
+    assert model_metadata["model"] == "operator/model"
+    assert model_metadata["reasoning_effort"] == ""
+    assert model_metadata["client"] == "Codex CLI"
+    assert model_metadata["codex_command"] == "codex"
 
 
 def test_run_codex_manual_pass_pins_reasoning_effort(tmp_path: Path, monkeypatch) -> None:
@@ -236,13 +241,50 @@ def test_run_codex_manual_pass_pins_reasoning_effort(tmp_path: Path, monkeypatch
         "prompt",
         project_root=tmp_path,
         codex_command="codex",
-        codex_model="gpt-5.5",
+        codex_model="manual/model",
     )
 
     assert "manual_resume_pass_response.v1" in response
     assert "-c" in captured_args
-    assert 'model_reasoning_effort="xhigh"' in captured_args
-    assert captured_args.index('model_reasoning_effort="xhigh"') < captured_args.index("exec")
+    assert 'model_reasoning_effort="high"' in captured_args
+    assert captured_args.index('model_reasoning_effort="high"') < captured_args.index("exec")
+    assert captured_args[captured_args.index("--model") + 1] == "manual/model"
+
+
+def test_run_codex_manual_pass_empty_effort_inherits_codex_config(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured_args: list[str] = []
+
+    def fake_run(args, **kwargs):
+        captured_args.extend(args)
+        output_path = args[args.index("--output-last-message") + 1]
+        Path(output_path).write_text(
+            json.dumps(
+                {
+                    "schema_version": "manual_resume_pass_response.v1",
+                    "application_resume_object": {"schema_version": "test"},
+                    "rationale": "Manual pass.",
+                    "unsupported_terms": [],
+                    "reviewer_notes": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    resume_manual_pass.run_codex_manual_pass(
+        "prompt",
+        project_root=tmp_path,
+        codex_model="manual/model",
+        codex_reasoning_effort="",
+    )
+
+    assert "--model" in captured_args
+    assert all(not arg.startswith("model_reasoning_effort=") for arg in captured_args)
 
 
 def test_run_codex_manual_pass_retries_timeout(tmp_path: Path, monkeypatch) -> None:

@@ -91,26 +91,41 @@ The current tools search public LinkedIn job listings and fetch public job detai
 - Use `make regenerate-aro-objects JOB_IDS=<job_id>` when `profile/MASTER-RESUME.yml` changed and stored ARO objects should be recreated from the latest MRO without API calls from existing Core Technical Skills match lists.
 - Use `make sync-draft-to-aro JOB_IDS=<job_id>` to render the stored ARO object into the database-backed draft HTML/PDF and refresh ATS scoring without re-querying the LLM.
 - Use `make manual-pass-resumes JOB_IDS=<job_id>` after `v1` and `v2` exist to
-  store a Codex-reviewed `manual` variant. The command does not select the
-  manual variant automatically. Codex manual pass and highlighting runs pin
-  `CODEX_REASONING_EFFORT=xhigh` by default; override it or set it empty only
-  when intentionally inheriting Codex CLI config.
+  store a Codex-reviewed `manual` variant. `MANUAL_PASS_PROFILE` selects
+  `economy` (`gpt-5.6-terra`/`high`), `regular`
+  (`gpt-5.6-sol`/`high`, the default), or `premium`
+  (`gpt-5.6-sol`/`xhigh`). Profiles are execution configuration: all three
+  upsert the same `(job_id, "manual")` row. Explicit Review-page selections are
+  preserved, while automatic selection prefers `manual > v2 > v1`.
+- Manual model and effort values resolve independently from a direct script
+  option or workflow-specific Make value, then the matching
+  `LINKEDIN_CAREER_MCP_MANUAL_PASS_CODEX_*` environment value, then the
+  deprecated shared `CODEX_*` Make and `LINKEDIN_CAREER_MCP_CODEX_*` script
+  fallbacks, then the profile. An explicitly empty effort inherits Codex CLI
+  configuration. Manual metadata records the selected profile plus the resolved
+  client, model, effort, and command.
 - Use `make highlight-draft-resumes JOB_IDS=<job_id>` for the guarded Codex
-  highlighting workflow. It polishes the currently selected resume variant
-  (`v1`, `v2`, or `manual`) and is separate from v2 refinement.
+  highlighting workflow. It defaults independently to
+  `gpt-5.6-luna`/`high`, polishes the currently selected resume variant (`v1`,
+  `v2`, or `manual`), and is separate from v2 refinement. A manual profile
+  never configures highlighting. Highlighting preserves generation/manual and
+  source provenance, then records its own client, model, effort, and command in
+  nested `highlighting` metadata on the same variant.
 - Cover letters are manual Cover Letter Objects (CLOs) edited in the Flask tracker and rendered to stored PDF blobs on save.
 - The Flask tracker is launched with `make launch-website`. Resume,
   cover-letter, description, Add popup, and workflow actions read/write the
   SQLite database directly.
 - The tracker Add popup can seed a batch with a job count and posting-age
   window, then chain selected stages for the newly seeded rows: v1 draft
-  generation, v2 refinement, Codex manual pass, and Codex highlighting.
+  generation, v2 refinement, Codex manual pass, and Codex highlighting. Seed
+  starts with v1 and v2 selected and manual pass unchecked.
 - The Add popup's LinkedIn and Other URL forms accept comma- or
   newline-separated URL batches, then run one background workflow for the rows
   that were loaded successfully. They can chain v2 refinement, Codex manual
-  pass, and Codex highlighting; manual pass requires v2 refinement. Chained
-  highlighting targets `v2` after v2 refinement and `manual` after a chained
-  manual pass.
+  pass, and Codex highlighting. These forms start with highlighting selected
+  and with v2 and manual pass unchecked; manual pass requires v2 refinement.
+  Chained highlighting targets `v2` after v2 refinement and `manual` after a
+  chained manual pass.
 - The Other URL parser reads schema.org `JobPosting` metadata first, then
   embedded app payloads used by Dayforce Next.js pages and Work at a Startup
   Inertia pages, then visible page text.
@@ -118,6 +133,15 @@ The current tools search public LinkedIn job listings and fetch public job detai
   main v1-plus-v2 resume generation, v1-only draft generation, a combined
   v1-plus-v2-plus-manual-pass workflow, v2 create/rerun, manual pass,
   highlighting, ARO regeneration, and draft-to-ARO sync.
+- Every Add or Actions manual path exposes one
+  `manual_pass_profile` selector with Economy, Regular (recommended/default),
+  and Premium choices. Actions starts with no mode selected and reveals the
+  selector only for combined or standalone manual pass. Add reveals it only
+  while manual pass is checked; clearing v2 disables and unchecks manual and
+  hides and disables the selector. The browser sends only the allowlisted
+  profile key. The server defaults a missing key to `regular`, rejects an
+  invalid key before background work starts, and passes the choice as immutable
+  per-run data.
 - Long-running tracker actions stream progress through the collapsible status panel in the Flask UI.
 
 ## Local Conventions
@@ -128,6 +152,12 @@ The current tools search public LinkedIn job listings and fetch public job detai
 - ARO means Application Resume Object: a per-job deep copy of the MRO plus JOD match lists, generated experience bullets, render flags, and edited content.
 - CLO means Cover Letter Object: manually edited rich text stored and rendered through the tracker.
 - Application tracking columns `applied_to` and `date_applied` are user-managed and are not automatically filled beyond the default `No`.
+- Version 4.12.0 requires no tracker schema migration. Existing resume variants
+  remain valid until rerun; operators moving from the former shared
+  `gpt-5.5`/`xhigh` default can keep explicit shared overrides temporarily as
+  deprecated fallbacks or unset them to adopt the split manual/highlighting
+  defaults. The configured profile recommendation has not yet been validated
+  by comparative model-quality runs.
 - Use `skills/agentic-workflow-init/SKILL.md` to bootstrap a new committed
   workflow plan, then `skills/agentic-workflow-controller/SKILL.md` to execute
   or resume staged P-step/G-gate work with local JSON runtime state under
