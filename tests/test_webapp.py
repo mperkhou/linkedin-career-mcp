@@ -14,6 +14,24 @@ from linkedin_career_mcp import webapp
 from linkedin_career_mcp.models import JobDetails
 from linkedin_career_mcp.webapp import create_app
 
+MANUAL_PASS_PROFILE_CHOICES = [
+    ("economy", "Economy — Terra / High"),
+    ("regular", "Regular — Sol / High (Recommended)"),
+    ("premium", "Premium — Sol / X-High"),
+]
+
+
+def _assert_manual_pass_profile_select(select) -> None:
+    assert select is not None
+    assert select["name"] == "manual_pass_profile"
+    assert select.has_attr("disabled")
+    options = select.find_all("option")
+    assert [
+        (option["value"], option.get_text(" ", strip=True)) for option in options
+    ] == MANUAL_PASS_PROFILE_CHOICES
+    selected = [option["value"] for option in options if option.has_attr("selected")]
+    assert selected == ["regular"]
+
 
 def test_connect_database_migrates_job_description_columns(tmp_path: Path):
     database_path = tmp_path / "applications.sqlite3"
@@ -249,6 +267,31 @@ def test_index_shows_database_backed_actions_and_links(tmp_path: Path, monkeypat
     assert b"<th>Experience</th>" in index.data
     assert b"<th>ARO/Resume Sync</th>" in index.data
     soup = BeautifulSoup(html, "html.parser")
+    manual_profile_control = soup.select_one(
+        "#actions-manual-pass-profile-control"
+    )
+    assert manual_profile_control is not None
+    assert manual_profile_control.has_attr("hidden")
+    _assert_manual_pass_profile_select(
+        manual_profile_control.select_one("select[name='manual_pass_profile']")
+    )
+    assert len(
+        soup.select(
+            'input[type="radio"][name="regenerate_mode"]'
+            '[value="resume_variants_manual_pass"]'
+        )
+    ) == 1
+    assert not soup.select(
+        'input[type="radio"][name="regenerate_mode"][checked]'
+    )
+    assert (
+        soup.select_one(
+            'input[name="regenerate_mode"][value="resume_variants_manual_pass"]'
+        )
+        .find_next("span")
+        .get_text(" ", strip=True)
+        == "Run v1 + v2 + Codex Manual Pass"
+    )
     headers = [
         header.get_text(" ", strip=True).replace(" ↑↓", "")
         for header in soup.select("thead th")
@@ -640,7 +683,37 @@ def test_regenerate_make_command_maps_modes_to_make_targets():
     assert webapp._regenerate_make_command(  # noqa: SLF001
         regenerate_mode="manual_pass",
         job_ids=["url-123"],
-    ) == ["make", "manual-pass-resumes", "JOB_IDS=url-123"]
+    ) == [
+        "make",
+        "manual-pass-resumes",
+        "JOB_IDS=url-123",
+        "MANUAL_PASS_PROFILE=regular",
+    ]
+    assert webapp._regenerate_make_command(  # noqa: SLF001
+        regenerate_mode="manual_pass",
+        job_ids=["url-123"],
+        manual_pass_profile="economy",
+    ) == [
+        "make",
+        "manual-pass-resumes",
+        "JOB_IDS=url-123",
+        "MANUAL_PASS_PROFILE=economy",
+    ]
+    assert webapp._regenerate_make_command(  # noqa: SLF001
+        regenerate_mode="manual_pass",
+        job_ids=["url-123"],
+        manual_pass_profile="premium",
+    ) == [
+        "make",
+        "manual-pass-resumes",
+        "JOB_IDS=url-123",
+        "MANUAL_PASS_PROFILE=premium",
+    ]
+    assert webapp._regenerate_make_command(  # noqa: SLF001
+        regenerate_mode="refine_drafts",
+        job_ids=["url-123"],
+        manual_pass_profile="premium",
+    ) == ["make", "refine-draft-resumes", "JOB_IDS=url-123"]
     assert webapp._highlight_make_command(job_ids=["url-123"]) == [  # noqa: SLF001
         "make",
         "highlight-draft-resumes",
@@ -664,6 +737,12 @@ def test_regenerate_make_command_maps_modes_to_make_targets():
         webapp._regenerate_make_command(  # noqa: SLF001
             regenerate_mode="first_draft_resumes",
             job_ids=["123"],
+        )
+    with pytest.raises(ValueError, match="invalid manual-pass profile"):
+        webapp._regenerate_make_command(  # noqa: SLF001
+            regenerate_mode="manual_pass",
+            job_ids=["123"],
+            manual_pass_profile="gpt-5.6-sol",
         )
 
 
@@ -1757,12 +1836,13 @@ def test_actions_run_can_chain_v2_manual_pass_and_highlighting(tmp_path: Path):
     assert calls[0]["regenerate_mode"] == "resume_variants"
     assert calls[0]["highlight_with_codex"] is True
     assert calls[0]["run_manual"] is True
+    assert calls[0]["manual_pass_profile"].value == "regular"
 
     status = client.get("/actions/status").get_json()
     assert status is not None
     assert status["runs"][0]["title"] == (
         "run v1 and v2 resume workflow for 1 job(s) + "
-        "Codex manual pass resume for 1 job(s) + "
+        "Codex manual pass resume (regular) for 1 job(s) + "
         "Codex highlight selected resume for 1 job(s)"
     )
 
@@ -1847,10 +1927,13 @@ def test_actions_run_can_start_codex_manual_pass_variant(tmp_path: Path):
     assert completed.wait(timeout=2)
     assert calls[0]["regenerate_mode"] == "manual_pass"
     assert calls[0]["highlight_with_codex"] is False
+    assert calls[0]["manual_pass_profile"].value == "regular"
 
     status = client.get("/actions/status").get_json()
     assert status is not None
-    assert status["runs"][0]["title"] == "Codex manual pass resume for 1 job(s)"
+    assert status["runs"][0]["title"] == (
+        "Codex manual pass resume (regular) for 1 job(s)"
+    )
 
 
 def test_actions_run_can_chain_codex_highlighting_after_manual_pass(tmp_path: Path):
@@ -1896,9 +1979,307 @@ def test_actions_run_can_chain_codex_highlighting_after_manual_pass(tmp_path: Pa
     status = client.get("/actions/status").get_json()
     assert status is not None
     assert status["runs"][0]["title"] == (
-        "Codex manual pass resume for 1 job(s) + "
+        "Codex manual pass resume (regular) for 1 job(s) + "
         "Codex highlight selected resume for 1 job(s)"
     )
+
+
+@pytest.mark.parametrize(
+    ("submitted_profile", "expected_profile"),
+    [
+        (None, "regular"),
+        ("economy", "economy"),
+        ("regular", "regular"),
+        ("premium", "premium"),
+    ],
+)
+def test_actions_manual_pass_profile_allowlist_and_default(
+    tmp_path: Path,
+    submitted_profile: str | None,
+    expected_profile: str,
+):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    calls = []
+    completed = threading.Event()
+
+    def runner(**kwargs):
+        calls.append(kwargs)
+        webapp._finish_background_action_run(  # noqa: SLF001
+            kwargs["run_id"],
+            status="completed",
+            return_code=0,
+        )
+        completed.set()
+
+    output_dir = tmp_path / "output"
+    app = create_app(
+        database_path=output_dir / "tracking/applications.sqlite3",
+        output_dir=output_dir,
+        background_action_runner=runner,
+    )
+    data = {
+        "regenerate_mode": "manual_pass",
+        "job_id": "url-123",
+    }
+    if submitted_profile is not None:
+        data["manual_pass_profile"] = submitted_profile
+
+    response = app.test_client().post("/actions/run", data=data)
+
+    assert response.status_code == 302
+    assert completed.wait(timeout=2)
+    assert calls[0]["manual_pass_profile"].value == expected_profile
+    assert f"({expected_profile})" in webapp.background_action_snapshots()[0]["title"]
+
+
+@pytest.mark.parametrize(
+    ("path", "data"),
+    [
+        (
+            "/actions/run",
+            {
+                "regenerate_mode": "manual_pass",
+                "job_id": "url-123",
+            },
+        ),
+        (
+            "/applications/add/seed",
+            {
+                "max_jobs": "2",
+                "run_v1": "1",
+                "run_v2": "1",
+                "run_manual": "1",
+            },
+        ),
+        (
+            "/applications/add/linkedin",
+            {
+                "linkedin_url": "https://www.linkedin.com/jobs/view/12345/",
+                "run_v2": "1",
+                "run_manual": "1",
+            },
+        ),
+        (
+            "/applications/add/other",
+            {
+                "other_url": "https://jobs.example.com/platform-engineer",
+                "run_v2": "1",
+                "run_manual": "1",
+            },
+        ),
+    ],
+)
+def test_manual_workflows_reject_invalid_profile_before_background_start(
+    tmp_path: Path,
+    path: str,
+    data: dict[str, str],
+):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    calls = []
+    output_dir = tmp_path / "output"
+    app = create_app(
+        database_path=output_dir / "tracking/applications.sqlite3",
+        output_dir=output_dir,
+        background_action_runner=lambda **kwargs: calls.append(kwargs),
+    )
+    request_data = {**data, "manual_pass_profile": "gpt-5.6-sol"}
+    client = app.test_client()
+
+    response = client.post(path, data=request_data)
+
+    assert response.status_code == 302
+    assert calls == []
+    assert webapp.background_action_snapshots() == []
+    page = client.get(response.headers["Location"])
+    assert b"invalid manual-pass profile" in page.data
+
+
+@pytest.mark.parametrize(
+    ("mode", "profile", "highlight", "expected_commands"),
+    [
+        (
+            "manual_pass",
+            "premium",
+            False,
+            [
+                [
+                    "make",
+                    "manual-pass-resumes",
+                    "JOB_IDS=url-123",
+                    "MANUAL_PASS_PROFILE=premium",
+                ],
+            ],
+        ),
+        (
+            "resume_variants_manual_pass",
+            "economy",
+            True,
+            [
+                [
+                    "make",
+                    "regenerate-resumes",
+                    "JOB_IDS=url-123",
+                    "FIRST_DRAFT_FORCE=1",
+                ],
+                [
+                    "make",
+                    "manual-pass-resumes",
+                    "JOB_IDS=url-123",
+                    "MANUAL_PASS_PROFILE=economy",
+                ],
+                [
+                    "make",
+                    "highlight-draft-resumes",
+                    "JOB_IDS=url-123",
+                    "HIGHLIGHT_RESUME_VARIANT=manual",
+                ],
+            ],
+        ),
+    ],
+)
+def test_actions_manual_profiles_reach_exact_workflow_commands(
+    tmp_path: Path,
+    monkeypatch,
+    mode: str,
+    profile: str,
+    highlight: bool,
+    expected_commands: list[list[str]],
+):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    commands: list[list[str]] = []
+    completed = threading.Event()
+
+    def fake_run_make_command(**kwargs):
+        commands.append(kwargs["command"])
+        return ""
+
+    def runner(**kwargs):
+        webapp._run_background_action(**kwargs)  # noqa: SLF001
+        completed.set()
+
+    monkeypatch.setattr(webapp, "_run_make_command", fake_run_make_command)
+    output_dir = tmp_path / "output"
+    app = create_app(
+        database_path=output_dir / "tracking/applications.sqlite3",
+        output_dir=output_dir,
+        background_action_runner=runner,
+    )
+    data = {
+        "regenerate_mode": mode,
+        "manual_pass_profile": profile,
+        "job_id": "url-123",
+    }
+    if highlight:
+        data["highlight_with_codex"] = "1"
+
+    response = app.test_client().post("/actions/run", data=data)
+
+    assert response.status_code == 302
+    assert completed.wait(timeout=2)
+    assert commands == expected_commands
+
+
+def test_concurrent_manual_profiles_do_not_bleed_commands_or_environment(
+    monkeypatch,
+):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    monkeypatch.setenv("MANUAL_PASS_PROFILE", "process-wide-sentinel")
+    commands_by_run: dict[str, list[list[str]]] = {}
+    commands_lock = threading.Lock()
+    barrier = threading.Barrier(2)
+    completed = {
+        "economy": threading.Event(),
+        "premium": threading.Event(),
+    }
+
+    def fake_run_make_command(**kwargs):
+        with commands_lock:
+            commands_by_run.setdefault(kwargs["run_id"], []).append(kwargs["command"])
+        return ""
+
+    def runner(**kwargs):
+        profile = kwargs["manual_pass_profile"].value
+        barrier.wait(timeout=2)
+        webapp._run_background_action(**kwargs)  # noqa: SLF001
+        completed[profile].set()
+
+    monkeypatch.setattr(webapp, "_run_make_command", fake_run_make_command)
+
+    economy_run = webapp.start_background_action(
+        regenerate_mode="manual_pass",
+        job_ids=["economy-job"],
+        manual_pass_profile="economy",
+        runner=runner,
+    )
+    premium_run = webapp.start_background_action(
+        regenerate_mode="manual_pass",
+        job_ids=["premium-job"],
+        manual_pass_profile="premium",
+        runner=runner,
+    )
+
+    assert completed["economy"].wait(timeout=2)
+    assert completed["premium"].wait(timeout=2)
+    assert commands_by_run[economy_run.run_id] == [
+        [
+            "make",
+            "manual-pass-resumes",
+            "JOB_IDS=economy-job",
+            "MANUAL_PASS_PROFILE=economy",
+        ]
+    ]
+    assert commands_by_run[premium_run.run_id] == [
+        [
+            "make",
+            "manual-pass-resumes",
+            "JOB_IDS=premium-job",
+            "MANUAL_PASS_PROFILE=premium",
+        ]
+    ]
+    assert "premium" not in " ".join(commands_by_run[economy_run.run_id][0])
+    assert "economy" not in " ".join(commands_by_run[premium_run.run_id][0])
+    assert os.environ["MANUAL_PASS_PROFILE"] == "process-wide-sentinel"
+
+
+def test_manual_profile_is_attached_only_to_manual_workflow_stage(monkeypatch):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    regenerate_calls: list[dict[str, object]] = []
+
+    def fake_regenerate_action(**kwargs):
+        regenerate_calls.append(kwargs)
+
+    monkeypatch.setattr(webapp, "_run_regenerate_action", fake_regenerate_action)
+    run = webapp._create_background_action_run(title="profile isolation")  # noqa: SLF001
+
+    webapp._run_background_action(  # noqa: SLF001
+        run_id=run.run_id,
+        regenerate_mode="resume_variants",
+        job_ids=["url-123"],
+        run_manual=True,
+        manual_pass_profile=webapp.ManualPassProfileKey.PREMIUM,
+    )
+
+    assert regenerate_calls[0] == {
+        "run_id": run.run_id,
+        "regenerate_mode": "resume_variants",
+        "job_ids": ["url-123"],
+    }
+    assert regenerate_calls[1] == {
+        "run_id": run.run_id,
+        "regenerate_mode": "manual_pass",
+        "job_ids": ["url-123"],
+        "manual_pass_profile": webapp.ManualPassProfileKey.PREMIUM,
+    }
 
 
 def test_background_action_runs_only_requested_new_workflow(
@@ -1996,6 +2377,20 @@ def test_background_action_runs_only_requested_new_workflow(
     )
 
     assert calls == [("regenerate", "refine_drafts")]
+
+    calls.clear()
+    run = webapp._create_background_action_run(  # noqa: SLF001
+        title="run v2 refinement and highlight"
+    )
+    webapp._run_background_action(  # noqa: SLF001
+        run_id=run.run_id,
+        regenerate_mode="refine_drafts",
+        job_ids=["url-123"],
+        highlight_with_codex=True,
+    )
+
+    assert calls == [("regenerate", "refine_drafts"), ("highlight", "url-123")]
+    assert highlight_calls[-1]["variant_key"] == "v2"
 
     calls.clear()
     run = webapp._create_background_action_run(title="regenerate ARO object")  # noqa: SLF001
@@ -2103,8 +2498,18 @@ def test_seed_workflow_runs_selected_make_targets_for_seeded_jobs(monkeypatch):
         ],
         ["make", "refine-draft-resumes", "JOB_IDS=url-123"],
         ["make", "refine-draft-resumes", "JOB_IDS=url-456"],
-        ["make", "manual-pass-resumes", "JOB_IDS=url-123"],
-        ["make", "manual-pass-resumes", "JOB_IDS=url-456"],
+        [
+            "make",
+            "manual-pass-resumes",
+            "JOB_IDS=url-123",
+            "MANUAL_PASS_PROFILE=regular",
+        ],
+        [
+            "make",
+            "manual-pass-resumes",
+            "JOB_IDS=url-456",
+            "MANUAL_PASS_PROFILE=regular",
+        ],
         [
             "make",
             "highlight-draft-resumes",
@@ -2250,6 +2655,7 @@ def test_add_application_seed_starts_seed_workflow(tmp_path: Path):
             "run_v1": "1",
             "run_v2": "1",
             "run_manual": "1",
+            "manual_pass_profile": "premium",
             "run_highlight": "1",
             "return_to": "/?q=Platform",
         },
@@ -2266,12 +2672,13 @@ def test_add_application_seed_starts_seed_workflow(tmp_path: Path):
     assert calls[0]["run_v2"] is True
     assert calls[0]["run_manual"] is True
     assert calls[0]["run_highlight"] is True
+    assert calls[0]["manual_pass_profile"].value == "premium"
 
     status = client.get("/actions/status").get_json()
     assert status is not None
     assert status["runs"][0]["title"] == (
         "seed up to 5 job(s) + last 24 hours + v1 draft + v2 refinement + "
-        "Codex manual pass + Codex highlight"
+        "Codex manual pass (premium) + Codex highlight"
     )
 
 
@@ -2409,6 +2816,47 @@ def test_add_application_loads_linkedin_job_and_starts_regeneration(
         "",
         "",
     ]
+    forms_by_action = {
+        form["action"]: form
+        for form in add_soup.select("form[action]")
+    }
+    assert set(forms_by_action) == {
+        "/applications/add/seed",
+        "/applications/add/linkedin",
+        "/applications/add/other",
+    }
+    for action, form in forms_by_action.items():
+        profile_control = form.select_one("[data-manual-pass-profile-control]")
+        assert profile_control is not None, action
+        assert profile_control.has_attr("hidden"), action
+        _assert_manual_pass_profile_select(
+            profile_control.select_one("select[name='manual_pass_profile']")
+        )
+
+    seed_form = forms_by_action["/applications/add/seed"]
+    assert seed_form.select_one('input[name="run_v1"]').has_attr("checked")
+    assert seed_form.select_one('input[name="run_v2"]').has_attr("checked")
+    seed_manual = seed_form.select_one('input[name="run_manual"]')
+    assert seed_manual is not None
+    assert not seed_manual.has_attr("checked")
+    assert not seed_manual.has_attr("disabled")
+
+    for action in ("/applications/add/linkedin", "/applications/add/other"):
+        url_form = forms_by_action[action]
+        assert not url_form.select_one('input[name="run_v2"]').has_attr("checked")
+        manual_input = url_form.select_one('input[name="run_manual"]')
+        assert manual_input is not None
+        assert not manual_input.has_attr("checked")
+        assert manual_input.has_attr("disabled")
+        highlight_input = url_form.select_one(
+            'input[name="highlight_with_codex"]'
+        )
+        assert highlight_input is not None
+        assert highlight_input.has_attr("checked")
+
+    assert add_html.count("Economy — Terra / High") == 3
+    assert add_html.count("Regular — Sol / High (Recommended)") == 3
+    assert add_html.count("Premium — Sol / X-High") == 3
     assert add_html.count("Run v2 refinement") == 3
     assert add_html.count("Run Codex manual pass") == 3
 
@@ -2903,6 +3351,109 @@ def test_add_application_other_url_can_run_v2_before_highlighting(
         "run v1 and v2 resume workflow for 1 job(s) + "
         "Codex highlight selected resume for 1 job(s)"
     )
+
+
+@pytest.mark.parametrize(
+    (
+        "path",
+        "url_field",
+        "url",
+        "add_function_name",
+        "job_id",
+        "profile",
+    ),
+    [
+        (
+            "/applications/add/linkedin",
+            "linkedin_url",
+            "https://www.linkedin.com/jobs/view/12345/",
+            "add_linkedin_application_from_url",
+            "12345",
+            "premium",
+        ),
+        (
+            "/applications/add/other",
+            "other_url",
+            "https://jobs.example.com/platform-engineer",
+            "add_generic_application_from_url",
+            "url-platform",
+            "economy",
+        ),
+    ],
+)
+def test_add_url_manual_profiles_reach_exact_workflow_commands(
+    tmp_path: Path,
+    monkeypatch,
+    path: str,
+    url_field: str,
+    url: str,
+    add_function_name: str,
+    job_id: str,
+    profile: str,
+):
+    with webapp._ACTION_RUN_LOCK:  # noqa: SLF001
+        webapp._ACTION_RUNS.clear()  # noqa: SLF001
+
+    monkeypatch.setattr(
+        webapp,
+        add_function_name,
+        lambda **_kwargs: job_id,
+    )
+    commands: list[list[str]] = []
+    completed = threading.Event()
+
+    def fake_run_make_command(**kwargs):
+        commands.append(kwargs["command"])
+        return ""
+
+    def runner(**kwargs):
+        webapp._run_background_action(**kwargs)  # noqa: SLF001
+        completed.set()
+
+    monkeypatch.setattr(webapp, "_run_make_command", fake_run_make_command)
+    output_dir = tmp_path / "output"
+    app = create_app(
+        database_path=output_dir / "tracking/applications.sqlite3",
+        output_dir=output_dir,
+        background_action_runner=runner,
+    )
+
+    response = app.test_client().post(
+        path,
+        data={
+            url_field: url,
+            "run_v2": "1",
+            "run_manual": "1",
+            "manual_pass_profile": profile,
+            "highlight_with_codex": "1",
+        },
+    )
+
+    assert response.status_code == 302
+    assert completed.wait(timeout=2)
+    assert commands == [
+        [
+            "make",
+            "regenerate-resumes",
+            f"JOB_IDS={job_id}",
+            "FIRST_DRAFT_FORCE=1",
+        ],
+        [
+            "make",
+            "manual-pass-resumes",
+            f"JOB_IDS={job_id}",
+            f"MANUAL_PASS_PROFILE={profile}",
+        ],
+        [
+            "make",
+            "highlight-draft-resumes",
+            f"JOB_IDS={job_id}",
+            "HIGHLIGHT_RESUME_VARIANT=manual",
+        ],
+    ]
+    status = webapp.background_action_snapshots()[0]
+    assert status["status"] == "completed"
+    assert f"Codex manual pass resume ({profile})" in status["title"]
 
 
 def _edit_form_data(html: str) -> dict[str, str]:

@@ -36,6 +36,11 @@ from linkedin_career_mcp.providers.linkedin_public import (
     LinkedInPublicJobsProvider,
     extract_job_id,
 )
+from linkedin_career_mcp.resume_manual_profiles import (
+    DEFAULT_MANUAL_PASS_PROFILE,
+    ManualPassProfileKey,
+    parse_manual_pass_profile,
+)
 from linkedin_career_mcp.resume_rendering import (
     render_resume_html_from_mapping,
     render_resume_pdf_from_html,
@@ -136,6 +141,14 @@ SEED_DATE_POSTED_OPTIONS = (
     ("past_week", "Past week"),
     ("past_month", "Past month"),
 )
+MANUAL_PASS_PROFILE_OPTIONS = (
+    (ManualPassProfileKey.ECONOMY.value, "Economy — Terra / High"),
+    (
+        ManualPassProfileKey.REGULAR.value,
+        "Regular — Sol / High (Recommended)",
+    ),
+    (ManualPassProfileKey.PREMIUM.value, "Premium — Sol / X-High"),
+)
 
 
 @dataclass(frozen=True)
@@ -176,6 +189,7 @@ class BackgroundWorkflowStage:
     label: str
     regenerate_mode: str | None = None
     highlight_variant_key: str | None = None
+    manual_pass_profile: ManualPassProfileKey | None = None
 
 
 BackgroundActionRunner = Callable[..., None]
@@ -2215,14 +2229,17 @@ def start_background_action(
     job_ids: list[str],
     highlight_with_codex: bool = False,
     run_manual: bool = False,
+    manual_pass_profile: str | ManualPassProfileKey = DEFAULT_MANUAL_PASS_PROFILE,
     runner: BackgroundActionRunner | None = None,
 ) -> BackgroundActionRun:
+    selected_manual_pass_profile = _manual_pass_profile_key(manual_pass_profile)
     run = _create_background_action_run(
         title=_background_action_title(
             regenerate_mode=regenerate_mode,
             job_ids=job_ids,
             highlight_with_codex=highlight_with_codex,
             run_manual=run_manual,
+            manual_pass_profile=selected_manual_pass_profile,
         )
     )
     target = runner or _run_background_action
@@ -2234,6 +2251,7 @@ def start_background_action(
             "job_ids": job_ids,
             "highlight_with_codex": highlight_with_codex,
             "run_manual": run_manual,
+            "manual_pass_profile": selected_manual_pass_profile,
         },
         daemon=True,
     )
@@ -2249,8 +2267,10 @@ def start_seed_background_action(
     run_v2: bool,
     run_manual: bool,
     run_highlight: bool,
+    manual_pass_profile: str | ManualPassProfileKey = DEFAULT_MANUAL_PASS_PROFILE,
     runner: BackgroundActionRunner | None = None,
 ) -> BackgroundActionRun:
+    selected_manual_pass_profile = _manual_pass_profile_key(manual_pass_profile)
     run = _create_background_action_run(
         title=_seed_background_action_title(
             max_jobs=max_jobs,
@@ -2259,6 +2279,7 @@ def start_seed_background_action(
             run_v2=run_v2,
             run_manual=run_manual,
             run_highlight=run_highlight,
+            manual_pass_profile=selected_manual_pass_profile,
         )
     )
     target = runner or _run_seed_workflow_action
@@ -2272,6 +2293,7 @@ def start_seed_background_action(
             "run_v2": run_v2,
             "run_manual": run_manual,
             "run_highlight": run_highlight,
+            "manual_pass_profile": selected_manual_pass_profile,
         },
         daemon=True,
     )
@@ -2358,6 +2380,7 @@ def _run_background_action(
     job_ids: list[str],
     highlight_with_codex: bool = False,
     run_manual: bool = False,
+    manual_pass_profile: str | ManualPassProfileKey = DEFAULT_MANUAL_PASS_PROFILE,
 ) -> None:
     try:
         _run_job_workflow_stages(
@@ -2367,6 +2390,7 @@ def _run_background_action(
                 regenerate_mode=regenerate_mode,
                 run_manual=run_manual,
                 highlight_with_codex=highlight_with_codex,
+                manual_pass_profile=manual_pass_profile,
             ),
         )
         _append_background_action_message(run_id, "Background action completed.")
@@ -2381,8 +2405,13 @@ def _run_regenerate_action(
     run_id: str,
     regenerate_mode: str,
     job_ids: list[str],
+    manual_pass_profile: str | ManualPassProfileKey = DEFAULT_MANUAL_PASS_PROFILE,
 ) -> None:
-    command = _regenerate_make_command(regenerate_mode=regenerate_mode, job_ids=job_ids)
+    command = _regenerate_make_command(
+        regenerate_mode=regenerate_mode,
+        job_ids=job_ids,
+        manual_pass_profile=manual_pass_profile,
+    )
     _run_make_command(
         run_id=run_id,
         command=command,
@@ -2417,6 +2446,7 @@ def _run_seed_workflow_action(
     run_v2: bool,
     run_manual: bool,
     run_highlight: bool,
+    manual_pass_profile: str | ManualPassProfileKey = DEFAULT_MANUAL_PASS_PROFILE,
 ) -> None:
     try:
         seed_output = _run_make_command(
@@ -2446,6 +2476,7 @@ def _run_seed_workflow_action(
                     run_v2=run_v2,
                     run_manual=run_manual,
                     run_highlight=run_highlight,
+                    manual_pass_profile=manual_pass_profile,
                 ),
             )
         else:
@@ -2532,11 +2563,21 @@ def _run_background_workflow_stage(
     job_id: str,
 ) -> None:
     if stage.regenerate_mode is not None:
-        _run_regenerate_action(
-            run_id=run_id,
-            regenerate_mode=stage.regenerate_mode,
-            job_ids=[job_id],
-        )
+        if stage.regenerate_mode == "manual_pass":
+            _run_regenerate_action(
+                run_id=run_id,
+                regenerate_mode=stage.regenerate_mode,
+                job_ids=[job_id],
+                manual_pass_profile=(
+                    stage.manual_pass_profile or DEFAULT_MANUAL_PASS_PROFILE
+                ),
+            )
+        else:
+            _run_regenerate_action(
+                run_id=run_id,
+                regenerate_mode=stage.regenerate_mode,
+                job_ids=[job_id],
+            )
         return
     _run_highlight_action(
         run_id=run_id,
@@ -2577,7 +2618,12 @@ def _run_make_command(
     return "".join(collected_output)
 
 
-def _regenerate_make_command(*, regenerate_mode: str, job_ids: list[str]) -> list[str]:
+def _regenerate_make_command(
+    *,
+    regenerate_mode: str,
+    job_ids: list[str],
+    manual_pass_profile: str | ManualPassProfileKey = DEFAULT_MANUAL_PASS_PROFILE,
+) -> list[str]:
     target = REGENERATE_ACTION_TARGETS.get(regenerate_mode)
     if target is None:
         raise ValueError(f"Unsupported regeneration mode: {regenerate_mode}")
@@ -2586,6 +2632,9 @@ def _regenerate_make_command(*, regenerate_mode: str, job_ids: list[str]) -> lis
     command = ["make", target, f"JOB_IDS={' '.join(job_ids)}"]
     if regenerate_mode in _DRAFT_REGENERATE_MODES:
         command.append("FIRST_DRAFT_FORCE=1")
+    if regenerate_mode == "manual_pass":
+        selected_manual_pass_profile = _manual_pass_profile_key(manual_pass_profile)
+        command.append(f"MANUAL_PASS_PROFILE={selected_manual_pass_profile.value}")
     return command
 
 
@@ -2607,20 +2656,36 @@ def _background_workflow_stages(
     regenerate_mode: str,
     run_manual: bool,
     highlight_with_codex: bool,
+    manual_pass_profile: str | ManualPassProfileKey = DEFAULT_MANUAL_PASS_PROFILE,
 ) -> list[BackgroundWorkflowStage]:
+    selected_manual_pass_profile = (
+        _manual_pass_profile_key(manual_pass_profile)
+        if regenerate_mode == "manual_pass" or run_manual
+        else DEFAULT_MANUAL_PASS_PROFILE
+    )
     stages: list[BackgroundWorkflowStage] = []
     if regenerate_mode:
         stages.append(
             BackgroundWorkflowStage(
-                label=_regenerate_stage_label(regenerate_mode),
+                label=(
+                    _manual_pass_stage_label(selected_manual_pass_profile)
+                    if regenerate_mode == "manual_pass"
+                    else _regenerate_stage_label(regenerate_mode)
+                ),
                 regenerate_mode=regenerate_mode,
+                manual_pass_profile=(
+                    selected_manual_pass_profile
+                    if regenerate_mode == "manual_pass"
+                    else None
+                ),
             )
         )
     if run_manual:
         stages.append(
             BackgroundWorkflowStage(
-                label=_regenerate_stage_label("manual_pass"),
+                label=_manual_pass_stage_label(selected_manual_pass_profile),
                 regenerate_mode="manual_pass",
+                manual_pass_profile=selected_manual_pass_profile,
             )
         )
     if highlight_with_codex and regenerate_mode != "highlight_drafts":
@@ -2642,7 +2707,13 @@ def _seed_workflow_stages(
     run_v2: bool,
     run_manual: bool,
     run_highlight: bool,
+    manual_pass_profile: str | ManualPassProfileKey = DEFAULT_MANUAL_PASS_PROFILE,
 ) -> list[BackgroundWorkflowStage]:
+    selected_manual_pass_profile = (
+        _manual_pass_profile_key(manual_pass_profile)
+        if run_manual
+        else DEFAULT_MANUAL_PASS_PROFILE
+    )
     stages: list[BackgroundWorkflowStage] = []
     if run_v1:
         stages.append(
@@ -2661,8 +2732,9 @@ def _seed_workflow_stages(
     if run_manual:
         stages.append(
             BackgroundWorkflowStage(
-                label=_regenerate_stage_label("manual_pass"),
+                label=_manual_pass_stage_label(selected_manual_pass_profile),
                 regenerate_mode="manual_pass",
+                manual_pass_profile=selected_manual_pass_profile,
             )
         )
     if run_highlight:
@@ -2688,6 +2760,10 @@ def _regenerate_stage_label(regenerate_mode: str) -> str:
         "highlight_drafts": "Codex highlighting",
         "manual_pass": "Codex manual pass",
     }.get(regenerate_mode, regenerate_mode)
+
+
+def _manual_pass_stage_label(manual_pass_profile: ManualPassProfileKey) -> str:
+    return f"Codex manual pass ({manual_pass_profile.value})"
 
 
 def _highlight_variant_for_chained_workflow(
@@ -2811,12 +2887,21 @@ def _normalize_action_mode(regenerate_mode: str) -> tuple[str, bool]:
     return regenerate_mode, False
 
 
+def _manual_pass_profile_key(
+    value: str | ManualPassProfileKey | None,
+) -> ManualPassProfileKey:
+    if value is None:
+        value = DEFAULT_MANUAL_PASS_PROFILE
+    return parse_manual_pass_profile(value).key
+
+
 def _background_action_title(
     *,
     regenerate_mode: str,
     job_ids: list[str],
     highlight_with_codex: bool = False,
     run_manual: bool = False,
+    manual_pass_profile: ManualPassProfileKey = DEFAULT_MANUAL_PASS_PROFILE,
 ) -> str:
     parts: list[str] = []
     if regenerate_mode:
@@ -2827,11 +2912,16 @@ def _background_action_title(
             "aro_objects": "regenerate ARO object(s)",
             "sync_draft_to_aro": "sync draft to ARO",
             "highlight_drafts": "Codex highlight selected resume",
-            "manual_pass": "Codex manual pass resume",
+            "manual_pass": (
+                f"Codex manual pass resume ({manual_pass_profile.value})"
+            ),
         }.get(regenerate_mode, "regenerate docs")
         parts.append(f"{label} for {len(job_ids)} job(s)")
     if run_manual:
-        parts.append(f"Codex manual pass resume for {len(job_ids)} job(s)")
+        parts.append(
+            "Codex manual pass resume "
+            f"({manual_pass_profile.value}) for {len(job_ids)} job(s)"
+        )
     if highlight_with_codex and regenerate_mode != "highlight_drafts":
         parts.append(f"Codex highlight selected resume for {len(job_ids)} job(s)")
     return " + ".join(parts) or "background action"
@@ -2845,6 +2935,7 @@ def _seed_background_action_title(
     run_v2: bool,
     run_manual: bool,
     run_highlight: bool,
+    manual_pass_profile: ManualPassProfileKey = DEFAULT_MANUAL_PASS_PROFILE,
 ) -> str:
     parts = [
         f"seed up to {max_jobs} job(s)",
@@ -2855,7 +2946,7 @@ def _seed_background_action_title(
     if run_v2:
         parts.append("v2 refinement")
     if run_manual:
-        parts.append("Codex manual pass")
+        parts.append(f"Codex manual pass ({manual_pass_profile.value})")
     if run_highlight:
         parts.append("Codex highlight")
     return " + ".join(parts)
@@ -2962,6 +3053,8 @@ def create_app(
             stats=stats,
             view_state=view_state,
             current_path=current_path,
+            manual_pass_profile_options=MANUAL_PASS_PROFILE_OPTIONS,
+            default_manual_pass_profile=DEFAULT_MANUAL_PASS_PROFILE.value,
         )
 
     @app.post("/applications/<job_id>")
@@ -2996,6 +3089,8 @@ def create_app(
             max_seed_jobs=MAX_SEED_JOBS_FROM_UI,
             seed_date_posted_options=SEED_DATE_POSTED_OPTIONS,
             default_seed_date_posted=DEFAULT_SEED_DATE_POSTED,
+            manual_pass_profile_options=MANUAL_PASS_PROFILE_OPTIONS,
+            default_manual_pass_profile=DEFAULT_MANUAL_PASS_PROFILE.value,
         )
 
     @app.post("/applications/add/seed")
@@ -3020,6 +3115,15 @@ def create_app(
         if validation_error:
             flash(f"Seed workflow failed: {validation_error}")
             return redirect(_add_application_return_path(request.form.get("return_to")))
+        try:
+            manual_pass_profile = (
+                _manual_pass_profile_key(request.form.get("manual_pass_profile"))
+                if run_manual
+                else DEFAULT_MANUAL_PASS_PROFILE
+            )
+        except ValueError as exc:
+            flash(f"Seed workflow failed: {exc}")
+            return redirect(_add_application_return_path(request.form.get("return_to")))
 
         run = start_seed_background_action(
             max_jobs=max_jobs,
@@ -3028,6 +3132,7 @@ def create_app(
             run_v2=run_v2,
             run_manual=run_manual,
             run_highlight=run_highlight,
+            manual_pass_profile=manual_pass_profile,
             runner=background_action_runner,
         )
         flash(f"Started seed workflow: {run.title}.")
@@ -3044,6 +3149,15 @@ def create_app(
         )
         if validation_error:
             flash(f"LinkedIn add failed: {validation_error}")
+            return redirect(_add_application_return_path(request.form.get("return_to")))
+        try:
+            manual_pass_profile = (
+                _manual_pass_profile_key(request.form.get("manual_pass_profile"))
+                if run_manual
+                else DEFAULT_MANUAL_PASS_PROFILE
+            )
+        except ValueError as exc:
+            flash(f"LinkedIn add failed: {exc}")
             return redirect(_add_application_return_path(request.form.get("return_to")))
         try:
             urls = _parse_job_url_list(request.form.get("linkedin_url", ""))
@@ -3073,6 +3187,7 @@ def create_app(
             job_ids=job_ids,
             highlight_with_codex=highlight_with_codex,
             run_manual=run_manual,
+            manual_pass_profile=manual_pass_profile,
             runner=background_action_runner,
         )
         message = (
@@ -3098,6 +3213,15 @@ def create_app(
         )
         if validation_error:
             flash(f"Other URL add failed: {validation_error}")
+            return redirect(_add_application_return_path(request.form.get("return_to")))
+        try:
+            manual_pass_profile = (
+                _manual_pass_profile_key(request.form.get("manual_pass_profile"))
+                if run_manual
+                else DEFAULT_MANUAL_PASS_PROFILE
+            )
+        except ValueError as exc:
+            flash(f"Other URL add failed: {exc}")
             return redirect(_add_application_return_path(request.form.get("return_to")))
         try:
             urls = _parse_job_url_list(request.form.get("other_url", ""))
@@ -3127,6 +3251,7 @@ def create_app(
             job_ids=job_ids,
             highlight_with_codex=highlight_with_codex,
             run_manual=run_manual,
+            manual_pass_profile=manual_pass_profile,
             runner=background_action_runner,
         )
         message = (
@@ -3165,12 +3290,25 @@ def create_app(
                 "or v1+v2+manual workflows."
             )
             return redirect_to_index_state()
+        manual_stage_requested = (
+            normalized_regenerate_mode == "manual_pass" or run_manual
+        )
+        try:
+            manual_pass_profile = (
+                _manual_pass_profile_key(request.form.get("manual_pass_profile"))
+                if manual_stage_requested
+                else DEFAULT_MANUAL_PASS_PROFILE
+            )
+        except ValueError as exc:
+            flash(f"Background action failed: {exc}")
+            return redirect_to_index_state()
 
         run = start_background_action(
             regenerate_mode=normalized_regenerate_mode if regenerate_requested else "",
             job_ids=job_ids,
             highlight_with_codex=highlight_with_codex,
             run_manual=run_manual,
+            manual_pass_profile=manual_pass_profile,
             runner=background_action_runner,
         )
         flash(f"Started background action: {run.title}.")
@@ -4562,6 +4700,21 @@ INDEX_TEMPLATE = """
       gap: 7px;
       margin-top: 6px;
     }
+    .manual-pass-profile-control {
+      display: grid;
+      gap: 4px;
+      margin: 0 0 10px;
+      max-width: 260px;
+    }
+    .manual-pass-profile-control[hidden] { display: none; }
+    .manual-pass-profile-control span {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .manual-pass-profile-control select {
+      padding: 6px 8px;
+    }
     .actions-menu-footer {
       align-items: center;
       display: flex;
@@ -5029,6 +5182,25 @@ INDEX_TEMPLATE = """
               <span>Sync Draft to ARO</span>
             </label>
           </fieldset>
+          <label
+            id="actions-manual-pass-profile-control"
+            class="manual-pass-profile-control"
+            hidden
+          >
+            <span>Manual pass profile</span>
+            <select
+              id="actions-manual-pass-profile"
+              name="manual_pass_profile"
+              disabled
+            >
+              {% for value, label in manual_pass_profile_options %}
+                <option
+                  value="{{ value }}"
+                  {% if value == default_manual_pass_profile %}selected{% endif %}
+                >{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
           <label class="action-choice">
             <input type="checkbox" name="highlight_with_codex" value="1">
             <span>Run Codex highlighting after draft generation</span>
@@ -5469,6 +5641,10 @@ INDEX_TEMPLATE = """
     const actionsForm = document.querySelector("#actions-form");
     const regenerateModeInputs = [...document.querySelectorAll("input[name='regenerate_mode']")];
     const highlightWithCodexInput = document.querySelector("input[name='highlight_with_codex']");
+    const actionsManualPassProfileControl =
+      document.querySelector("#actions-manual-pass-profile-control");
+    const actionsManualPassProfile =
+      document.querySelector("#actions-manual-pass-profile");
     const runActionsButton = document.querySelector("#run-actions");
     const actionsSelectedSummary = document.querySelector("#actions-selected-summary");
     const actionStatus = document.querySelector("#action-status");
@@ -5809,8 +5985,16 @@ INDEX_TEMPLATE = """
     function updateActionsState() {
       const selected = selectedJobIds();
       const mode = selectedRegenerateMode();
+      const manualPassActive = [
+        "resume_variants_manual_pass",
+        "manual_pass",
+      ].includes(mode);
       if (actionsSelectedSummary) {
         actionsSelectedSummary.textContent = `${selected.length} selected`;
+      }
+      if (actionsManualPassProfileControl && actionsManualPassProfile) {
+        actionsManualPassProfileControl.hidden = !manualPassActive;
+        actionsManualPassProfile.disabled = !manualPassActive;
       }
       if (highlightWithCodexInput) {
         const canChainHighlight = [
@@ -6162,7 +6346,8 @@ ADD_APPLICATION_TEMPLATE = """
       text-transform: none;
     }
     .option-row input { margin: 0; }
-    input[type="url"], input[type="number"], textarea {
+    input[type="url"], input[type="number"], textarea,
+    .manual-pass-profile-control select {
       width: 100%;
       border: 1px solid var(--line);
       border-radius: 6px;
@@ -6171,6 +6356,13 @@ ADD_APPLICATION_TEMPLATE = """
       font: inherit;
       text-transform: none;
     }
+    .manual-pass-profile-control {
+      display: grid;
+      gap: 5px;
+      margin-left: 24px;
+      max-width: 300px;
+    }
+    .manual-pass-profile-control[hidden] { display: none; }
     textarea {
       min-height: 74px;
       resize: vertical;
@@ -6269,6 +6461,21 @@ ADD_APPLICATION_TEMPLATE = """
           <input type="checkbox" name="run_manual" value="1">
           <span>Run Codex manual pass</span>
         </label>
+        <label
+          class="manual-pass-profile-control"
+          data-manual-pass-profile-control
+          hidden
+        >
+          <span>Manual pass profile</span>
+          <select name="manual_pass_profile" disabled>
+            {% for value, label in manual_pass_profile_options %}
+              <option
+                value="{{ value }}"
+                {% if value == default_manual_pass_profile %}selected{% endif %}
+              >{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
         <label class="option-row">
           <input type="checkbox" name="run_highlight" value="1">
           <span>Run Codex highlighting</span>
@@ -6295,6 +6502,21 @@ ADD_APPLICATION_TEMPLATE = """
         <input type="checkbox" name="run_manual" value="1" disabled>
         <span>Run Codex manual pass</span>
       </label>
+      <label
+        class="manual-pass-profile-control"
+        data-manual-pass-profile-control
+        hidden
+      >
+        <span>Manual pass profile</span>
+        <select name="manual_pass_profile" disabled>
+          {% for value, label in manual_pass_profile_options %}
+            <option
+              value="{{ value }}"
+              {% if value == default_manual_pass_profile %}selected{% endif %}
+            >{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
       <label class="option-row">
         <input type="checkbox" name="highlight_with_codex" value="1" checked>
         <span>Run Codex bullet highlighting after resume generation</span>
@@ -6320,6 +6542,21 @@ ADD_APPLICATION_TEMPLATE = """
         <input type="checkbox" name="run_manual" value="1" disabled>
         <span>Run Codex manual pass</span>
       </label>
+      <label
+        class="manual-pass-profile-control"
+        data-manual-pass-profile-control
+        hidden
+      >
+        <span>Manual pass profile</span>
+        <select name="manual_pass_profile" disabled>
+          {% for value, label in manual_pass_profile_options %}
+            <option
+              value="{{ value }}"
+              {% if value == default_manual_pass_profile %}selected{% endif %}
+            >{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
       <label class="option-row">
         <input type="checkbox" name="highlight_with_codex" value="1" checked>
         <span>Run Codex bullet highlighting after resume generation</span>
@@ -6329,18 +6566,35 @@ ADD_APPLICATION_TEMPLATE = """
   </main>
   <script>
     document.querySelectorAll("form").forEach((form) => {
+      const runV1 = form.querySelector("input[name='run_v1']");
       const runV2 = form.querySelector("input[name='run_v2']");
       const runManual = form.querySelector("input[name='run_manual']");
+      const manualPassProfileControl = form.querySelector(
+        "[data-manual-pass-profile-control]",
+      );
+      const manualPassProfile = form.querySelector(
+        "select[name='manual_pass_profile']",
+      );
       if (!runV2 || !runManual) {
         return;
       }
       function syncManualDependency() {
-        runManual.disabled = !runV2.checked;
-        if (!runV2.checked) {
+        const dependenciesSelected = runV2.checked && (!runV1 || runV1.checked);
+        runManual.disabled = !dependenciesSelected;
+        if (!dependenciesSelected) {
           runManual.checked = false;
         }
+        const manualPassActive = dependenciesSelected && runManual.checked;
+        if (manualPassProfileControl && manualPassProfile) {
+          manualPassProfileControl.hidden = !manualPassActive;
+          manualPassProfile.disabled = !manualPassActive;
+        }
+      }
+      if (runV1) {
+        runV1.addEventListener("change", syncManualDependency);
       }
       runV2.addEventListener("change", syncManualDependency);
+      runManual.addEventListener("change", syncManualDependency);
       syncManualDependency();
     });
   </script>
