@@ -296,13 +296,16 @@ def test_canonical_resume_omits_automation_disclaimer_and_preserves_portfolio() 
 
     assert summary.get("summary_note", "") == ""
     assert "custom tailored for every job position" not in yaml.safe_dump(master_resume)
-    assert project["title_text"] == "LinkedIn Career MCP"
-    assert project["url"] == "https://github.com/mperkhou/linkedin-career-mcp"
+    assert project["title_text"] == "Career Agent Workbench"
+    assert project["url"] == "https://github.com/mperkhou/career-agent-workbench"
     assert project["description_text"] == (
-        "A local-first Python and MCP platform for orchestrating evidence-grounded "
-        "career data and document workflows, with SQLite-backed state, versioned "
-        "artifacts, retryable batch processing, ATS diagnostics, human review gates, "
-        "and agentic workflow controls."
+        "A local, human-governed Python workbench for researching public job postings, "
+        "managing SQLite-backed application state, and producing evidence-grounded "
+        "resume variants through deterministic rendering, ATS diagnostics, review "
+        "gates, and provider-neutral CLI, Flask, and FastMCP interfaces. I built and "
+        "maintain its GitHub Actions CI pipeline, including push and pull-request "
+        "validation, Python 3.11/3.12 matrix testing, Ruff linting, release-metadata "
+        "checks, and full pytest execution."
     )
 
     html = render_resume_html(
@@ -312,9 +315,9 @@ def test_canonical_resume_omits_automation_disclaimer_and_preserves_portfolio() 
 
     assert "custom tailored for every job position" not in html.lower()
     assert "automated agentic workflow" not in html.lower()
-    assert "LinkedIn Career MCP" in html
+    assert "Career Agent Workbench" in html
     assert project["description_text"] in html
-    assert 'href="https://github.com/mperkhou/linkedin-career-mcp"' in html
+    assert 'href="https://github.com/mperkhou/career-agent-workbench"' in html
 
 
 def test_resume_html_template_groups_supporting_sections_with_optional_page_break(

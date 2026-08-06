@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import shlex
 import sqlite3
@@ -106,13 +107,22 @@ def run_manual_resume_pass_for_job(
         retry_count=retry_count,
     )
     parsed_response = parse_manual_pass_response(response_text)
+    v2_application_resume = _yaml_or_text(v2_variant["application_resume_object"])
+    if not isinstance(v2_application_resume, Mapping):
+        raise ResumeManualPassError(
+            "Stored v2 variant must include a mapping Application Resume Object."
+        )
+    application_resume = inherit_v2_core_technical_skills(
+        manual_application_resume=parsed_response.application_resume,
+        v2_application_resume=v2_application_resume,
+    )
     aro_yaml = yaml.safe_dump(
-        parsed_response.application_resume,
+        application_resume,
         sort_keys=False,
         allow_unicode=False,
     )
     resume_html = render_resume_html_from_mapping(
-        resume=parsed_response.application_resume,
+        resume=application_resume,
         template_path=template_path,
     )
     resume_pdf = render_resume_pdf_from_html(resume_html)
@@ -275,6 +285,19 @@ def build_manual_pass_prompt(bundle: Mapping[str, Any]) -> str:
         "responsibilities.\n"
         "- Consider the v2 critique, validation, accepted changes, rejected changes, "
         "ATS diagnostics, full JOD, and prompt JOD.\n"
+        "- Treat v2 as the structural baseline for Core Technical Skills. Preserve "
+        "its category order and names plus every primary, additional, and match_terms "
+        "inventory entry exactly; do not add, remove, reorder, rename, merge, or prune "
+        "that taxonomy or inventory.\n"
+        "- Within Core Technical Skills, you may change only each existing category's "
+        "jod_matched_items. Avoid repetition by selecting focused supported matches; "
+        "the renderer handles exact display de-duplication.\n"
+        "- Preserve or include these terms in rendered resume content "
+        "when they are already present in v2 or requested by the JOD and supported "
+        "by master-resume or ARO evidence: DevOps, Scalability, CI/CD pipelines, "
+        "cloud environments, and GitHub Actions. If surrounding wording is inflated "
+        "or unsupported, rewrite it truthfully while retaining only the supported "
+        "term; never preserve an unsupported claim just to retain a term.\n"
         "- Prefer clear, role-aligned language over chasing a numeric ATS score.\n"
         "- Leave unsupported requested terms out and report them in unsupported_terms.\n\n"
         "JSON shape:\n"
@@ -389,6 +412,48 @@ def parse_manual_pass_response(response_text: str) -> ManualPassResponse:
         unsupported_terms=_string_list(payload.get("unsupported_terms")),
         reviewer_notes=_string_list(payload.get("reviewer_notes")),
     )
+
+
+def inherit_v2_core_technical_skills(
+    *,
+    manual_application_resume: Mapping[str, Any],
+    v2_application_resume: Mapping[str, Any],
+) -> dict[str, Any]:
+    application_resume = copy.deepcopy(dict(manual_application_resume))
+    v2_core_skills = v2_application_resume.get("core_technical_skills")
+    if not isinstance(v2_core_skills, Mapping):
+        raise ResumeManualPassError(
+            "Stored v2 variant must include a Core Technical Skills mapping."
+        )
+
+    inherited_core_skills = copy.deepcopy(dict(v2_core_skills))
+    inherited_buckets = inherited_core_skills.get("bullet_points")
+    manual_core_skills = manual_application_resume.get("core_technical_skills")
+    manual_buckets = (
+        manual_core_skills.get("bullet_points")
+        if isinstance(manual_core_skills, Mapping)
+        else None
+    )
+    if isinstance(inherited_buckets, list) and isinstance(manual_buckets, list):
+        manual_by_category = {
+            str(bucket.get("category") or "").strip(): bucket
+            for bucket in manual_buckets
+            if isinstance(bucket, Mapping)
+            and str(bucket.get("category") or "").strip()
+        }
+        for bucket in inherited_buckets:
+            if not isinstance(bucket, dict):
+                continue
+            category = str(bucket.get("category") or "").strip()
+            manual_bucket = manual_by_category.get(category)
+            if manual_bucket is None or "jod_matched_items" not in manual_bucket:
+                continue
+            raw_matches = manual_bucket.get("jod_matched_items")
+            if isinstance(raw_matches, list):
+                bucket["jod_matched_items"] = _string_list(raw_matches)
+
+    application_resume["core_technical_skills"] = inherited_core_skills
+    return application_resume
 
 
 def _load_manual_pass_rows(
