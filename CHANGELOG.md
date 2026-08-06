@@ -1,5 +1,19 @@
 # linkedin-career-mcp CHANGELOG
 
+## 4.12.1 - Preserve manual-pass skill taxonomy
+
+* Preserve the stored v2 Core Technical Skills taxonomy, ordering, and skill
+  inventory when Codex produces a manual resume variant.
+* Allow the manual pass to adjust only the per-category JOD-matched emphasis
+  inside the inherited v2 skill structure.
+* Canonicalize rendered JOD matches against exact skill display values before
+  aliases to avoid duplicate or substituted skill labels.
+* Refresh the grounded Oracle agentic-delivery, repository-workflow, CI/CD, and
+  Career Agent Workbench evidence in the canonical master-resume sources.
+* Add regression coverage for manual-pass taxonomy inheritance and the updated
+  portfolio rendering.
+* Bump the package version to `4.12.1`.
+
 ## 4.12.0 - Add scoped Codex manual-pass profiles
 
 * Add the allowlisted `economy`, `regular`, and `premium` manual-pass profiles,

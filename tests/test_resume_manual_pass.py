@@ -80,6 +80,90 @@ def test_parse_manual_pass_response_accepts_fenced_json_with_yaml_aro() -> None:
     assert response.reviewer_notes == ["Kept AWS wording evidence-backed."]
 
 
+def test_inherit_v2_core_technical_skills_preserves_taxonomy_and_updates_matches() -> None:
+    v2_application_resume = {
+        "core_technical_skills": {
+            "render": True,
+            "header_text": "Core Technical Skills",
+            "bullet_points": [
+                {
+                    "order": 1,
+                    "category": "Platform Engineering",
+                    "items": {
+                        "primary": ["Python", "AWS"],
+                        "additional": ["OpenSearch"],
+                    },
+                    "jod_matched_items": ["Python"],
+                },
+                {
+                    "order": 2,
+                    "category": "Delivery",
+                    "items": {
+                        "primary": ["GitHub Actions"],
+                        "additional": ["Jenkins"],
+                    },
+                    "jod_matched_items": ["Jenkins"],
+                },
+            ],
+        }
+    }
+    manual_application_resume = {
+        "professional_summary": {"paragraph": "Manual summary."},
+        "core_technical_skills": {
+            "render": True,
+            "header_text": "Rewritten Skills",
+            "bullet_points": [
+                {
+                    "order": 1,
+                    "category": "Platform Engineering",
+                    "items": {
+                        "primary": ["Invented Skill"],
+                        "additional": [],
+                    },
+                    "jod_matched_items": ["AWS", "OpenSearch"],
+                },
+                {
+                    "order": 2,
+                    "category": "Invented Category",
+                    "items": {"primary": ["Unsupported Tool"], "additional": []},
+                    "jod_matched_items": ["Unsupported Tool"],
+                },
+            ],
+        },
+    }
+
+    result = resume_manual_pass.inherit_v2_core_technical_skills(
+        manual_application_resume=manual_application_resume,
+        v2_application_resume=v2_application_resume,
+    )
+
+    assert result["professional_summary"]["paragraph"] == "Manual summary."
+    assert result["core_technical_skills"]["header_text"] == "Core Technical Skills"
+    assert result["core_technical_skills"]["bullet_points"] == [
+        {
+            "order": 1,
+            "category": "Platform Engineering",
+            "items": {
+                "primary": ["Python", "AWS"],
+                "additional": ["OpenSearch"],
+            },
+            "jod_matched_items": ["AWS", "OpenSearch"],
+        },
+        {
+            "order": 2,
+            "category": "Delivery",
+            "items": {
+                "primary": ["GitHub Actions"],
+                "additional": ["Jenkins"],
+            },
+            "jod_matched_items": ["Jenkins"],
+        },
+    ]
+    assert v2_application_resume["core_technical_skills"]["bullet_points"][0][
+        "jod_matched_items"
+    ] == ["Python"]
+
+
 def test_run_manual_resume_pass_for_job_stores_manual_variant_and_defaults_to_it(
     tmp_path: Path,
     monkeypatch,

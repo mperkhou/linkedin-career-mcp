@@ -33,9 +33,10 @@ professional_summary:
   paragraph: Senior Platform Software Engineer with 10+ years of experience building
     shared enterprise automation platforms, distributed systems, developer tooling,
     and cloud automation. At Oracle, I contribute to a team that builds and operates
-    shared automation platforms supporting more than 40,000 non-network systems. Governed
-    agentic workflows increasingly serve as the primary engineering delivery layer
-    for planning, implementation, validation, release controls, and human approval.
+    shared automation platforms supporting more than 40,000 non-network systems. I
+    increasingly use governed agentic workflows for planning, implementation, validation,
+    and human-approved release delivery, and package those patterns as reusable engineering
+    infrastructure designed for broader PDAF use.
   summary_note: ''
 core_technical_skills:
   render: true
@@ -209,6 +210,12 @@ core_technical_skills:
         platform reliability:
         - runbook authoring
         - platform lifecycle management
+        validation frameworks:
+        - deterministic workflow validation
+        - forward workflow simulation
+        repository workflow automation:
+        - repository policy discovery
+        - policy-aware publishing
     jod_matched_items: []
   - order: 4
     category: Automation & IaC
@@ -278,12 +285,19 @@ core_technical_skills:
       - GitLab merge request workflows
       - deterministic workflow transitions
       - branch and merge-request CI pipelines
+      - GitHub Enterprise
+      - GitHub Actions
+      - Jenkins CI/CD pipelines
       match_terms:
         execution environment builds:
         - execution-node operations
         CI/CD automation:
         - production-readiness checks
         - schedule validation
+        Jenkins CI/CD pipelines:
+        - Jenkins pipelines
+        - Jenkins build pipelines
+        - Jenkins continuous integration
         source-control publishing automation:
         - dry-run workflows
     jod_matched_items: []
@@ -441,6 +455,9 @@ core_technical_skills:
         - auditability
         incident management:
         - incident response lifecycle
+        human approval workflows:
+        - explicit authorization boundaries
+        - fresh approval gates
     jod_matched_items: []
   - order: 7
     category: AI Tools
@@ -489,6 +506,11 @@ core_technical_skills:
         LLM orchestration:
         - AI-assisted incident response
         - AI-assisted operations
+        portable agentic workflows:
+        - durable implementation plans
+        - bounded implementation prompts
+        - role-separated review gates
+        - auditable decision records
     jod_matched_items: []
 professional_experience:
   render: true
@@ -639,6 +661,10 @@ professional_experience:
         - onda-playbooks
         - network fact collection
         - configuration backup automation
+        - GitHub Enterprise
+        - Jenkins
+        - Jenkins CI/CD pipelines
+        - CI/CD automation
         jod_match_count: 0
       - category: Platform & API Engineering
         matched:
@@ -649,17 +675,19 @@ professional_experience:
         jod_match_count: 0
       text: 'ONDA Playbooks, Data Collection, and AssetHub: My `onda-playbooks` work
         focused on the data-collection side of ONDA, complementing the backup playbook
-        framework that Rakesh took over after the early stages. I built and evolved
-        playbooks and roles for collecting Ansible facts and network resources, dispatching
-        work by vendor/type/model, caching normalized facts in OLAM/AWX, classifying
-        failures, and producing summary output that could be used to tune scheduled
-        runs. That framework expanded ONDA beyond backup replacement into a metadata
-        collection layer for Cisco IOS/IOS-XE, Cisco ASA, Cisco NX-OS/Nexus, Cisco
-        IOS-XR, F5, Arista, Citrix/NetScaler, OpenGear, and other devices where module
-        coverage supported it. I also started the AssetHub push path by shaping stored
-        facts into AssetHub-oriented records and building reusable send/push roles,
-        which connected ONDA''s device data to the larger goal of making ONDA an authoritative
-        source for OHAI network asset information.'
+        framework that Rakesh took over after the early stages. The ONDA framework
+        is maintained in GitHub Enterprise; I develop its Ansible playbooks there
+        and run Jenkins CI/CD pipelines as part of the OLAM playbook development workflow.
+        I built and evolved playbooks and roles for collecting Ansible facts and network
+        resources, dispatching work by vendor/type/model, caching normalized facts
+        in OLAM/AWX, classifying failures, and producing summary output that could
+        be used to tune scheduled runs. That framework expanded ONDA beyond backup
+        replacement into a metadata collection layer for Cisco IOS/IOS-XE, Cisco
+        ASA, Cisco NX-OS/Nexus, Cisco IOS-XR, F5, Arista, Citrix/NetScaler, OpenGear,
+        and other devices where module coverage supported it. I also started the AssetHub
+        push path by shaping stored facts into AssetHub-oriented records and building
+        reusable send/push roles, which connected ONDA''s device data to the larger
+        goal of making ONDA an authoritative source for OHAI network asset information.'
       bullet_point_total_match_count: 0
       render: true
     - order: 4
@@ -1558,78 +1586,62 @@ professional_experience:
       categories:
         assigned:
         - AI-Assisted Workflows, Codex Skills, and MCP Servers
-        - Portable Agent Harness and Governed Delivery Workflow
+        - Portable PDAF Agentic Delivery Framework
         matched:
         - AI Tools
         - Automation & IaC
         - Platform & API Engineering
         - Security & Compliance
-        - Languages & Frameworks
       skills:
       - category: AI Tools
         matched:
+        - Codex skills
         - agentic workflows
         - portable agentic workflows
         - agent harnesses
-        - checkpointed agent workflows
-        - controller skills
         - AI governance
         - Human-in-the-Loop (HITL) guardrails
         jod_match_count: 0
       - category: Automation & IaC
         matched:
-        - Oracle Linux Automation Manager (OLAM)
         - agentic release workflows
         - deterministic workflow transitions
-        - GitLab merge request workflows
-        - branch and merge-request CI pipelines
-        - CI/CD automation
         jod_match_count: 0
       - category: Platform & API Engineering
         matched:
-        - durable state checkpoints
         - repository workflow automation
         - release engineering
         - validation frameworks
         - Jira work tracking
-        - source-control automation
         - planned change review
         jod_match_count: 0
       - category: Security & Compliance
         matched:
         - human approval workflows
-        - secret-bearing argument rejection
-        jod_match_count: 0
-      - category: Languages & Frameworks
-        matched:
-        - JSON
-        - CLI tooling
+        - approval-gated publishing
+        - least-privilege operations
         jod_match_count: 0
       text: >-
-        Portable Agent Harness and Governed Delivery Workflow: I built a purpose-specific
-        agent harness to execute the OLAM MCP migration as a portable, reviewable
-        workflow rather than a personal productivity shortcut. A 25-phase roadmap
-        combines independently reviewable implementation increments with evidence-based
-        reassessment gates; a canonical runbook supplies prompts and exit criteria;
-        a tracked JSON checkpoint records durable state and authority; and a controller
-        skill plus deterministic CLI helper enforce ordered transitions, atomic persistence,
-        Jira and source-control conventions, and secret rejection. The governed workflow
-        covers planning, implementation, Jira and source-control operations, focused
-        and full validation, CI and release execution, and human approval, with task-sensitive
-        model and reasoning selection. Each increment starts from updated main, uses
-        a scoped branch, updates release metadata, runs validation, opens a GitLab merge
-        request, waits for CI, merges only through GitLab, and fast-forwards local main.
-        It resumed safely across explicit pauses, model/reasoning changes, stale checkpoints,
-        test corrections, and a temporarily wedged merge request, stopping when CI
-        evidence was unavailable rather than bypassing governance. (Representative
-        Jiras and repo evidence: GPDAF-21112; `~/dev/dev-tools/olam-mcp`)
+        Portable PDAF Agentic Delivery Framework: I developed and released `pdaf-feature-workflow`
+        v1.0.0 to extract proven delivery patterns from OLAM-specific work into reusable
+        engineering infrastructure designed for broader PDAF repository use. A living
+        Markdown plan coordinates phased Jira delivery while separate supervisor and
+        implementor tasks use bounded P-step prompts, corresponding G-step evidence
+        gates, explicit handoffs, and auditable decisions. The framework composes `git-repo-workflow`
+        and `jira-gbu-ticket` and requires fresh human authorization for prompt injection,
+        Jira writes, repository mutations, publication, merges, tags, releases, and
+        installations. At each gate, the supervisor inspects actual diffs, history,
+        tests, changelog, Jira scope, and prohibited actions rather than trusting generated
+        summaries. Deterministic tests and fresh workflow simulations caught stale
+        evidence, model-selection errors, ambiguous subagent guidance, terminology
+        defects, and overbroad authorization assumptions before release.
       bullet_point_total_match_count: 0
       render: true
     - order: 23
       categories:
         assigned:
         - AI-Assisted Workflows, Codex Skills, and MCP Servers
-        - Jira, OCI, and CX Skill Bundles
+        - Composable Workflow Dependencies and Policy-Aware Publishing
         matched:
         - AI Tools
         - Automation & IaC
@@ -1639,15 +1651,15 @@ professional_experience:
       skills:
       - category: AI Tools
         matched:
-        - Codex
         - Codex skills
-        - AI-assisted ticket automation
-        - AI-assisted workflow reuse
+        - portable Codex skills
         - CX/OCI/Jira skill bundles
+        - AI governance
         jod_match_count: 0
       - category: Automation & IaC
         matched:
-        - credential automation
+        - agentic release workflows
+        - CI/CD automation
         jod_match_count: 0
       - category: Distributed Systems & Cloud
         matched:
@@ -1656,39 +1668,33 @@ professional_experience:
       - category: Platform & API Engineering
         matched:
         - JIRA API integrations
-        - ticketing API integrations
         - Jira work tracking
-        - metadata services
-        - implementation stories
-        - ticket-ready remediation plans
+        - source-control automation
+        - repository workflow automation
+        - release engineering
+        - platform governance
         jod_match_count: 0
       - category: Security & Compliance
         matched:
-        - secrets management
-        - secret redaction
-        - dry-run validation
+        - human approval workflows
         - production write controls
         - controlled API access
         - credential redaction
+        - approval-gated publishing
         jod_match_count: 0
       text: >-
-        Jira, OCI, and CX Skill Bundles: I built portable skill bundles around
-        Jira, OCI-management, and CX-management workflows so operational processes
-        could be reinstalled, validated, and followed consistently. The Jira Codex
-        skill converts session history, OLAM evidence, repository changes, and CI
-        outcomes into durable project tracking by drafting and previewing ticket
-        creation, comments, split stories, links, estimates, sprint changes, and
-        backlog placement while enforcing success criteria and confirmation for
-        writes. Search, issue readback, timeout recovery, duplicate avoidance, and
-        secure PAT rotation make the integration repeatable across sessions and projects.
-        The OCI and CX skills follow the same pattern: read-only defaults, explicit
-        live-write confirmation, no invented customer-impacting facts, no hardcoded
-        local defaults, OCID/credential redaction, production write blocking unless
-        explicitly allowed, and tightly controlled operational workflows such as volume
-        resize with disk inventory, dry-run output, confirmation tokens, exact final-size
-        confirmation, post-resize reporting, and node-side rescan guidance. (Representative
-        Jiras and repo evidence: GPDAF-20684, GPDAF-21112; `~/dev/dev-tools/CX-management`,
-        `~/dev/dev-tools/OCI-management`, `~/.codex/skills/jira-gbu-ticket`)
+        Composable Workflow Dependencies and Policy-Aware Publishing: I hardened and
+        released `jira-gbu-ticket` v1.0.0 and evolved `git-repo-workflow` through
+        v1.2.0 as independently maintained capabilities, keeping Jira governance and
+        repository publication logic authoritative rather than duplicating them inside
+        the feature workflow. Jira remains the accountable system of record, with
+        exact-host, HTTPS-only, redirect-resistant, credential-safe access; explicit
+        mutation confirmation; and timeout reconciliation. Repository publishing discovers
+        branch-protection, peer-review, merge, CI/CD, tagging, and release policies;
+        builds a bounded authorization scope; verifies the merge-result SHA; handles
+        immutable tags idempotently; and stops when targets or prerequisites change.
+        The same read-only-default, confirmation-gated, credential-redacting pattern
+        remains represented by the OCI and CX operational skills.
       bullet_point_total_match_count: 0
       render: true
     - order: 24
@@ -2132,71 +2138,6 @@ professional_experience:
         across OLAM, Chef, ONDA, OpenSearch, Logstash/Filebeat, OCI, and AssetHub. The
         recurring pattern is turning operational pain into reusable automation, safer
         delivery, clearer ownership, and durable guidance.
-      bullet_point_total_match_count: 0
-      render: true
-    - order: 33
-      categories:
-        assigned:
-        - Governed Agentic Delivery
-        - Governed Agentic Delivery
-        matched:
-        - AI Tools
-        - Automation & IaC
-        - Platform & API Engineering
-        - Security & Compliance
-      skills:
-      - category: AI Tools
-        matched:
-        - Codex
-        - Cline
-        - MCP (Model Context Protocol)
-        - Codex skills
-        - Cline rules
-        - Agentic AI
-        - agentic workflows
-        - AI-assisted TDD
-        - AI-assisted operational reporting
-        - LLM orchestration
-        - portable agentic workflows
-        - checkpointed agent workflows
-        - agent contribution guidelines
-        - AI governance
-        - Human-in-the-Loop (HITL) guardrails
-        - CX/OCI/Jira skill bundles
-        jod_match_count: 0
-      - category: Automation & IaC
-        matched:
-        - Oracle Linux Automation Manager (OLAM)
-        - AWX
-        - agentic release workflows
-        - CI/CD automation
-        jod_match_count: 0
-      - category: Platform & API Engineering
-        matched:
-        - Jira work tracking
-        - source-control automation
-        - repository workflow automation
-        - release engineering
-        - validation frameworks
-        - durable state checkpoints
-        jod_match_count: 0
-      - category: Security & Compliance
-        matched:
-        - human approval workflows
-        - least-privilege operations
-        jod_match_count: 0
-      text: >-
-        Governed Agentic Delivery: Beginning in late 2025 and becoming explicit in
-        2026, I developed governed agentic workflows as an increasingly important engineering
-        delivery layer for diagnosis, planning, implementation, test-driven development,
-        Jira and source-control operations, OLAM/AWX reporting, validation, CI and
-        release workflows, and human-approved delivery. I used Codex, Cline, MCP servers,
-        and Codex skills and codified these practices in `.clinerules`, `olam-mcp`,
-        `git-repo-workflow`, `onda-sm-workflow`, Jira, OCI, and CX skills, runbooks,
-        checkpoints, and contribution guidelines. Task-sensitive model and reasoning
-        selection, explicit approval gates, scoped authority, secret protection, and
-        durable evidence make the workflows portable, reviewable, auditable, and safe
-        for other operators to inspect, reuse, and improve.
       bullet_point_total_match_count: 0
       render: true
   - order: 2
@@ -3163,9 +3104,12 @@ portfolio:
   header_text: Portfolio
   projects:
   - order: 1
-    title_text: LinkedIn Career MCP
-    url: https://github.com/mperkhou/linkedin-career-mcp
-    description_text: A local-first Python and MCP platform for orchestrating
-      evidence-grounded career data and document workflows, with SQLite-backed state,
-      versioned artifacts, retryable batch processing, ATS diagnostics, human review
-      gates, and agentic workflow controls.
+    title_text: Career Agent Workbench
+    url: https://github.com/mperkhou/career-agent-workbench
+    description_text: A local, human-governed Python workbench for researching public
+      job postings, managing SQLite-backed application state, and producing evidence-grounded
+      resume variants through deterministic rendering, ATS diagnostics, review gates,
+      and provider-neutral CLI, Flask, and FastMCP interfaces. I built and maintain
+      its GitHub Actions CI pipeline, including push and pull-request validation,
+      Python 3.11/3.12 matrix testing, Ruff linting, release-metadata checks, and full
+      pytest execution.
