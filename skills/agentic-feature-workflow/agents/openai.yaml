@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agentic Feature Workflow"
+  short_description: "Plan and supervise bounded feature implementation"
+  default_prompt: "Use $agentic-feature-workflow to plan and supervise a multi-phase feature through bounded implementor tasks and independent gates."

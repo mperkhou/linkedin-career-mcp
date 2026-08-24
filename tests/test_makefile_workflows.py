@@ -43,20 +43,29 @@ def _make_dry_run(*args: str) -> str:
     return result.stdout
 
 
-def test_skill_link_make_target_links_agentic_controller_by_default() -> None:
+def test_skill_link_make_target_links_active_default_skills() -> None:
     output = _make_dry_run("skill-link")
 
-    assert "linkedin-career-mcp" in output
-    assert "master-resume-yaml" in output
-    assert "manual-resume-passthrough" in output
-    assert "agentic-workflow-init" in output
-    assert "agentic-workflow-controller" in output
+    expected_skill_names = (
+        "linkedin-career-mcp master-resume-yaml manual-resume-passthrough "
+        "agentic-feature-workflow"
+    )
+
+    assert f"for skill_name in {expected_skill_names};" in output
+    assert "agentic-workflow-init" not in output
+    assert "agentic-workflow-controller" not in output
 
 
-def test_skill_link_make_target_honors_single_skill_override() -> None:
-    output = _make_dry_run("skill-link", "SKILL_NAME=agentic-workflow-controller")
+@pytest.mark.parametrize(
+    "legacy_skill",
+    ["agentic-workflow-init", "agentic-workflow-controller"],
+)
+def test_skill_link_make_target_honors_legacy_single_skill_override(
+    legacy_skill: str,
+) -> None:
+    output = _make_dry_run("skill-link", f"SKILL_NAME={legacy_skill}")
 
-    assert "agentic-workflow-controller" in output
+    assert f"for skill_name in {legacy_skill};" in output
     assert "linkedin-career-mcp master-resume-yaml manual-resume-passthrough" not in output
 
 

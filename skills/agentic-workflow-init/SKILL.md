@@ -1,9 +1,15 @@
 ---
 name: agentic-workflow-init
-description: Use when Codex should bootstrap a new committed agentic workflow plan before implementation work begins, including repo readiness checks, branch creation, SemVer confirmation, docs/agentic-workflows plan creation, bootstrap CHANGELOG entry, bootstrap commit, ignored runtime tracker initialization, plan digest binding, and kickoff prompt generation for agentic-workflow-controller. Do not use for executing implementation steps after the workflow is initialized.
+description: Legacy compatibility skill for bootstrapping a committed agentic workflow plan with its ignored runtime tracker, digest binding, and controller kickoff. Use only when continuing the legacy tracker-based model. For new multi-phase feature work, use agentic-feature-workflow.
 ---
 
 # Agentic Workflow Init
+
+## Legacy Compatibility
+
+For new multi-phase feature workflows, use `agentic-feature-workflow`. Retain
+this skill only for explicit compatibility work that still requires the legacy
+committed-plan and runtime-tracker model.
 
 ## Overview
 

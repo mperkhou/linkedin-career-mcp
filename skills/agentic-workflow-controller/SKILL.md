@@ -1,9 +1,16 @@
 ---
 name: agentic-workflow-controller
-description: Use when Codex should execute, resume, inspect, or reassess an existing committed agentic workflow plan with P-step execution, read-only evidence routes or subagents, G-step gates, runtime tracker JSON, plan-digest binding, pause conditions, validation evidence, and release closeout state. Trigger for requests to continue an initialized workflow, run P01/G01 style steps, inspect workflow tracker state, record evidence routes, or resume a gated multi-step repo workflow. Do not use to scaffold a brand-new workflow from scratch; use agentic-workflow-init for bootstrap.
+description: Legacy compatibility skill for executing, resuming, inspecting, or reassessing a committed agentic workflow plan with runtime tracker JSON, plan-digest binding, P steps, G gates, and evidence routes. Use only for an existing legacy tracker-based workflow. For new multi-phase feature work, use agentic-feature-workflow.
 ---
 
 # Agentic Workflow Controller
+
+## Legacy Compatibility
+
+For new multi-phase feature workflows, use `agentic-feature-workflow`. Retain
+this skill only for explicit compatibility work that must execute or resume an
+existing committed plan with legacy runtime-tracker state.
+Do not use to scaffold a new workflow.
 
 ## Overview
 

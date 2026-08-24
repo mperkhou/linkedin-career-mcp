@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted.
+Superseded for new workflows by
+[ADR 0008: Supervisor-Managed Living Plans](0008-supervisor-managed-living-plans.md).
+Retained as historical evidence for compatible machine-tracked workflows.
 
 ## Date
 
@@ -94,5 +96,6 @@ state, not a daemon or scheduler.
 ## References
 
 - [AGENTS.md](../../AGENTS.md)
+- [ADR 0008: Supervisor-Managed Living Plans](0008-supervisor-managed-living-plans.md)
 - [Agentic workflow controller skill](../../skills/agentic-workflow-controller/SKILL.md)
 - [4.9.0 release notes](../release-notes/4.9.0.md)
