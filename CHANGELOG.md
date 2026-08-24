@@ -1,5 +1,14 @@
 # linkedin-career-mcp CHANGELOG
 
+## 4.13.1 - Reserve 5.1.0 for resume comparison
+
+* Add a minimal `5.1.0` planning stub for selectable Review-page resume
+  comparisons across the available `v1`, `v2`, and `manual` variants.
+* Move the remaining public-rebuild migration roadmap intact to `5.2.0` and
+  update the `5.0.0` handoff to preserve that sequence.
+* Keep the planning change isolated from Flask behavior, resume selection,
+  application data, and the accepted `5.0.0` workspace-separation scope.
+
 ## 4.13.0 - Add supervised feature workflow
 
 * Make `agentic-feature-workflow` the active workflow for new multi-phase
