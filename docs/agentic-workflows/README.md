@@ -67,9 +67,13 @@ Historical release notes and the committed
   against an external workspace. One implementor receives one bounded P step at
   a time, every G gate remains with the supervisor, and PR, merge, cutover,
   soak, acceptance, and tagging remain supervisor-owned closeout decisions.
-- [5.1.0 rolling roadmap](5.1.0-public-rebuild-roadmap.md) preserves later
-  public-rebuild phases as planning input. It is not implementation authority;
-  after 5.0.0, its selected scope becomes the detailed 5.1.0 plan and its
-  deferred remainder starts the fledgling 5.2.0 roadmap. Each private 5.x
-  release repeats the one-P/one-gate cadence plus the implementation-copy, PR,
-  operational cutover, user-soak, and acceptance-before-tag cycle.
+- [5.1.0 Review-page comparison
+  stub](5.1.0-review-resume-variant-comparison.md) reserves the next minor
+  release for two explicit resume-version selectors and pair-driven diff
+  rendering without changing the stored selected resume variant.
+- [5.2.0 rolling roadmap](5.2.0-public-rebuild-roadmap.md) preserves the
+  remaining public-rebuild phases as planning input. It is not implementation
+  authority; after 5.1.0, its selected scope becomes the detailed 5.2.0 plan
+  and its deferred remainder starts the fledgling 5.3.0 roadmap. Each private
+  5.x release repeats the one-P/one-gate cadence plus the implementation-copy,
+  PR, operational cutover, user-soak, and acceptance-before-tag cycle.

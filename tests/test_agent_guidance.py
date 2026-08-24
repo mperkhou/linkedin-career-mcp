@@ -13,8 +13,12 @@ PUBLIC_REBUILD_PLAN = (
     PROJECT_ROOT
     / "docs/agentic-workflows/5.0.0-public-rebuild-workspace-separation.md"
 )
+REVIEW_COMPARISON_PLAN = (
+    PROJECT_ROOT
+    / "docs/agentic-workflows/5.1.0-review-resume-variant-comparison.md"
+)
 PUBLIC_REBUILD_ROADMAP = (
-    PROJECT_ROOT / "docs/agentic-workflows/5.1.0-public-rebuild-roadmap.md"
+    PROJECT_ROOT / "docs/agentic-workflows/5.2.0-public-rebuild-roadmap.md"
 )
 SUPERVISION_MODES = (
     "Observation only",
@@ -149,6 +153,7 @@ def test_active_documentation_links_resolve_and_legacy_material_is_preserved() -
         ADR_0007,
         ADR_0008,
         PUBLIC_REBUILD_PLAN,
+        REVIEW_COMPARISON_PLAN,
         PUBLIC_REBUILD_ROADMAP,
     )
     for path in active_docs:
@@ -223,7 +228,17 @@ def test_public_rebuild_plans_preserve_migration_and_supervision_contracts() -> 
         assert "exact preview" in document
         assert "fresh approval" in document
 
-    assert "new fledgling `5.2.0` roadmap" in roadmap
+    comparison_plan = _read(REVIEW_COMPARISON_PLAN)
+    normalized_comparison_plan = " ".join(comparison_plan.split())
+    assert "two explicit comparison selectors" in comparison_plan
+    assert "`v1` versus `v2`" in comparison_plan
+    assert "`v2` versus `manual`" in comparison_plan
+    assert "`v1` versus `manual`" in comparison_plan
+    assert (
+        "must not change the stored selected resume variant"
+        in normalized_comparison_plan
+    )
+    assert "new fledgling `5.3.0` roadmap" in roadmap
     assert "one bounded P step at a time" in roadmap
     assert "independently evaluates the matching G gate" in roadmap
     assert "acceptance-before-tag" in _read(WORKFLOW_DOCS)
