@@ -1,71 +1,75 @@
 # Agentic Workflows
 
-Agentic workflows are a lightweight orchestration pattern for larger repo
-changes. They reduce repeated prompt/response management while keeping
-automation guided, reviewable, and anchored in committed release artifacts.
+For new multi-phase repository changes, use
+`$agentic-feature-workflow`. The active approach is a supervisor-managed,
+living Markdown plan: the supervisor controls planning, task selection, exact
+approval previews, gates, corrections, and release closeout, while a separate
+user-owned implementor task receives exactly one bounded P phase.
 
-## Lifecycle
+Every P phase is immediately followed by an independent G gate. The plan is
+the sole workflow source of truth; the active workflow does not require a
+machine tracker, JSON state, plan digest, rebind operation, or workflow
+runtime. See [ADR 0008](../adr/0008-supervisor-managed-living-plans.md) for the
+architecture decision and the
+[`agentic-feature-workflow` skill](../../skills/agentic-feature-workflow/SKILL.md)
+for the operating contract.
 
-1. Use `$agentic-workflow-init` to bootstrap the workflow.
-2. Commit one canonical plan under `docs/agentic-workflows/<version>-<slug>.md`.
-3. Initialize ignored runtime state under `tmp/agentic-workflows/<workflow_id>/`.
-4. Hand a kickoff prompt to `$agentic-workflow-controller`.
-5. Use the controller to execute P steps, run evidence routes, reassess at G
-   gates, validate, pause, and close out the release when authorized.
+## Active Workflow
 
-## Bootstrap Skill Vs Controller Skill
+1. Draft one bounded living plan conversationally, resolve contradictions, and
+   obtain explicit approval of its content.
+2. Choose whether the approved plan is local-only or tracked in Git; do not
+   infer that storage choice.
+3. The supervisor dispatches one complete P phase to a separate implementor
+   task only after showing the exact task action and receiving approval.
+4. The implementor returns its structured handoff and stops before the matching
+   G gate.
+5. The supervisor independently evaluates the G gate, records its decision in
+   the living plan, and only then prepares a correction or the next phase.
 
-`agentic-workflow-init` scaffolds. It verifies readiness, creates the branch,
-confirms one SemVer target, writes the committed plan, adds the bootstrap
-changelog entry, commits those files, initializes the tracker, records plan
-digest/revision binding, and produces the kickoff prompt.
+## Supervision Modes
 
-`agentic-workflow-controller` executes or resumes. It reads `AGENTS.md`, the
-committed plan, and the runtime tracker; records attempted and completed steps;
-collects read-only evidence routes; pauses or amends at gates; and preserves
-release hygiene.
+Each complete P/G cycle selects one mode:
 
-## Canonical Plan And Tracker Binding
+| Mode | Architectural boundary |
+| --- | --- |
+| **Observation only** | Bounded read-only observation with no implementor message. |
+| **Approval-gated attention** | Every message has a verified destination, exact preview, and fresh approval. |
+| **Bounded contract restoration** | One non-replenishing message may restore an existing approved contract; it cannot become general autonomous authority. |
 
-The committed plan is the source of truth. Runtime tracker state is only a
-cursor and evidence log. The tracker records the plan path, plan revision,
-SHA-256 digest, target version, branch, and bootstrap commit. If the plan file
-changes without a rebind, validation fails so the session does not accidentally
-execute stale instructions.
+The detailed evidence thresholds, scenarios, message budget, and correction
+rules are canonical in the
+[implementor-task orchestration reference](../../skills/agentic-feature-workflow/references/implementor-task-orchestration.md).
 
-When a G gate amends future work, update the committed plan, add a same-version
-`CHANGELOG.md` bullet, commit both changes, then run `workflow_state.py
-rebind-plan` to update the tracker digest and revision.
+## Legacy Compatibility And Historical Evidence
 
-## Evidence Routes
+`agentic-workflow-init` and `agentic-workflow-controller` remain available
+for historical, machine-tracked workflow compatibility. Do not use them to
+scaffold a new workflow. Their tracker-based bootstrap, evidence-route, and
+plan-binding model remains documented as history in
+[ADR 0006](../adr/0006-agentic-workflow-evidence-routes.md) and
+[ADR 0007](../adr/0007-agentic-workflow-bootstrap-and-plan-binding.md), both
+superseded for new workflows by ADR 0008.
 
-Evidence routes are read-only investigations attached to a P step. They can run
-as subagents when available or as `local_fallback` in the main thread. Routes
-collect facts and recommendations; the main agent remains responsible for
-edits, gates, tracker updates, commits, PRs, merges, and tags.
+Historical release notes and the committed
+[4.8.0 workflow example](4.8.0-render-stamats-vida.md) remain preserved.
 
-## Artifact Storage
+## Planned Public Rebuild
 
-Repository-local state may contain only small control files, route prompts,
-route assessments, sanitized summaries, hashes/references, and artifact
-manifests under `tmp/agentic-workflows/<workflow_id>/`.
-
-Heavy or sensitive evidence belongs outside the repository tree:
-
-```text
-$TMPDIR/linkedin-career-mcp-agentic/<workflow_id>/<step_id>/<run_id>/
-```
-
-Do not put raw SQLite databases, generated PDFs, raw logs, token stores,
-cookies, credentials, runtime homes, repo clones, or other sensitive/heavy
-evidence in repo-local runtime state.
-
-## Troubleshooting
-
-- If `validate` reports a plan digest mismatch, inspect the committed plan
-  changes and rebind only after confirming the amendment was intentional.
-- If a tracker lock exists, check whether another process is writing the
-  tracker before removing stale lock files.
-- If a route needs sensitive or heavy evidence, store the raw evidence under
-  `$TMPDIR/linkedin-career-mcp-agentic/...` and commit only a sanitized manifest
-  or summary.
+- These user-owned planning records are not current implementation authority.
+  Their execution cadence is reconciled with the active living-plan workflow,
+  but each future release still requires its own approved living plan and exact
+  task-action approvals before work begins.
+- [5.0.0 workspace separation](5.0.0-public-rebuild-workspace-separation.md) is
+  the detailed private-migration plan. Work is developed in a parallel copy,
+  merged through the existing private project repository, and accepted only
+  after clean-main cutover and live use of the original operational checkout
+  against an external workspace. One implementor receives one bounded P step at
+  a time, every G gate remains with the supervisor, and PR, merge, cutover,
+  soak, acceptance, and tagging remain supervisor-owned closeout decisions.
+- [5.1.0 rolling roadmap](5.1.0-public-rebuild-roadmap.md) preserves later
+  public-rebuild phases as planning input. It is not implementation authority;
+  after 5.0.0, its selected scope becomes the detailed 5.1.0 plan and its
+  deferred remainder starts the fledgling 5.2.0 roadmap. Each private 5.x
+  release repeats the one-P/one-gate cadence plus the implementation-copy, PR,
+  operational cutover, user-soak, and acceptance-before-tag cycle.

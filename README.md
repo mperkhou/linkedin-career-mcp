@@ -23,65 +23,37 @@ that need to apply across Codex sessions. [ADR 0005](docs/adr/0005-canonical-age
 documents that decision, and the [4.3.0 release notes](docs/release-notes/4.3.0.md)
 summarize the implementation.
 
-For larger repo changes, the agentic workflow layer now separates bootstrap
-from execution. `agentic-workflow-init` creates the branch, target version,
-committed canonical plan, bootstrap changelog entry, bootstrap commit, ignored
-runtime tracker, plan digest binding, and kickoff prompt. Then
-`agentic-workflow-controller` executes or resumes the committed plan. The
-controller is procedural guidance for Codex sessions, not a background service
-or permission bypass.
+For new multi-phase repository changes, use
+`agentic-feature-workflow`. It maintains one supervisor-owned living Markdown
+plan, gives a separate user-owned implementor task exactly one bounded P phase
+at a time, and follows every P phase with an independent supervisor G gate.
+The supervisor owns plan updates, task selection, exact launch previews, gate
+decisions, corrections, commits, and release closeout; implementors edit and
+validate only their assigned phase, then stop before its gate.
 
-The orchestration layer exists to reduce repetitive prompt/response management
-for larger changes while keeping automation guided and reviewable. A typical
-plan uses P steps for work phases and G gates for reassessment. [ADR 0006](docs/adr/0006-agentic-workflow-evidence-routes.md)
-documents why evidence routes are part of that layer, and [ADR 0007](docs/adr/0007-agentic-workflow-bootstrap-and-plan-binding.md)
-documents why workflow bootstrap, execution, and plan binding are separate.
-The full lifecycle is summarized in [docs/agentic-workflows/README.md](docs/agentic-workflows/README.md).
+Each P/G cycle explicitly selects one supervision mode:
 
-```text
-P01 - Readiness and evidence collection
-G01 - Confirm scope before edits
-P02 - Implement the scoped change
-P03 - Generate tmp-only validation artifacts
-G02 - Compare evidence and decide whether to continue, amend, or pause
-Pn  - Final validation and release closeout
-Gn  - Pause before remote merge/tag unless approved
-```
+- **Observation only** reports meaningful exposed progress or attention
+  evidence and never sends an implementor message.
+- **Approval-gated attention** requires a verified destination, an exact
+  message preview, and fresh user approval for every message.
+- **Bounded contract restoration** permits at most one narrowly restorative
+  message in the selected P/G cycle when it directly restores an existing
+  approved contract. It is not general autonomous authority.
 
-The runtime tracker stores the live cursor and evidence. A simplified tracker
-fragment looks like:
+General documentation describes those boundaries; the skill's
+[orchestration reference](skills/agentic-feature-workflow/references/implementor-task-orchestration.md)
+is the canonical home for detailed evidence thresholds, representative
+scenarios, and message-budget conditions. The complete repository guidance is
+summarized in [the agentic-workflow documentation](docs/agentic-workflows/README.md)
+and adopted in [ADR 0008](docs/adr/0008-supervisor-managed-living-plans.md).
 
-```json
-{
-  "workflow_id": "v4-10-0-example",
-  "plan_path": "docs/agentic-workflows/4.10.0-example.md",
-  "plan_revision": 1,
-  "plan_digest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-  "current_step": "G02",
-  "attempted_steps": [{"step_id": "P03", "evidence": ["tmp PDF rendered"]}],
-  "completed_steps": [{"step_id": "P03", "evidence": ["tmp PDF rendered"]}],
-  "evidence_routes": [
-    {
-      "route_id": "P03-evidence-layout",
-      "step_id": "P03",
-      "status": "complete",
-      "execution_mode": "subagent",
-      "summary": "The sample stayed within the page budget.",
-      "recommendation": "continue"
-    }
-  ],
-  "gates": []
-}
-```
-
-Evidence routes are read-only investigations attached to a P step. When Codex
-subagents are available, the main agent can send a route such as
-`P03-evidence-layout` or `P03-evidence-generation-quality` to a subagent so the
-UI exposes a separate clickable work item. When subagents are unavailable, the
-main agent can run the same route prompt locally and record it as
-`local_fallback`. In either mode, subagents gather findings and
-recommendations; the main agent owns edits, tracker updates, G-gate decisions,
-commits, PRs, merges, and release tags.
+The older `agentic-workflow-init` and `agentic-workflow-controller` skills
+remain available only for compatible historical machine-tracked workflows. They
+are not the approach for scaffolding a new workflow. [ADR 0006](docs/adr/0006-agentic-workflow-evidence-routes.md)
+and [ADR 0007](docs/adr/0007-agentic-workflow-bootstrap-and-plan-binding.md)
+remain historical decision records and are superseded for new workflows by ADR
+0008.
 
 ## Terms
 
@@ -690,12 +662,11 @@ The active workflow modules are intentionally smaller than the retired artifact 
 - `src/linkedin_career_mcp/resume_highlighting.py`: guarded Codex JSON-patch workflow for selective resume bullet emphasis.
 - `src/linkedin_career_mcp/resume_rendering.py`: HTML/PDF rendering.
 - `src/linkedin_career_mcp/webapp.py`: database-backed review, edit, download, rescore, and background actions.
-- `skills/agentic-workflow-init/`: thin bootstrap skill for creating committed
-  workflow plans, bootstrap changelog entries, tracker bindings, and kickoff
-  prompts before implementation starts.
-- `skills/agentic-workflow-controller/`: executor/resumer skill, tracked
-  templates, schemas, and helper script for staged P/G implementation workflows
-  with local JSON state under ignored `tmp/agentic-workflows/`.
+- `skills/agentic-feature-workflow/`: the active living-plan supervisor and
+  implementor workflow for new multi-phase repository changes.
+- `skills/agentic-workflow-init/` and
+  `skills/agentic-workflow-controller/`: retained compatibility surfaces for
+  historical machine-tracked workflows; they do not scaffold new workflows.
 
 Keep the MRO neutral: empty `jod_matched_items`, zero match counts, source-evidence bullets, and no job-specific pruning. Job-specific generated bullets belong in the ARO stored on the application row.
 

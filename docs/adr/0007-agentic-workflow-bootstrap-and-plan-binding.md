@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted.
+Superseded for new workflows by
+[ADR 0008: Supervisor-Managed Living Plans](0008-supervisor-managed-living-plans.md).
+Retained as historical evidence for compatible machine-tracked workflows.
 
 ## Context
 
@@ -56,3 +58,4 @@ confinement, recursive secret rejection, and sanitized artifact manifests.
 - [Agentic workflow init skill](../../skills/agentic-workflow-init/SKILL.md)
 - [Agentic workflow controller skill](../../skills/agentic-workflow-controller/SKILL.md)
 - [ADR 0006: Agentic workflow evidence routes](0006-agentic-workflow-evidence-routes.md)
+- [ADR 0008: Supervisor-Managed Living Plans](0008-supervisor-managed-living-plans.md)

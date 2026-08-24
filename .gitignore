@@ -16,3 +16,4 @@ test_fixture_workflow.py
 workflow_output.log
 tmp/
 /tmp/agentic-workflows/
+/.codex/plans/

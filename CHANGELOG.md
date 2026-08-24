@@ -1,5 +1,23 @@
 # linkedin-career-mcp CHANGELOG
 
+## 4.13.0 - Add supervised feature workflow
+
+* Make `agentic-feature-workflow` the active workflow for new multi-phase
+  repository changes: a supervisor-owned living Markdown plan dispatches one
+  bounded P phase at a time to a separate implementor, followed by an
+  independent G gate.
+* Define per-cycle observation-only, approval-gated-attention, and bounded
+  contract-restoration modes. The bounded mode allows at most one restorative
+  message under the existing contract and never grants general autonomous or
+  expanded authority.
+* Require exact approval for every task creation and ordinary message, retain
+  the legacy tracker-based skills as explicit compatibility surfaces, and align
+  the tracked 5.x migration plans with the same supervisor/implementor cadence.
+* Preserve the application tracker, profile data, generated artifacts, model
+  settings, retries, timeouts, and application workflows unchanged.
+* Add contract, guidance, Makefile, release-metadata, lint, and full-suite
+  validation for the release candidate.
+
 ## 4.12.1 - Preserve manual-pass skill taxonomy
 
 * Preserve the stored v2 Core Technical Skills taxonomy, ordering, and skill

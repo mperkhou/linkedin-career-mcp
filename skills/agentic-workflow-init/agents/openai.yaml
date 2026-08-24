@@ -1,4 +1,4 @@
 interface:
-  display_name: "Agentic Workflow Init"
-  short_description: "Bootstrap committed workflow plans and runtime tracker bindings."
-  default_prompt: "Use $agentic-workflow-init to scaffold a committed agentic workflow plan, bootstrap changelog entry, runtime tracker binding, and kickoff prompt."
+  display_name: "Legacy Agentic Workflow Init"
+  short_description: "Bootstrap legacy committed workflow compatibility."
+  default_prompt: "Use $agentic-workflow-init only to bootstrap a legacy committed workflow with its runtime tracker."

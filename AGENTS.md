@@ -11,6 +11,10 @@ details in `skills/`, and shared repo guardrails here.
 - Prefer the existing Python-first architecture and local workflow conventions.
 - Use `skills/linkedin-career-mcp/SKILL.md` for command-level workflow details.
 - Use `skills/manual-resume-passthrough/SKILL.md` for manual resume pass work.
+- For new multi-phase feature work, use
+  `skills/agentic-feature-workflow/SKILL.md` and its living-plan
+  supervisor/implementor workflow; legacy machine-tracked skills remain
+  compatibility-only.
 
 ## Canonical State
 

@@ -50,22 +50,32 @@ This keeps agent behavior aligned across tracker workflows, Codex manual pass,
 Codex highlighting, release closeout, and application-writing work without
 duplicating the same operational rules in every human-facing document.
 
-The agentic workflow layer extends that guidance for large multi-step repo
-changes. `skills/agentic-workflow-init/` owns bootstrap: readiness checks,
-branch creation, SemVer confirmation, committed canonical plan creation,
-bootstrap changelog entry, bootstrap commit, runtime tracker initialization,
-plan digest binding, and kickoff prompt generation.
+For new large multi-step repository changes, the active architecture is
+`skills/agentic-feature-workflow/`: one living Markdown plan is owned by a
+supervisor task, while separate user-owned implementor tasks receive one
+bounded P phase at a time. Each P phase is immediately followed by an
+independent supervisor G gate. The supervisor owns plan maintenance,
+implementor selection, exact launch and correction previews, gate decisions,
+and release closeout; an implementor owns only its assigned phase and stops
+before the gate.
 
-`skills/agentic-workflow-controller/` then executes or resumes the committed
-plan. It defines a procedural controller pattern for staged implementation
-prompts, P-step execution, G-step reassessment gates, validation evidence,
-read-only evidence routes, artifact manifests, and pause conditions. The
-runtime tracker under `tmp/agentic-workflows/<workflow_id>/` is a cursor and
-evidence log, not a second plan; it binds to the committed plan path, revision,
-digest, branch, version, and bootstrap commit. The controller does not run as a
-daemon, grant extra permissions, or replace `AGENTS.md`; it gives Codex
-sessions a repeatable way to execute already-authorized work while preserving
-release, artifact, and resume-evidence guardrails.
+Each P/G cycle selects one explicit supervision mode. Observation only is
+read-only and no-send. Approval-gated attention requires exact per-message
+approval. Bounded contract restoration has one non-replenishing message budget
+for directly restoring an existing approved contract; it cannot broaden scope,
+grant permissions, or become general autonomous authority. Detailed
+observable/material/time-sensitive evidence thresholds and representative
+scenarios remain canonical in the
+[implementor-task orchestration reference](../skills/agentic-feature-workflow/references/implementor-task-orchestration.md),
+not this architecture overview.
+
+The older `skills/agentic-workflow-init/` and
+`skills/agentic-workflow-controller/` surfaces remain intact for compatibility
+with historical machine-tracked workflows, but are not used to begin new ones.
+[ADR 0008](adr/0008-supervisor-managed-living-plans.md) supersedes
+[ADR 0006](adr/0006-agentic-workflow-evidence-routes.md) and
+[ADR 0007](adr/0007-agentic-workflow-bootstrap-and-plan-binding.md) for new
+workflows without erasing those records or their supporting artifacts.
 
 ## Core Layers
 

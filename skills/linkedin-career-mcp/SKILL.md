@@ -158,7 +158,8 @@ The current tools search public LinkedIn job listings and fetch public job detai
   deprecated fallbacks or unset them to adopt the split manual/highlighting
   defaults. The configured profile recommendation has not yet been validated
   by comparative model-quality runs.
-- Use `skills/agentic-workflow-init/SKILL.md` to bootstrap a new committed
-  workflow plan, then `skills/agentic-workflow-controller/SKILL.md` to execute
-  or resume staged P-step/G-gate work with local JSON runtime state under
-  `tmp/agentic-workflows/`.
+- For new multi-phase feature workflows, use `agentic-feature-workflow` for the
+  living Markdown plan and supervisor/implementor flow. The
+  `agentic-workflow-init` and `agentic-workflow-controller` skills remain
+  available only for explicit compatibility work with legacy committed plans
+  and local JSON runtime state.
